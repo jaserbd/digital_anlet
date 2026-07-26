@@ -3,12 +3,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Role } from '@anlet/shared';
 import { organizationsApi } from '../api/organizationsApi';
 import { usersApi } from '../api/usersApi';
+import { insightsApi } from '../api/insightsApi';
+import { questionnaireApi } from '../api/questionnaireApi';
 import { ApiError } from '../api/client';
 import { LogoutButton } from '../components/LogoutButton';
 
+const QUESTIONNAIRE_CODE = 'RAN_FM_GB1059A';
+
 export function AdminPage() {
   return (
-    <main style={{ maxWidth: 600, margin: '2rem auto', fontFamily: 'sans-serif' }}>
+    <main style={{ maxWidth: 900, margin: '2rem auto', fontFamily: 'sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>Admin</h1>
         <LogoutButton />
@@ -16,6 +20,8 @@ export function AdminPage() {
       <CreateOrganizationForm />
       <hr style={{ margin: '2rem 0' }} />
       <CreateUserForm />
+      <hr style={{ margin: '2rem 0' }} />
+      <BenchmarkingSection />
     </main>
   );
 }
@@ -156,3 +162,120 @@ function CreateUserForm() {
     </section>
   );
 }
+
+const SCORE_BAR_MAX = 4;
+const SCORE_BAR_FILL = '#2563eb';
+const SCORE_BAR_TRACK = '#e5e7eb';
+
+function ScoreBar({ value }: { value: number | null }) {
+  if (value == null) {
+    return <span style={{ color: '#999' }}>—</span>;
+  }
+  const pct = Math.max(0, Math.min(100, (value / SCORE_BAR_MAX) * 100));
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+      <div
+        style={{
+          background: SCORE_BAR_TRACK,
+          borderRadius: 4,
+          height: 10,
+          width: 100,
+          overflow: 'hidden',
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ background: SCORE_BAR_FILL, height: '100%', width: `${pct}%`, borderRadius: 4 }} />
+      </div>
+      <span>{value.toFixed(2)}</span>
+    </div>
+  );
+}
+
+function BenchmarkingSection() {
+  const questionnaireQuery = useQuery({
+    queryKey: ['questionnaire', QUESTIONNAIRE_CODE],
+    queryFn: () => questionnaireApi.get(QUESTIONNAIRE_CODE),
+  });
+  const benchmarkQuery = useQuery({
+    queryKey: ['benchmarking', QUESTIONNAIRE_CODE],
+    queryFn: () => insightsApi.getBenchmarkingSummary(QUESTIONNAIRE_CODE),
+  });
+
+  if (questionnaireQuery.isLoading || benchmarkQuery.isLoading) {
+    return (
+      <section>
+        <h2>Organization benchmarking</h2>
+        <p>Loading…</p>
+      </section>
+    );
+  }
+  if (!questionnaireQuery.data || !benchmarkQuery.data) {
+    return (
+      <section>
+        <h2>Organization benchmarking</h2>
+        <p>Something went wrong loading the benchmarking summary.</p>
+      </section>
+    );
+  }
+
+  const { subScenarios } = questionnaireQuery.data;
+
+  return (
+    <section>
+      <h2>Organization benchmarking</h2>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <thead>
+            <tr>
+              <th style={cellStyle}>Organization</th>
+              <th style={cellStyle}>Respondents</th>
+              <th style={cellStyle}>Submitted</th>
+              <th style={cellStyle}>Avg. final score</th>
+              <th style={cellStyle}>Avg. E2E rate</th>
+              {subScenarios.map((s) => (
+                <th key={s.id} style={cellStyle}>
+                  {s.name}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {benchmarkQuery.data.organizations.map((org) => (
+              <tr key={org.organizationId}>
+                <td style={cellStyle}>{org.organizationName}</td>
+                <td style={{ ...cellStyle, textAlign: 'center' }}>{org.respondentCount}</td>
+                <td style={{ ...cellStyle, textAlign: 'center' }}>{org.submittedCount}</td>
+                <td style={cellStyle}>
+                  <ScoreBar value={org.averageFinalScore} />
+                </td>
+                <td style={{ ...cellStyle, textAlign: 'center' }}>
+                  {org.averageE2eAutomationRate != null
+                    ? `${(org.averageE2eAutomationRate * 100).toFixed(0)}%`
+                    : '—'}
+                </td>
+                {subScenarios.map((s) => {
+                  const avg = org.subScenarioAverages.find((a) => a.subScenarioCode === s.code);
+                  return (
+                    <td key={s.id} style={{ ...cellStyle, textAlign: 'center' }}>
+                      {avg?.averageScore != null ? avg.averageScore.toFixed(2) : '—'}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p style={{ fontSize: '0.85em', color: '#666' }}>
+        Averages are computed over submitted responses only; an organization with none shows
+        "—" rather than a misleading zero.
+      </p>
+    </section>
+  );
+}
+
+const cellStyle = {
+  border: '1px solid #ccc',
+  padding: '0.4rem 0.6rem',
+  textAlign: 'left' as const,
+};

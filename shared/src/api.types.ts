@@ -95,3 +95,23 @@ export interface OrganizationQuestionnaireSummaryDto {
   respondents: RespondentSummaryDto[];
   answerDistribution: AnswerDistributionEntryDto[];
 }
+
+export interface SubScenarioAverageDto {
+  subScenarioCode: SubScenarioCode;
+  averageScore: number | null;
+}
+
+export interface OrganizationBenchmarkDto {
+  organizationId: string;
+  organizationName: string;
+  respondentCount: number;
+  submittedCount: number;
+  averageFinalScore: number | null;
+  averageE2eAutomationRate: number | null;
+  subScenarioAverages: SubScenarioAverageDto[];
+}
+
+export interface BenchmarkingSummaryDto {
+  questionnaireCode: string;
+  organizations: OrganizationBenchmarkDto[];
+}

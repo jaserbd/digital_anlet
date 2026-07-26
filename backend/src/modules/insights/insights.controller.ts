@@ -1,6 +1,10 @@
 import type { Request, Response } from 'express';
 import { requireParam } from '../../lib/params';
-import { getOrganizationQuestionnaireSummary, QuestionnaireNotFoundError } from './insights.service';
+import {
+  getBenchmarkingSummary,
+  getOrganizationQuestionnaireSummary,
+  QuestionnaireNotFoundError,
+} from './insights.service';
 
 export async function getOrganizationQuestionnaireSummaryHandler(req: Request, res: Response) {
   const orgId = requireParam(req, 'orgId');
@@ -18,6 +22,25 @@ export async function getOrganizationQuestionnaireSummaryHandler(req: Request, r
 
   try {
     const summary = await getOrganizationQuestionnaireSummary(orgId, questionnaireCode);
+    res.json(summary);
+  } catch (err) {
+    if (err instanceof QuestionnaireNotFoundError) {
+      res.status(404).json({ error: 'Questionnaire not found' });
+      return;
+    }
+    throw err;
+  }
+}
+
+export async function getBenchmarkingSummaryHandler(req: Request, res: Response) {
+  const questionnaireCode = req.query.questionnaireCode;
+  if (typeof questionnaireCode !== 'string') {
+    res.status(400).json({ error: 'questionnaireCode query param is required' });
+    return;
+  }
+
+  try {
+    const summary = await getBenchmarkingSummary(questionnaireCode);
     res.json(summary);
   } catch (err) {
     if (err instanceof QuestionnaireNotFoundError) {
