@@ -1,12 +1,20 @@
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Route, Routes, useParams } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
+import { DomainPickerPage } from './pages/DomainPickerPage';
 import { QuestionnairePage } from './pages/QuestionnairePage';
 import { ResultsPage } from './pages/ResultsPage';
 import { AdminPage } from './pages/AdminPage';
 import { ExecutivePage } from './pages/ExecutivePage';
+
+// Forces QuestionnairePage to remount (resetting its local answer/step state) when the
+// questionnaire code in the URL changes, rather than reusing the same instance.
+function QuestionnaireRoute() {
+  const { code } = useParams<{ code: string }>();
+  return <QuestionnairePage key={code} />;
+}
 
 function App() {
   return (
@@ -20,7 +28,8 @@ function App() {
           </Route>
 
           <Route element={<ProtectedRoute allowedRoles={['NORMAL_USER']} />}>
-            <Route path="/questionnaire" element={<QuestionnairePage />} />
+            <Route path="/domains" element={<DomainPickerPage />} />
+            <Route path="/questionnaire/:code" element={<QuestionnaireRoute />} />
             <Route path="/results/:responseId" element={<ResultsPage />} />
           </Route>
 

@@ -25,14 +25,6 @@ enum ResponseStatus {
   SUBMITTED
 }
 
-enum SubScenarioCode {
-  EQUIPMENT
-  PROCESSING_ERROR
-  COMMUNICATIONS
-  ENVIRONMENTAL
-  SECURITY
-}
-
 model Organization {
   id        String   @id @default(cuid())
   name      String   @unique
@@ -59,14 +51,17 @@ model User {
   responses QuestionnaireResponse[]
 }
 
-// Generic questionnaire model: RAN Fault Management (GB1059A) today, Core Network FM
-// (GB1059B, Phase 4) later, without adding new tables — see CLAUDE.md "Domain model".
+// Generic questionnaire model: RAN Fault Management (GB1059A), Core Network Fault
+// Management + Core Network Stability (GB1059B) — see CLAUDE.md "Domain model".
 model Questionnaire {
   id          String   @id @default(cuid())
-  code        String   @unique // e.g. "RAN_FM_GB1059A"
+  code        String   @unique // e.g. "RAN_FM_GB1059A", "CORE_FM_GB1059B"
   name        String
-  networkType String // "RAN" | "Core" | ... (plain string: HVS taxonomy isn't finalized)
-  hvsCategory String // "Fault Management"
+  networkType String // "RAN" | "Core" | ... — also the top-level "Domain" in the UI picker
+  hvsCategory String // "Fault Management" | "Stability" | ... — the HVS within that domain
+  // false only for Core Network Stability: it has no sub-scenarios, so there's no
+  // per-sub-scenario S/P grid to show (see CLAUDE.md "Domain model").
+  hasE2ECheck Boolean  @default(true)
   version     Int      @default(1)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -78,13 +73,19 @@ model Questionnaire {
 }
 
 model SubScenario {
-  id     String           @id @default(cuid())
-  code   SubScenarioCode
+  id     String  @id @default(cuid())
+  // Plain string, not an enum — sub-scenario identities are questionnaire-specific (RAN's
+  // 5 codes, Core FM's 2, Core Stability's single synthetic "OVERALL"), not a fixed global
+  // set. Unique per questionnaire, see @@unique below.
+  code   String
   name   String
-  description String?     @db.Text
+  description String? @db.Text
 
-  // Share of real-world fault distribution (0.15/0.15/0.3/0.3/0.1 for RAN FM); used both
-  // to weight the final score and to compute the E2E automation rate. See CLAUDE.md.
+  // Share of real-world fault distribution; used both to weight the final score and to
+  // compute the E2E automation rate. Not required to sum to 1 across a questionnaire's
+  // sub-scenarios (RAN FM's 5 do; Core FM's 2 sum to 0.9 by design — the xlsx's own final
+  // score formula normalizes by dividing by the weight sum, and so does scoring.ts). See
+  // CLAUDE.md.
   faultDistributionWeight Decimal @db.Decimal(5, 4)
   sortOrder               Int
 

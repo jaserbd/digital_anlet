@@ -1,4 +1,5 @@
 import type { AnswerOption, ScoreResultDto, SubScenarioCode, SubScenarioScore } from '@anlet/shared';
+import { round4 } from '../../lib/rounding';
 
 export interface ScoringQuestionInput {
   id: string;
@@ -29,10 +30,6 @@ export interface ComputeScoreParams {
 
 function topScoreOf(question: ScoringQuestionInput): number {
   return Math.max(...Object.values(question.optionCriteria).filter((v): v is number => v != null));
-}
-
-function round4(value: number): number {
-  return Math.round(value * 10000) / 10000;
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { AnswerOption, ResponseDto, ScoreResultDto } from '@anlet/shared';
+import type { AnswerOption, CoreDomainSummaryDto, ResponseDto, ScoreResultDto } from '@anlet/shared';
 import { apiClient } from './client';
 
 export const responsesApi = {
@@ -13,4 +13,6 @@ export const responsesApi = {
     apiClient.post<ScoreResultDto>(`/responses/${responseId}/submit`),
   getResult: (responseId: string) =>
     apiClient.get<ScoreResultDto>(`/responses/${responseId}/result`),
+  getCoreDomainSummary: () =>
+    apiClient.get<CoreDomainSummaryDto>('/responses/core-domain-summary'),
 };

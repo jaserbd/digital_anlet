@@ -1,5 +1,9 @@
 import type { Request, Response } from 'express';
-import { getQuestionnaireByCode, QuestionnaireNotFoundError } from './questionnaire.service';
+import { getQuestionnaireByCode, listQuestionnaires, QuestionnaireNotFoundError } from './questionnaire.service';
+
+export async function listQuestionnairesHandler(_req: Request, res: Response) {
+  res.json(await listQuestionnaires());
+}
 
 export async function getQuestionnaireHandler(req: Request, res: Response) {
   const code = req.params.code;

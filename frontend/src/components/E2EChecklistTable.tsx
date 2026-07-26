@@ -20,6 +20,7 @@ export function E2EChecklistTable({
     answers.map((a) => [`${a.questionId}:${a.subScenarioId}`, a.selectedOption]),
   );
   const scoreByCode = new Map(subScenarioScores.map((s) => [s.subScenarioCode, s]));
+  const hasExcludedQuestion = questions.some((q) => !q.includeInE2ECheck);
 
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -66,8 +67,9 @@ export function E2EChecklistTable({
         </tbody>
       </table>
       <p style={{ fontSize: '0.85em', color: '#666' }}>
-        S = System, P = People. * Excluded from the end-to-end automation determination
-        (Intent is assessed separately).
+        S = System, P = People.
+        {hasExcludedQuestion &&
+          ' * Excluded from the end-to-end automation determination (Intent is assessed separately).'}
       </p>
       <p>
         <strong>E2E automation rate: {(e2eAutomationRate * 100).toFixed(1)}%</strong>

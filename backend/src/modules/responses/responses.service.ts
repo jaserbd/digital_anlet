@@ -1,5 +1,6 @@
-import type { AnswerOption, ResponseDto, ScoreResultDto } from '@anlet/shared';
+import type { AnswerOption, CoreDomainSummaryDto, ResponseDto, ScoreResultDto } from '@anlet/shared';
 import { prisma } from '../../lib/prisma';
+import { round4 } from '../../lib/rounding';
 import {
   computeScoreResult,
   type ScoringAnswerInput,
@@ -7,6 +8,9 @@ import {
   type ScoringSubScenarioInput,
 } from '../scoring/scoring';
 import { QuestionnaireNotFoundError } from '../questionnaire/questionnaire.service';
+
+const CORE_FAULT_MANAGEMENT_CODE = 'CORE_FM_GB1059B';
+const CORE_STABILITY_CODE = 'CORE_STABILITY_GB1059B';
 
 export class ResponseNotFoundError extends Error {}
 export class ForbiddenError extends Error {}
@@ -201,4 +205,48 @@ export async function getResult(responseId: string, userId: string): Promise<Sco
       e2eAchieved: s.e2eAchieved,
     })),
   };
+}
+
+async function getLatestSubmittedResultByCode(
+  userId: string,
+  questionnaireCode: string,
+): Promise<ScoreResultDto | null> {
+  const response = await prisma.questionnaireResponse.findFirst({
+    where: { userId, status: 'SUBMITTED', questionnaire: { code: questionnaireCode } },
+    orderBy: { submittedAt: 'desc' },
+    include: { result: { include: { subScenarioScores: { include: { subScenario: true } } } } },
+  });
+  if (!response?.result) {
+    return null;
+  }
+
+  return {
+    finalScore: Number(response.result.finalScore),
+    e2eAutomationRate: Number(response.result.e2eAutomationRate),
+    subScenarioScores: response.result.subScenarioScores.map((s) => ({
+      subScenarioCode: s.subScenario.code,
+      overallScore: Number(s.overallScore),
+      e2eAchieved: s.e2eAchieved,
+    })),
+  };
+}
+
+/**
+ * Combines a user's Core Fault Management and Core Stability results per CORE_FM.xlsx's
+ * Guideline point 7: "final score = 50% * fault management score + 50% * stability
+ * score." Either half may not have been submitted yet — combinedScore is only present
+ * once both are.
+ */
+export async function getCoreDomainSummary(userId: string): Promise<CoreDomainSummaryDto> {
+  const [faultManagement, stability] = await Promise.all([
+    getLatestSubmittedResultByCode(userId, CORE_FAULT_MANAGEMENT_CODE),
+    getLatestSubmittedResultByCode(userId, CORE_STABILITY_CODE),
+  ]);
+
+  const combinedScore =
+    faultManagement && stability
+      ? round4(0.5 * faultManagement.finalScore + 0.5 * stability.finalScore)
+      : null;
+
+  return { faultManagement, stability, combinedScore };
 }

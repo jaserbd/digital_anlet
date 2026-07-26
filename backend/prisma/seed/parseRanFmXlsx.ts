@@ -6,37 +6,9 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import XLSX from 'xlsx';
-import type { AnswerOption, SubScenarioCode } from '@anlet/shared';
-
-export interface ParsedQuestion {
-  sortOrder: number;
-  cognitiveActivity: string;
-  serviceCapability: string;
-  questionText: string;
-  weight: number;
-  optionText: Partial<Record<AnswerOption, string>>;
-  optionCriteria: Partial<Record<AnswerOption, number>>;
-  complianceWithStandards: boolean | null;
-  standardSource: string | null;
-  includeInE2ECheck: boolean;
-}
-
-export interface ParsedSubScenario {
-  code: SubScenarioCode;
-  name: string;
-  description: string;
-  faultDistributionWeight: number;
-  sortOrder: number;
-}
-
-export interface ParsedQuestionnaire {
-  code: string;
-  name: string;
-  networkType: string;
-  hvsCategory: string;
-  subScenarios: ParsedSubScenario[];
-  questions: ParsedQuestion[];
-}
+import type { SubScenarioCode } from '@anlet/shared';
+import type { ParsedQuestion, ParsedQuestionnaire, ParsedSubScenario } from './parsedQuestionnaire.types';
+import { optionMap } from './xlsxParseUtils';
 
 const SUB_SCENARIO_CODE_BY_PREFIX: Array<{ prefix: string; code: SubScenarioCode }> = [
   { prefix: 'Equipment', code: 'EQUIPMENT' },
@@ -60,16 +32,6 @@ function codeFor(description: string): SubScenarioCode {
     throw new Error(`Could not map sub-scenario description to a code: "${description}"`);
   }
   return match.code;
-}
-
-function optionMap<T>(values: [T, T, T, T]): Partial<Record<AnswerOption, T>> {
-  const [a, b, c, d] = values;
-  const result: Partial<Record<AnswerOption, T>> = {};
-  if (a != null) result.A = a;
-  if (b != null) result.B = b;
-  if (c != null) result.C = c;
-  if (d != null) result.D = d;
-  return result;
 }
 
 export function parseRanFmXlsx(xlsxPath?: string): ParsedQuestionnaire {
@@ -153,6 +115,7 @@ export function parseRanFmXlsx(xlsxPath?: string): ParsedQuestionnaire {
     name: 'RAN Fault Management',
     networkType: 'RAN',
     hvsCategory: 'Fault Management',
+    hasE2ECheck: true,
     subScenarios,
     questions,
   };

@@ -1,9 +1,22 @@
-import type { AnswerOption, QuestionDto, QuestionnaireDto } from '@anlet/shared';
+import type { AnswerOption, QuestionDto, QuestionnaireDto, QuestionnaireSummaryDto } from '@anlet/shared';
 import { prisma } from '../../lib/prisma';
 
 export class QuestionnaireNotFoundError extends Error {}
 
 const OPTION_LETTERS: AnswerOption[] = ['A', 'B', 'C', 'D'];
+
+export async function listQuestionnaires(): Promise<QuestionnaireSummaryDto[]> {
+  const questionnaires = await prisma.questionnaire.findMany({
+    where: { isActive: true },
+    orderBy: [{ networkType: 'asc' }, { hvsCategory: 'asc' }],
+  });
+  return questionnaires.map((q) => ({
+    code: q.code,
+    name: q.name,
+    networkType: q.networkType,
+    hvsCategory: q.hvsCategory,
+  }));
+}
 
 export async function getQuestionnaireByCode(code: string): Promise<QuestionnaireDto> {
   const questionnaire = await prisma.questionnaire.findUnique({
@@ -42,6 +55,9 @@ export async function getQuestionnaireByCode(code: string): Promise<Questionnair
     id: questionnaire.id,
     code: questionnaire.code,
     name: questionnaire.name,
+    networkType: questionnaire.networkType,
+    hvsCategory: questionnaire.hvsCategory,
+    hasE2ECheck: questionnaire.hasE2ECheck,
     subScenarios: questionnaire.subScenarios.map((s) => ({
       id: s.id,
       code: s.code,

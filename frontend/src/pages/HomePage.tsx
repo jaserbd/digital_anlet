@@ -8,7 +8,7 @@ export function HomePage() {
     return <Navigate to="/admin" replace />;
   }
   if (user?.role === 'NORMAL_USER') {
-    return <Navigate to="/questionnaire" replace />;
+    return <Navigate to="/domains" replace />;
   }
   if (user?.role === 'EXECUTIVE') {
     return <Navigate to="/executive" replace />;

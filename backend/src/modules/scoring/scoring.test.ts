@@ -218,3 +218,108 @@ describe('computeScoreResult — edge cases', () => {
     expect(result.subScenarioScores[0]?.overallScore).toBe(0);
   });
 });
+
+// The 9 Core Network Fault Management questions, verified field-for-field against
+// CORE_FM.xlsx's `Scoring-Fault Management` sheet (the questionnaire sheet's own inline
+// criteria are stale/wrong for "Service verification" — see parseCoreFmXlsx.ts). The
+// xlsx's own demo answers are trivially all-A, so these cases are hand-computed here to
+// actually exercise compensation against this dataset's real weights/criteria/anchor set
+// (5 anchors — same count as RAN FM, but a different, larger compensated set: 4 questions
+// vs RAN's 3).
+const CORE_FM_QUESTIONS: ScoringQuestionInput[] = [
+  { id: 'data-collection', weight: 0.1, optionCriteria: { A: 3, B: 2, C: 1 }, includeInE2ECheck: true },
+  { id: 'fault-identification', weight: 0.1, optionCriteria: { A: 3, B: 2, C: 1 }, includeInE2ECheck: true },
+  { id: 'risk-prediction', weight: 0.1, optionCriteria: { A: 4, B: 3, C: 2, D: 1 }, includeInE2ECheck: true },
+  { id: 'demarcation', weight: 0.15, optionCriteria: { A: 4, B: 3, C: 2, D: 1 }, includeInE2ECheck: true },
+  { id: 'locating', weight: 0.15, optionCriteria: { A: 4, B: 3, C: 2, D: 1 }, includeInE2ECheck: true },
+  { id: 'solution-generation', weight: 0.1, optionCriteria: { A: 4, B: 3, C: 2, D: 1 }, includeInE2ECheck: true },
+  { id: 'solution-pre-verification', weight: 0.1, optionCriteria: { A: 4, B: 3, C: 2, D: 1 }, includeInE2ECheck: true },
+  { id: 'solution-implementation', weight: 0.1, optionCriteria: { A: 2, B: 1 }, includeInE2ECheck: true },
+  { id: 'service-verification', weight: 0.1, optionCriteria: { A: 3, B: 2, C: 1 }, includeInE2ECheck: true },
+];
+
+const CORE_FM_SUB_SCENARIOS: ScoringSubScenarioInput[] = [
+  { id: 'equipment', code: 'EQUIPMENT', faultDistributionWeight: 0.1 },
+  { id: 'communication-qos', code: 'COMMUNICATION_QOS', faultDistributionWeight: 0.8 },
+];
+
+describe('computeScoreResult — Core Network Fault Management (verified data, hand-computed)', () => {
+  // Equipment: all-A. Communication & QoS: "Data collection" answered B (its own top is 3,
+  // but B=2 doesn't reach it, so no compensation there), everything else A.
+  const answers: ScoringAnswerInput[] = CORE_FM_QUESTIONS.flatMap((q) => [
+    { questionId: q.id, subScenarioId: 'equipment', selectedOption: 'A' as const },
+    {
+      questionId: q.id,
+      subScenarioId: 'communication-qos',
+      selectedOption: q.id === 'data-collection' ? ('B' as const) : ('A' as const),
+    },
+  ]);
+
+  const result = computeScoreResult({
+    questions: CORE_FM_QUESTIONS,
+    subScenarios: CORE_FM_SUB_SCENARIOS,
+    answers,
+  });
+
+  it('compensates every capped question up to the anchor average on the all-A sub-scenario', () => {
+    const equipment = result.subScenarioScores.find((s) => s.subScenarioCode === 'EQUIPMENT');
+    expect(equipment?.overallScore).toBe(4);
+  });
+
+  it('does not compensate "Data collection" when it hasn\'t reached its own top score', () => {
+    const commQos = result.subScenarioScores.find((s) => s.subScenarioCode === 'COMMUNICATION_QOS');
+    // Data collection stays at 2 (B, hasn't reached its own top of 3); everything else
+    // compensates to 4: 2*0.1 + 4*0.9 = 3.8
+    expect(commQos?.overallScore).toBe(3.8);
+  });
+
+  it('weights the final score by the (non-1-summing) sub-scenario weights, normalized by their sum', () => {
+    // (4*0.1 + 3.8*0.8) / (0.1+0.8) = 3.44 / 0.9
+    expect(result.finalScore).toBe(3.8222);
+  });
+
+  it('fails E2E for the sub-scenario where a non-excluded question scored below A', () => {
+    const equipment = result.subScenarioScores.find((s) => s.subScenarioCode === 'EQUIPMENT');
+    const commQos = result.subScenarioScores.find((s) => s.subScenarioCode === 'COMMUNICATION_QOS');
+    expect(equipment?.e2eAchieved).toBe(true);
+    expect(commQos?.e2eAchieved).toBe(false); // Data collection = B
+    expect(result.e2eAutomationRate).toBe(0.1); // only Equipment's weight counts
+  });
+});
+
+// The 7 Core Network Stability questions, verified against CORE_FM.xlsx's
+// `Scoring-Stability` sheet — every question tops out at 4 (unlike RAN FM/Core FM, there
+// is no capped question at all), so compensation can never trigger for any of them. Only
+// one sub-scenario exists (a synthetic "OVERALL", weight 1) since Stability has no real
+// sub-scenarios.
+const CORE_STABILITY_QUESTIONS: ScoringQuestionInput[] = [
+  { id: 'stable-deployment', weight: 0.1, optionCriteria: { A: 4, B: 3, C: 2, D: 1 }, includeInE2ECheck: true },
+  { id: 'control-plane-dr', weight: 0.15, optionCriteria: { A: 4, B: 3, C: 2, D: 1 }, includeInE2ECheck: true },
+  { id: 'user-plane-dr', weight: 0.15, optionCriteria: { A: 4, B: 3, C: 2, D: 1 }, includeInE2ECheck: true },
+  { id: 'infra-dr', weight: 0.15, optionCriteria: { A: 4, B: 3, C: 2, D: 1 }, includeInE2ECheck: true },
+  { id: 'anti-signaling', weight: 0.15, optionCriteria: { A: 4, B: 3, C: 2, D: 1 }, includeInE2ECheck: true },
+  { id: 'risk-prediction', weight: 0.15, optionCriteria: { A: 4, B: 3, C: 2, D: 1 }, includeInE2ECheck: true },
+  { id: 'service-degradation', weight: 0.15, optionCriteria: { A: 4, B: 3, C: 2, D: 1 }, includeInE2ECheck: true },
+];
+
+describe('computeScoreResult — Core Network Stability (verified data, no compensation possible)', () => {
+  it('never compensates, since every question shares the same top score (ceiling)', () => {
+    const result = computeScoreResult({
+      questions: CORE_STABILITY_QUESTIONS,
+      subScenarios: [{ id: 'overall', code: 'OVERALL', faultDistributionWeight: 1 }],
+      answers: [
+        // "Stable deployment architecture" answered C (score 2, its own top is 4 — never
+        // reached, so compensation could never apply here regardless).
+        { questionId: 'stable-deployment', subScenarioId: 'overall', selectedOption: 'C' },
+        ...CORE_STABILITY_QUESTIONS.filter((q) => q.id !== 'stable-deployment').map((q) => ({
+          questionId: q.id,
+          subScenarioId: 'overall',
+          selectedOption: 'A' as const,
+        })),
+      ],
+    });
+    // 2*0.1 + 4*(0.15*6) = 0.2 + 3.6 = 3.8, single sub-scenario weight 1 -> final = 3.8
+    expect(result.subScenarioScores[0]?.overallScore).toBe(3.8);
+    expect(result.finalScore).toBe(3.8);
+  });
+});

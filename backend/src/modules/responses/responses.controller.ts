@@ -8,6 +8,7 @@ import {
   ResponseAlreadySubmittedError,
   ResponseNotFoundError,
   ResultNotAvailableError,
+  getCoreDomainSummary,
   getOrCreateResponse,
   getResponse,
   getResult,
@@ -107,4 +108,9 @@ export async function getResultHandler(req: Request, res: Response) {
   } catch (err) {
     if (!handleKnownErrors(err, res)) throw err;
   }
+}
+
+export async function getCoreDomainSummaryHandler(req: Request, res: Response) {
+  const summary = await getCoreDomainSummary(req.user!.sub);
+  res.json(summary);
 }

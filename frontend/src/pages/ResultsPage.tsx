@@ -4,6 +4,7 @@ import { questionnaireApi } from '../api/questionnaireApi';
 import { responsesApi } from '../api/responsesApi';
 import { ScoreSummary } from '../components/ScoreSummary';
 import { E2EChecklistTable } from '../components/E2EChecklistTable';
+import { CoreDomainSummary } from '../components/CoreDomainSummary';
 import { LogoutButton } from '../components/LogoutButton';
 
 export function ResultsPage() {
@@ -58,14 +59,20 @@ export function ResultsPage() {
         subScenarioScores={result.subScenarioScores}
       />
 
-      <h2>E2E automation checklist</h2>
-      <E2EChecklistTable
-        questions={questionnaire.questions}
-        subScenarios={questionnaire.subScenarios}
-        answers={response.answers}
-        subScenarioScores={result.subScenarioScores}
-        e2eAutomationRate={result.e2eAutomationRate}
-      />
+      {questionnaire.hasE2ECheck && (
+        <>
+          <h2>E2E automation checklist</h2>
+          <E2EChecklistTable
+            questions={questionnaire.questions}
+            subScenarios={questionnaire.subScenarios}
+            answers={response.answers}
+            subScenarioScores={result.subScenarioScores}
+            e2eAutomationRate={result.e2eAutomationRate}
+          />
+        </>
+      )}
+
+      {questionnaire.networkType === 'Core' && <CoreDomainSummary />}
     </main>
   );
 }

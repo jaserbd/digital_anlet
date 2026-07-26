@@ -1,7 +1,9 @@
 import { env } from '../../src/config/env';
 import { prisma } from '../../src/lib/prisma';
 import { hashPassword } from '../../src/lib/password';
+import type { ParsedQuestionnaire } from './parsedQuestionnaire.types';
 import { parseRanFmXlsx } from './parseRanFmXlsx';
+import { parseCoreFaultManagementXlsx, parseCoreStabilityXlsx } from './parseCoreFmXlsx';
 
 const INTERNAL_ORG_NAME = 'Anlet (Internal)';
 
@@ -27,21 +29,21 @@ async function seedInternalOrgAndAdmin() {
   console.log(`Seeded internal org "${INTERNAL_ORG_NAME}" and admin user "${env.ADMIN_EMAIL}"`);
 }
 
-async function seedRanFmQuestionnaire() {
-  const parsed = parseRanFmXlsx();
-
+async function seedQuestionnaire(parsed: ParsedQuestionnaire) {
   const questionnaire = await prisma.questionnaire.upsert({
     where: { code: parsed.code },
     update: {
       name: parsed.name,
       networkType: parsed.networkType,
       hvsCategory: parsed.hvsCategory,
+      hasE2ECheck: parsed.hasE2ECheck,
     },
     create: {
       code: parsed.code,
       name: parsed.name,
       networkType: parsed.networkType,
       hvsCategory: parsed.hvsCategory,
+      hasE2ECheck: parsed.hasE2ECheck,
     },
   });
 
@@ -116,7 +118,9 @@ async function seedRanFmQuestionnaire() {
 
 async function main() {
   await seedInternalOrgAndAdmin();
-  await seedRanFmQuestionnaire();
+  await seedQuestionnaire(parseRanFmXlsx());
+  await seedQuestionnaire(parseCoreFaultManagementXlsx());
+  await seedQuestionnaire(parseCoreStabilityXlsx());
 }
 
 main()

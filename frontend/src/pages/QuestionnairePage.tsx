@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { AnswerOption } from '@anlet/shared';
 import { questionnaireApi } from '../api/questionnaireApi';
@@ -8,28 +8,26 @@ import { QuestionCard } from '../components/QuestionCard';
 import { SubScenarioStepper } from '../components/SubScenarioStepper';
 import { LogoutButton } from '../components/LogoutButton';
 
-// Hardcoded for MVP — a questionnaire-selection screen arrives with Core Network FM
-// (Phase 4, see CLAUDE.md).
-const QUESTIONNAIRE_CODE = 'RAN_FM_GB1059A';
-
 function answerKey(questionId: string, subScenarioId: string) {
   return `${questionId}:${subScenarioId}`;
 }
 
 export function QuestionnairePage() {
   const navigate = useNavigate();
+  const { code } = useParams<{ code: string }>();
+  const questionnaireCode = code!;
   const [stepIndex, setStepIndex] = useState(0);
   const [answers, setAnswers] = useState<Map<string, AnswerOption>>(new Map());
   const [hydrated, setHydrated] = useState(false);
 
   const questionnaireQuery = useQuery({
-    queryKey: ['questionnaire', QUESTIONNAIRE_CODE],
-    queryFn: () => questionnaireApi.get(QUESTIONNAIRE_CODE),
+    queryKey: ['questionnaire', questionnaireCode],
+    queryFn: () => questionnaireApi.get(questionnaireCode),
   });
 
   const responseQuery = useQuery({
-    queryKey: ['response', QUESTIONNAIRE_CODE],
-    queryFn: () => responsesApi.getOrCreate(QUESTIONNAIRE_CODE),
+    queryKey: ['response', questionnaireCode],
+    queryFn: () => responsesApi.getOrCreate(questionnaireCode),
   });
 
   // Hydrate local answer state from the server once, on first load (resume support).
@@ -105,6 +103,9 @@ export function QuestionnairePage() {
         <h1>{questionnaire.name}</h1>
         <LogoutButton />
       </div>
+      <button type="button" onClick={() => navigate('/domains')}>
+        ← All assessments
+      </button>
       <p>
         {answeredCount} / {totalRequired} answered
       </p>

@@ -1,4 +1,5 @@
 import type { AnswerOption, Role, SubScenarioCode } from './enums';
+import type { ScoreResultDto } from './scoring.types';
 
 export interface AuthenticatedUserDto {
   id: string;
@@ -38,8 +39,19 @@ export interface QuestionnaireDto {
   id: string;
   code: string;
   name: string;
+  networkType: string;
+  hvsCategory: string;
+  hasE2ECheck: boolean;
   subScenarios: SubScenarioDto[];
   questions: QuestionDto[];
+}
+
+// Lightweight listing for the Domain -> questionnaire picker — no questions/sub-scenarios.
+export interface QuestionnaireSummaryDto {
+  code: string;
+  name: string;
+  networkType: string;
+  hvsCategory: string;
 }
 
 export type ResponseStatus = 'IN_PROGRESS' | 'SUBMITTED';
@@ -114,4 +126,13 @@ export interface OrganizationBenchmarkDto {
 export interface BenchmarkingSummaryDto {
   questionnaireCode: string;
   organizations: OrganizationBenchmarkDto[];
+}
+
+// Guideline point 7 in CORE_FM.xlsx: "final score = 50% * fault management score + 50% *
+// stability score". Combined per-user once they've submitted both; null fields mean that
+// half hasn't been submitted yet.
+export interface CoreDomainSummaryDto {
+  faultManagement: ScoreResultDto | null;
+  stability: ScoreResultDto | null;
+  combinedScore: number | null;
 }
