@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+public/
+*.log
+npm-debug.log*
+
+.env
+.env.local
+!*.env.example
+
+.DS_Store
+
+*.tsbuildinfo
+
+coverage/

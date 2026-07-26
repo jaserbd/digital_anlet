@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-anlet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-anlet}
+      POSTGRES_DB: ${POSTGRES_DB:-anlet}
+    ports:
+      - '5432:5432'
+    volumes:
+      - anlet_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  anlet_postgres_data:

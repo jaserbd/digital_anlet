@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Only needed for `prisma generate`, which reads the datasource block but
+      # doesn't connect. Real migrations run against a real DB once Phase 1 adds
+      # a Postgres service container here.
+      DATABASE_URL: 'postgresql://ci:ci@localhost:5432/ci?schema=public'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx prisma generate --schema=backend/prisma/schema.prisma
+
+      - run: npm run lint
+
+      - run: npm run typecheck
+
+      - run: npm test --workspaces --if-present
