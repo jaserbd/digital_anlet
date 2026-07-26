@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project status
+
+**MVP is demoable.** Admin can create an organization and a Normal User; that user can log in, answer the RAN Fault Management questionnaire, submit, and see a results dashboard (final score + sub-scenario breakdown + E2E checklist) — verified both by automated tests (26 passing, including a DB-backed integration test and a golden-master scoring fixture) and a full live browser walkthrough matching the golden-master numbers exactly (final score 3.91, E2E rate 70%). Not yet built: Executive cross-user views, Admin benchmarking dashboard, and Core Network FM (GB1059B) — see the phased roadmap in the implementation plan.
+
 ## What this project is
 
 An assessment tool for **TM Forum Autonomous Network (AN) maturity levels (L0–L5)**, replacing a manual, Excel-based questionnaire process with a cloud application.
@@ -48,8 +52,10 @@ Monorepo, npm workspaces (plain npm, no Turborepo/Nx): `shared/`, `backend/`, `f
 - **`backend/`** (`@anlet/backend`) — Express + Prisma + PostgreSQL. Domain modules live under `src/modules/<domain>/{routes,controller,service}`; the scoring engine (`src/modules/scoring/scoring.ts`, Phase 1) is a pure-function module with zero Prisma/Express imports so it's unit-testable without a DB.
 - **`frontend/`** (`@anlet/frontend`) — Vite + React + TypeScript, React Router, TanStack Query.
 - **Single-host deployment**: one Cloud Run service / one Docker container. `frontend`'s Vite build writes directly to `backend/public` (see `frontend/vite.config.ts` `outDir`); `backend/src/app.ts` serves `/api/*` routes, then that directory as static assets, then falls back to `index.html` for client-side routes. There is no separately-hosted frontend and no CORS layer (same-origin in production). Local dev still runs two processes (Vite dev server + `tsx watch`) for HMR — that's a dev-time convenience, not a contradiction of the single-host production model.
-- **Auth** (Phase 1): custom email/password, bcrypt-hashed, JWT in an httpOnly/Secure/SameSite=Lax cookie. No external auth vendor, no self-signup — Admin creates all users.
-- Full schema/module design and the phased roadmap (MVP → Executive views → Admin benchmarking → Core Network FM → deployment hardening) live in the implementation plan; re-derive from current repo state if that plan file is unavailable, don't assume it's still accurate once Phase 1+ is underway.
+- **Auth**: custom email/password, bcrypt-hashed, JWT in an httpOnly/Secure/SameSite=Lax cookie. No external auth vendor, no self-signup — Admin creates all users (seeded into an internal "Anlet (Internal)" organization; the bootstrap Admin itself comes from `ADMIN_EMAIL`/`ADMIN_PASSWORD` via `prisma/seed/seed.ts`, idempotent).
+- **Backend modules built so far**: `auth` (login/logout/me), `organizations` + `users` (Admin-only create), `questionnaire` (read-only structure, criteria numbers stripped from the response so answers can't be reverse-engineered client-side), `responses` (answer/submit/result, ownership-guarded). `responses.service.ts`'s `getOrCreateResponse` is **single-shot per user per questionnaire**: it returns the user's existing response (whatever its status) rather than creating a new one, so revisiting `/questionnaire` after submitting redirects to the existing results instead of silently starting a second attempt — this was a real bug caught during manual browser testing (the original version only checked for an `IN_PROGRESS` response, so a `SUBMITTED` one meant "create a fresh one").
+- **Frontend pages built so far**: `LoginPage`, `QuestionnairePage` (5-step sub-scenario flow with autosave-per-answer and resume support), `ResultsPage` (score summary + E2E checklist grid mirroring the xlsx sheet), `AdminPage` (create org, create user). Routing/role-gating in `App.tsx` via `ProtectedRoute`.
+- Full schema/module design and the phased roadmap (MVP → Executive views → Admin benchmarking → Core Network FM → deployment hardening) live in the implementation plan; re-derive from current repo state if that plan file is unavailable, don't assume it's still accurate once later phases are underway.
 
 ## Commands
 
@@ -60,14 +66,15 @@ npm install
 # Local Postgres (docker-compose), then copy env files once:
 docker compose up -d
 cp .env.example .env
-cp backend/.env.example backend/.env
+cp backend/.env.example backend/.env    # edit ADMIN_EMAIL/ADMIN_PASSWORD/JWT_SECRET as needed
+
+# Apply migrations, then seed (internal org + bootstrap Admin + RAN FM questionnaire
+# parsed from RAN_FM.xlsx). Idempotent — safe to re-run.
+cd backend && npx prisma migrate dev
+cd backend && npm run db:seed
 
 # Dev (backend :4000 via tsx watch, frontend :5173 via Vite, proxying /api -> :4000)
 npm run dev
-
-# Prisma (run from backend/, or pass --schema=backend/prisma/schema.prisma from root)
-cd backend && npx prisma db push        # sync schema to local DB, no migration
-cd backend && npx prisma migrate dev    # create + apply a migration (once models exist)
 
 # Lint / typecheck / test (all workspaces)
 npm run lint

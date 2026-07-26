@@ -7,5 +7,191 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Models are added in Phase 1 (see the implementation plan). This file intentionally
-// has no models yet — Phase 0 only verifies the datasource connects to local Postgres.
+enum Role {
+  NORMAL_USER
+  EXECUTIVE
+  ADMIN
+}
+
+enum AnswerOption {
+  A
+  B
+  C
+  D
+}
+
+enum ResponseStatus {
+  IN_PROGRESS
+  SUBMITTED
+}
+
+enum SubScenarioCode {
+  EQUIPMENT
+  PROCESSING_ERROR
+  COMMUNICATIONS
+  ENVIRONMENTAL
+  SECURITY
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users User[]
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String
+  role           Role
+  firstName      String?
+  lastName       String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  responses QuestionnaireResponse[]
+}
+
+// Generic questionnaire model: RAN Fault Management (GB1059A) today, Core Network FM
+// (GB1059B, Phase 4) later, without adding new tables — see CLAUDE.md "Domain model".
+model Questionnaire {
+  id          String   @id @default(cuid())
+  code        String   @unique // e.g. "RAN_FM_GB1059A"
+  name        String
+  networkType String // "RAN" | "Core" | ... (plain string: HVS taxonomy isn't finalized)
+  hvsCategory String // "Fault Management"
+  version     Int      @default(1)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  subScenarios SubScenario[]
+  questions    Question[]
+  responses    QuestionnaireResponse[]
+}
+
+model SubScenario {
+  id     String           @id @default(cuid())
+  code   SubScenarioCode
+  name   String
+  description String?     @db.Text
+
+  // Share of real-world fault distribution (0.15/0.15/0.3/0.3/0.1 for RAN FM); used both
+  // to weight the final score and to compute the E2E automation rate. See CLAUDE.md.
+  faultDistributionWeight Decimal @db.Decimal(5, 4)
+  sortOrder               Int
+
+  questionnaireId String
+  questionnaire   Questionnaire @relation(fields: [questionnaireId], references: [id])
+
+  answers                 Answer[]
+  subScenarioScoreResults SubScenarioScoreResult[]
+
+  @@unique([questionnaireId, code])
+}
+
+model Question {
+  id                 String  @id @default(cuid())
+  sortOrder          Int
+  cognitiveActivity  String // Intent | Awareness | Analysis | Decision | Execution (IAADE)
+  serviceCapability  String
+  questionText       String  @db.Text
+  weight             Decimal @db.Decimal(5, 4) // within-questionnaire weight; all sum to 1
+
+  optionAText String  @db.Text
+  optionBText String? @db.Text
+  optionCText String? @db.Text
+  optionDText String? @db.Text
+
+  // Not every option is scored/used (nullable). A question's own "top score" (needed for
+  // the compensation rule, see CLAUDE.md) is derived at read time as the max of these,
+  // not stored separately.
+  optionACriteria Decimal? @db.Decimal(4, 2)
+  optionBCriteria Decimal? @db.Decimal(4, 2)
+  optionCCriteria Decimal? @db.Decimal(4, 2)
+  optionDCriteria Decimal? @db.Decimal(4, 2)
+
+  // false only for the Intent question — excluded from the E2E Automation Ratio Checklist.
+  // The one structural fact that isn't derivable from the criteria data itself.
+  includeInE2ECheck Boolean @default(true)
+
+  complianceWithStandards Boolean?
+  standardSource          String?  @db.Text
+
+  questionnaireId String
+  questionnaire   Questionnaire @relation(fields: [questionnaireId], references: [id])
+
+  answers Answer[]
+
+  @@unique([questionnaireId, sortOrder])
+}
+
+model QuestionnaireResponse {
+  id          String         @id @default(cuid())
+  status      ResponseStatus @default(IN_PROGRESS)
+  submittedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  userId String
+  user   User @relation(fields: [userId], references: [id])
+
+  questionnaireId String
+  questionnaire   Questionnaire @relation(fields: [questionnaireId], references: [id])
+
+  answers Answer[]
+  result  ScoreResult?
+}
+
+model Answer {
+  id             String       @id @default(cuid())
+  selectedOption AnswerOption
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  responseId String
+  response   QuestionnaireResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id])
+
+  subScenarioId String
+  subScenario   SubScenario @relation(fields: [subScenarioId], references: [id])
+
+  @@unique([responseId, questionId, subScenarioId])
+}
+
+// Write-once snapshot computed by the pure scoring module (backend/src/modules/scoring)
+// and persisted at submit time — not recomputed live on every dashboard read.
+model ScoreResult {
+  id                String   @id @default(cuid())
+  finalScore        Decimal  @db.Decimal(6, 4)
+  e2eAutomationRate Decimal  @db.Decimal(6, 4)
+  computedAt        DateTime @default(now())
+
+  responseId String                @unique
+  response   QuestionnaireResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  subScenarioScores SubScenarioScoreResult[]
+}
+
+model SubScenarioScoreResult {
+  id           String  @id @default(cuid())
+  overallScore Decimal @db.Decimal(6, 4)
+  e2eAchieved  Boolean
+
+  scoreResultId String
+  scoreResult   ScoreResult @relation(fields: [scoreResultId], references: [id], onDelete: Cascade)
+
+  subScenarioId String
+  subScenario   SubScenario @relation(fields: [subScenarioId], references: [id])
+
+  @@unique([scoreResultId, subScenarioId])
+}

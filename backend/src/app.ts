@@ -2,6 +2,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import express from 'express';
+import cookieParser from 'cookie-parser';
+import { apiRouter } from './routes/index';
+import { errorHandler } from './middleware/errorHandler';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 // Frontend build output is written to backend/public (see frontend/vite.config.ts outDir).
@@ -13,10 +16,13 @@ export function createApp() {
   const app = express();
 
   app.use(express.json());
+  app.use(cookieParser());
 
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok' });
   });
+
+  app.use('/api', apiRouter);
 
   // Single-host: serve the built React app for everything else, once it exists.
   // Absent during local `tsx watch` dev (Vite serves the frontend on its own port instead).
@@ -34,6 +40,8 @@ export function createApp() {
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Not found' });
   });
+
+  app.use(errorHandler);
 
   return app;
 }

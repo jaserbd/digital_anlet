@@ -1,20 +1,34 @@
-import { useEffect, useState } from 'react';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { LoginPage } from './pages/LoginPage';
+import { HomePage } from './pages/HomePage';
+import { QuestionnairePage } from './pages/QuestionnairePage';
+import { ResultsPage } from './pages/ResultsPage';
+import { AdminPage } from './pages/AdminPage';
 
 function App() {
-  const [apiStatus, setApiStatus] = useState<'checking' | 'ok' | 'error'>('checking');
-
-  useEffect(() => {
-    fetch('/api/health')
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
-      .then((data) => setApiStatus(data.status === 'ok' ? 'ok' : 'error'))
-      .catch(() => setApiStatus('error'));
-  }, []);
-
   return (
-    <main style={{ fontFamily: 'sans-serif', padding: '2rem' }}>
-      <h1>Anlet — AN Maturity Assessment</h1>
-      <p>Backend API status: {apiStatus}</p>
-    </main>
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+
+          <Route element={<ProtectedRoute />}>
+            <Route path="/" element={<HomePage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute allowedRoles={['NORMAL_USER']} />}>
+            <Route path="/questionnaire" element={<QuestionnairePage />} />
+            <Route path="/results/:responseId" element={<ResultsPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
+            <Route path="/admin" element={<AdminPage />} />
+          </Route>
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 
