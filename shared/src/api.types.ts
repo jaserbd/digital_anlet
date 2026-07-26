@@ -70,3 +70,28 @@ export interface UserDto {
   firstName: string | null;
   lastName: string | null;
 }
+
+export type RespondentStatus = 'NOT_STARTED' | ResponseStatus;
+
+export interface RespondentSummaryDto {
+  userId: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  status: RespondentStatus;
+  finalScore: number | null;
+}
+
+export type AnswerOptionCounts = Record<AnswerOption, number>;
+
+export interface AnswerDistributionEntryDto {
+  questionId: string;
+  subScenarioId: string;
+  counts: AnswerOptionCounts;
+}
+
+export interface OrganizationQuestionnaireSummaryDto {
+  questionnaireCode: string;
+  respondents: RespondentSummaryDto[];
+  answerDistribution: AnswerDistributionEntryDto[];
+}

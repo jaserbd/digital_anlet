@@ -10,6 +10,8 @@ export function HomePage() {
   if (user?.role === 'NORMAL_USER') {
     return <Navigate to="/questionnaire" replace />;
   }
-  // EXECUTIVE dashboards are Phase 2 — not built yet.
+  if (user?.role === 'EXECUTIVE') {
+    return <Navigate to="/executive" replace />;
+  }
   return <p>Signed in as {user?.email}.</p>;
 }

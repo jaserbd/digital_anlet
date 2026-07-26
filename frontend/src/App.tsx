@@ -6,6 +6,7 @@ import { HomePage } from './pages/HomePage';
 import { QuestionnairePage } from './pages/QuestionnairePage';
 import { ResultsPage } from './pages/ResultsPage';
 import { AdminPage } from './pages/AdminPage';
+import { ExecutivePage } from './pages/ExecutivePage';
 
 function App() {
   return (
@@ -25,6 +26,10 @@ function App() {
 
           <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
             <Route path="/admin" element={<AdminPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute allowedRoles={['EXECUTIVE']} />}>
+            <Route path="/executive" element={<ExecutivePage />} />
           </Route>
         </Routes>
       </AuthProvider>

@@ -1,0 +1,132 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../context/AuthContext';
+import { questionnaireApi } from '../api/questionnaireApi';
+import { insightsApi } from '../api/insightsApi';
+import { LogoutButton } from '../components/LogoutButton';
+
+const QUESTIONNAIRE_CODE = 'RAN_FM_GB1059A';
+
+const STATUS_LABEL: Record<string, string> = {
+  NOT_STARTED: 'Not started',
+  IN_PROGRESS: 'In progress',
+  SUBMITTED: 'Submitted',
+};
+
+export function ExecutivePage() {
+  const { user } = useAuth();
+  const organizationId = user!.organizationId;
+  const [subScenarioIndex, setSubScenarioIndex] = useState(0);
+
+  const questionnaireQuery = useQuery({
+    queryKey: ['questionnaire', QUESTIONNAIRE_CODE],
+    queryFn: () => questionnaireApi.get(QUESTIONNAIRE_CODE),
+  });
+
+  const summaryQuery = useQuery({
+    queryKey: ['organization-summary', organizationId, QUESTIONNAIRE_CODE],
+    queryFn: () => insightsApi.getOrganizationSummary(organizationId, QUESTIONNAIRE_CODE),
+  });
+
+  if (questionnaireQuery.isLoading || summaryQuery.isLoading) {
+    return <p>Loading…</p>;
+  }
+  if (!questionnaireQuery.data || !summaryQuery.data) {
+    return <p>Something went wrong loading the organization summary.</p>;
+  }
+
+  const { data: questionnaire } = questionnaireQuery;
+  const { data: summary } = summaryQuery;
+  const currentSubScenario = questionnaire.subScenarios[subScenarioIndex];
+
+  const countsByKey = new Map(
+    summary.answerDistribution.map((e) => [`${e.questionId}:${e.subScenarioId}`, e.counts]),
+  );
+
+  return (
+    <main style={{ maxWidth: 900, margin: '2rem auto', fontFamily: 'sans-serif' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1>{questionnaire.name} — Organization Overview</h1>
+        <LogoutButton />
+      </div>
+
+      <h2>Respondents</h2>
+      <table style={{ borderCollapse: 'collapse', width: '100%', maxWidth: 600 }}>
+        <thead>
+          <tr>
+            <th style={cellStyle}>Email</th>
+            <th style={cellStyle}>Status</th>
+            <th style={cellStyle}>Final score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {summary.respondents.map((r) => (
+            <tr key={r.userId}>
+              <td style={cellStyle}>{r.email}</td>
+              <td style={cellStyle}>{STATUS_LABEL[r.status]}</td>
+              <td style={cellStyle}>{r.finalScore != null ? r.finalScore.toFixed(2) : '—'}</td>
+            </tr>
+          ))}
+          {summary.respondents.length === 0 && (
+            <tr>
+              <td style={cellStyle} colSpan={3}>
+                No normal users in this organization yet.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      <h2 style={{ marginTop: '2rem' }}>Answer distribution (submitted responses only)</h2>
+      <nav style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        {questionnaire.subScenarios.map((s, i) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => setSubScenarioIndex(i)}
+            style={{ fontWeight: i === subScenarioIndex ? 'bold' : 'normal' }}
+          >
+            {s.name}
+          </button>
+        ))}
+      </nav>
+
+      {currentSubScenario && (
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <thead>
+            <tr>
+              <th style={cellStyle}>Service Capability</th>
+              <th style={cellStyle}>A</th>
+              <th style={cellStyle}>B</th>
+              <th style={cellStyle}>C</th>
+              <th style={cellStyle}>D</th>
+            </tr>
+          </thead>
+          <tbody>
+            {questionnaire.questions.map((q) => {
+              const counts = countsByKey.get(`${q.id}:${currentSubScenario.id}`);
+              const availableOptions = new Set(q.options.map((o) => o.option));
+              const cell = (option: 'A' | 'B' | 'C' | 'D') =>
+                availableOptions.has(option) ? (counts?.[option] ?? 0) : '—';
+              return (
+                <tr key={q.id}>
+                  <td style={cellStyle}>{q.serviceCapability}</td>
+                  <td style={{ ...cellStyle, textAlign: 'center' }}>{cell('A')}</td>
+                  <td style={{ ...cellStyle, textAlign: 'center' }}>{cell('B')}</td>
+                  <td style={{ ...cellStyle, textAlign: 'center' }}>{cell('C')}</td>
+                  <td style={{ ...cellStyle, textAlign: 'center' }}>{cell('D')}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </main>
+  );
+}
+
+const cellStyle = {
+  border: '1px solid #ccc',
+  padding: '0.4rem 0.6rem',
+  textAlign: 'left' as const,
+};
