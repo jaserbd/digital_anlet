@@ -15,7 +15,18 @@ export async function listQuestionnaires(): Promise<QuestionnaireSummaryDto[]> {
     name: q.name,
     networkType: q.networkType,
     hvsCategory: q.hvsCategory,
+    acceptingResponses: q.acceptingResponses,
   }));
+}
+
+/** Admin-only: toggles whether a questionnaire still accepts response mutations/submissions
+ * — see responses.service.ts's AcceptanceClosedError (SECOND_REVIEW.md item 1). */
+export async function setAcceptingResponses(code: string, acceptingResponses: boolean): Promise<void> {
+  const questionnaire = await prisma.questionnaire.findUnique({ where: { code } });
+  if (!questionnaire) {
+    throw new QuestionnaireNotFoundError();
+  }
+  await prisma.questionnaire.update({ where: { code }, data: { acceptingResponses } });
 }
 
 export async function getQuestionnaireByCode(code: string): Promise<QuestionnaireDto> {
@@ -67,6 +78,7 @@ export async function getQuestionnaireByCode(code: string): Promise<Questionnair
     hvsCategory: questionnaire.hvsCategory,
     hasE2ECheck: questionnaire.hasE2ECheck,
     guidelineText: questionnaire.guidelineText,
+    acceptingResponses: questionnaire.acceptingResponses,
     subScenarios: questionnaire.subScenarios.map((s) => ({
       id: s.id,
       code: s.code,

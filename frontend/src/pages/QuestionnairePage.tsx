@@ -158,12 +158,16 @@ export function QuestionnairePage() {
     return <p>Something went wrong loading the questionnaire.</p>;
   }
 
-  if (responseQuery.data.status === 'SUBMITTED') {
+  // Once the questionnaire closes (Admin toggle), a SUBMITTED response is locked exactly
+  // like before this phase — redirect straight to results. While still open, a SUBMITTED
+  // user is let back in to keep editing and re-submit (SECOND_REVIEW.md item 1).
+  if (responseQuery.data.status === 'SUBMITTED' && !questionnaireQuery.data.acceptingResponses) {
     navigate(`/results/${responseQuery.data.id}`, { replace: true });
     return null;
   }
 
   const questionnaire = questionnaireQuery.data;
+  const isEditingSubmitted = responseQuery.data.status === 'SUBMITTED';
   const isReviewStep = stepIndex === questionnaire.questions.length;
   const currentQuestion = questionnaire.questions[stepIndex];
 
@@ -217,6 +221,12 @@ export function QuestionnairePage() {
       <button type="button" onClick={() => navigate('/domains')}>
         ← All assessments
       </button>
+      {isEditingSubmitted && (
+        <p style={{ background: '#eef6ff', border: '1px solid #b6d4fe', borderRadius: 4, padding: '0.5rem 0.75rem' }}>
+          You already submitted this response. You can keep editing and re-submit until an
+          admin closes this assessment.
+        </p>
+      )}
       {questionnaire.guidelineText && (
         <details style={{ margin: '1rem 0', border: '1px solid #ddd', borderRadius: 4, padding: '0.5rem 0.75rem' }}>
           <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>Guideline</summary>
@@ -273,7 +283,13 @@ export function QuestionnairePage() {
               submitMutation.mutate();
             }}
           >
-            {submitMutation.isPending ? 'Submitting…' : 'Submit'}
+            {submitMutation.isPending
+              ? isEditingSubmitted
+                ? 'Updating…'
+                : 'Submitting…'
+              : isEditingSubmitted
+                ? 'Update submission'
+                : 'Submit'}
           </button>
         )}
       </div>

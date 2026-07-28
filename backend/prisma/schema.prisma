@@ -83,22 +83,26 @@ model User {
 // Generic questionnaire model: RAN Fault Management (GB1059A), Core Network Fault
 // Management + Core Network Stability (GB1059B) — see CLAUDE.md "Domain model".
 model Questionnaire {
-  id            String   @id @default(cuid())
-  code          String   @unique // e.g. "RAN_FM_GB1059A", "CORE_FM_GB1059B"
-  name          String
-  networkType   String // "RAN" | "Core" | ... — also the top-level "Domain" in the UI picker
-  hvsCategory   String // "Fault Management" | "Stability" | ... — the HVS within that domain
+  id                 String   @id @default(cuid())
+  code               String   @unique // e.g. "RAN_FM_GB1059A", "CORE_FM_GB1059B"
+  name               String
+  networkType        String // "RAN" | "Core" | ... — also the top-level "Domain" in the UI picker
+  hvsCategory        String // "Fault Management" | "Stability" | ... — the HVS within that domain
   // false only for Core Network Stability: it has no sub-scenarios, so there's no
   // per-sub-scenario S/P grid to show (see CLAUDE.md "Domain model").
-  hasE2ECheck   Boolean  @default(true)
+  hasE2ECheck        Boolean  @default(true)
   // Questionnaire-level context extracted from the xlsx's Guideline sheet (Introduction +
   // Sub-scenarios for RAN; the numbered Introduction for Core FM/Stability). Shown as a
   // collapsible section above the question flow (SECOND_REVIEW.md item 4).
-  guidelineText String?  @db.Text
-  version       Int      @default(1)
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  guidelineText      String?  @db.Text
+  // Admin-controlled open/close toggle (SECOND_REVIEW.md item 1) — while true, a response
+  // stays fully mutable (including re-submitting) regardless of its status; once false, every
+  // mutation is blocked, including for already-SUBMITTED responses. See responses.service.ts.
+  acceptingResponses Boolean  @default(true)
+  version            Int      @default(1)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   subScenarios SubScenario[]
   questions    Question[]

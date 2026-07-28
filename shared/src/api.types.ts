@@ -55,6 +55,10 @@ export interface QuestionnaireDto {
   // Questionnaire-level context from the source xlsx's Guideline sheet. Shown as a
   // collapsible section above the question flow.
   guidelineText: string | null;
+  // Admin-controlled open/close toggle (SECOND_REVIEW.md item 1). While true, a SUBMITTED
+  // response stays editable and re-submittable; once false, QuestionnairePage redirects a
+  // SUBMITTED user straight to results (today's original locked-forever behavior).
+  acceptingResponses: boolean;
   subScenarios: SubScenarioDto[];
   questions: QuestionDto[];
 }
@@ -65,6 +69,7 @@ export interface QuestionnaireSummaryDto {
   name: string;
   networkType: string;
   hvsCategory: string;
+  acceptingResponses: boolean;
 }
 
 export type ResponseStatus = 'IN_PROGRESS' | 'SUBMITTED';

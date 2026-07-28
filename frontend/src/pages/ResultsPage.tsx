@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { responsesApi } from '../api/responsesApi';
@@ -54,6 +54,13 @@ export function ResultsPage() {
         <LogoutButton />
       </div>
 
+      {questionnaire.acceptingResponses && (
+        <p>
+          <Link to={`/questionnaire/${questionnaire.code}`}>Review / edit your answers</Link> — this
+          assessment is still open; re-submitting recomputes your score.
+        </p>
+      )}
+
       <p style={{ fontSize: '2.5rem', margin: '0.5rem 0' }}>
         {result.finalScore.toFixed(2)} <span style={{ fontSize: '1rem', color: '#666' }}>/ 4</span>
       </p>
@@ -87,6 +94,34 @@ export function ResultsPage() {
       )}
 
       {questionnaire.networkType === 'Core' && <CoreDomainSummary />}
+
+      {response.comments.length > 0 && (
+        <>
+          <h2 style={{ marginTop: '1.5rem' }}>Your comments</h2>
+          <ul style={{ paddingLeft: '1.25rem' }}>
+            {response.comments.map((c) => {
+              const question = questionnaire.questions.find((q) => q.id === c.questionId);
+              const subScenarioNames = c.subScenarioIds
+                .map((id) => questionnaire.subScenarios.find((s) => s.id === id)?.name)
+                .filter((name): name is string => !!name);
+              return (
+                <li key={c.questionId} style={{ marginBottom: '0.75rem' }}>
+                  <strong>{question?.serviceCapability ?? c.questionId}</strong>
+                  <div style={{ fontSize: '0.85em', color: '#666' }}>
+                    Applies to:{' '}
+                    {c.appliesToNone
+                      ? 'None of the sub-scenarios'
+                      : subScenarioNames.length > 0
+                        ? subScenarioNames.join(', ')
+                        : '—'}
+                  </div>
+                  <p style={{ whiteSpace: 'pre-wrap' }}>{c.commentText}</p>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
     </main>
   );
 }

@@ -3,8 +3,8 @@ import { z } from 'zod';
 import { requireParam } from '../../lib/params';
 import { QuestionnaireNotFoundError } from '../questionnaire/questionnaire.service';
 import {
+  AcceptanceClosedError,
   ForbiddenError,
-  ResponseAlreadySubmittedError,
   ResponseNotFoundError,
   ResultNotAvailableError,
   UncoveredSkipError,
@@ -44,8 +44,8 @@ function handleKnownErrors(err: unknown, res: Response): boolean {
     res.status(403).json({ error: 'Forbidden' });
     return true;
   }
-  if (err instanceof ResponseAlreadySubmittedError) {
-    res.status(409).json({ error: 'Response has already been submitted' });
+  if (err instanceof AcceptanceClosedError) {
+    res.status(409).json({ error: 'This questionnaire is no longer accepting responses' });
     return true;
   }
   if (err instanceof UncoveredSkipError) {

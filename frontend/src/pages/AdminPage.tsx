@@ -25,8 +25,78 @@ export function AdminPage() {
       <hr style={{ margin: '2rem 0' }} />
       <ManageUsersSection />
       <hr style={{ margin: '2rem 0' }} />
+      <QuestionnaireSettingsSection />
+      <hr style={{ margin: '2rem 0' }} />
       <BenchmarkingSection />
     </main>
+  );
+}
+
+// Admin-controlled open/close toggle per questionnaire (SECOND_REVIEW.md item 1). While
+// accepting, users can edit and re-submit their responses at any time; once closed, every
+// response for this assessment locks permanently (matches the app's original behavior).
+function QuestionnaireSettingsSection() {
+  const queryClient = useQueryClient();
+  const questionnairesQuery = useQuery({ queryKey: ['questionnaires'], queryFn: questionnaireApi.list });
+  const [questionnaireCode, setQuestionnaireCode] = useState('');
+  const effectiveCode = questionnaireCode || questionnairesQuery.data?.[0]?.code || '';
+  const current = questionnairesQuery.data?.find((q) => q.code === effectiveCode);
+
+  const toggleMutation = useMutation({
+    mutationFn: (accepting: boolean) => questionnaireApi.setAcceptingResponses(effectiveCode, accepting),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['questionnaires'] });
+      void queryClient.invalidateQueries({ queryKey: ['questionnaire', effectiveCode] });
+    },
+  });
+
+  if (questionnairesQuery.isLoading) {
+    return (
+      <section>
+        <h2>Questionnaire settings</h2>
+        <p>Loading…</p>
+      </section>
+    );
+  }
+
+  return (
+    <section>
+      <h2>Questionnaire settings</h2>
+      <label>
+        Assessment
+        <select
+          value={effectiveCode}
+          onChange={(e) => setQuestionnaireCode(e.target.value)}
+          style={{ display: 'block', marginBottom: '0.75rem' }}
+        >
+          {questionnairesQuery.data?.map((q) => (
+            <option key={q.code} value={q.code}>
+              {q.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {current && (
+        <p>
+          Status: <strong>{current.acceptingResponses ? 'Accepting responses' : 'Closed'}</strong>{' '}
+          <button
+            type="button"
+            disabled={toggleMutation.isPending}
+            onClick={() => toggleMutation.mutate(!current.acceptingResponses)}
+          >
+            {toggleMutation.isPending
+              ? 'Saving…'
+              : current.acceptingResponses
+                ? 'Close (lock all responses)'
+                : 'Reopen'}
+          </button>
+        </p>
+      )}
+      <p style={{ fontSize: '0.85em', color: '#666' }}>
+        While accepting, users can edit and re-submit their responses for this assessment at
+        any time. Once closed, every response locks permanently.
+      </p>
+    </section>
   );
 }
 

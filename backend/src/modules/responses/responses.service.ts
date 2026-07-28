@@ -21,8 +21,14 @@ const CORE_STABILITY_CODE = 'CORE_STABILITY_GB1059B';
 
 export class ResponseNotFoundError extends Error {}
 export class ForbiddenError extends Error {}
-export class ResponseAlreadySubmittedError extends Error {}
 export class ResultNotAvailableError extends Error {}
+
+// Thrown when a mutation (answer/delete-answer/comment/submit) is attempted on a
+// questionnaire whose Admin-controlled acceptingResponses flag is false — replaces the old
+// "already submitted" guard entirely (SECOND_REVIEW.md item 1): while a questionnaire is
+// still accepting responses, a SUBMITTED response stays fully mutable (including
+// re-submitting); once closed, every mutation is blocked regardless of status.
+export class AcceptanceClosedError extends Error {}
 
 // Thrown at submit time when one or more unanswered (question, subScenario) pairs have no
 // covering comment — carries the specific list so the frontend can show exactly what's
@@ -131,8 +137,8 @@ export async function upsertAnswer(
   input: { questionId: string; subScenarioId: string; selectedOption: AnswerOption },
 ): Promise<void> {
   const response = await loadOwnedResponse(responseId, userId);
-  if (response.status !== 'IN_PROGRESS') {
-    throw new ResponseAlreadySubmittedError();
+  if (!response.questionnaire.acceptingResponses) {
+    throw new AcceptanceClosedError();
   }
 
   await prisma.answer.upsert({
@@ -162,8 +168,8 @@ export async function deleteAnswer(
   input: { questionId: string; subScenarioId: string },
 ): Promise<void> {
   const response = await loadOwnedResponse(responseId, userId);
-  if (response.status !== 'IN_PROGRESS') {
-    throw new ResponseAlreadySubmittedError();
+  if (!response.questionnaire.acceptingResponses) {
+    throw new AcceptanceClosedError();
   }
 
   await prisma.answer.deleteMany({
@@ -182,8 +188,8 @@ export async function upsertComment(
   },
 ): Promise<void> {
   const response = await loadOwnedResponse(responseId, userId);
-  if (response.status !== 'IN_PROGRESS') {
-    throw new ResponseAlreadySubmittedError();
+  if (!response.questionnaire.acceptingResponses) {
+    throw new AcceptanceClosedError();
   }
 
   await prisma.$transaction(async (tx) => {
@@ -206,10 +212,16 @@ export async function upsertComment(
   });
 }
 
+// A response's status stays SUBMITTED (never reverts to IN_PROGRESS) while its
+// questionnaire keeps accepting responses — calling this again on an already-SUBMITTED
+// response is a legal "re-submit" (SECOND_REVIEW.md item 1): recomputes the score from
+// whatever answers/comments are current and replaces the prior ScoreResult snapshot,
+// updating submittedAt. Blocked entirely once the questionnaire's acceptingResponses is
+// false, regardless of the response's own status.
 export async function submitResponse(responseId: string, userId: string): Promise<ScoreResultDto> {
   const response = await loadOwnedResponse(responseId, userId);
-  if (response.status !== 'IN_PROGRESS') {
-    throw new ResponseAlreadySubmittedError();
+  if (!response.questionnaire.acceptingResponses) {
+    throw new AcceptanceClosedError();
   }
 
   const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
@@ -277,6 +289,12 @@ export async function submitResponse(responseId: string, userId: string): Promis
       where: { id: responseId },
       data: { status: 'SUBMITTED', submittedAt: new Date() },
     }),
+    // A re-submit (response already SUBMITTED, questionnaire still accepting responses —
+    // see AcceptanceClosedError above) replaces the prior ScoreResult snapshot outright
+    // rather than upserting it in place: deleteMany is a no-op on a first submit (nothing to
+    // delete), and cascades to the child SubScenarioScoreResult/QuestionScoreResult rows on
+    // a re-submit, so the fresh `create` below never collides with stale rows.
+    prisma.scoreResult.deleteMany({ where: { responseId } }),
     prisma.scoreResult.create({
       data: {
         responseId,
