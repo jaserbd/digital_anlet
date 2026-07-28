@@ -2,11 +2,9 @@ import type {
   AnswerDistributionEntryDto,
   AnswerOption,
   AnswerOptionCounts,
-  BenchmarkingGroupBy,
   BenchmarkingSummaryDto,
-  OpCoBenchmarkDto,
+  BenchmarkRowDto,
   OpCoBenchmarkingSummaryDto,
-  OrganizationBenchmarkDto,
   OrganizationQuestionnaireSummaryDto,
   RespondentSummaryDto,
   SubScenarioAverageDto,
@@ -161,21 +159,115 @@ export async function getOrganizationQuestionnaireSummary(
   return { questionnaireCode: questionnaire.code, respondents, answerDistribution };
 }
 
+interface BenchmarkRowLabel {
+  organizationId: string;
+  organizationName: string;
+  opCoId: string | null;
+  opCoName: string;
+  country: string | null;
+}
+
+function rowKey(organizationId: string, opCoId: string | null): string {
+  return `${organizationId}:${opCoId ?? 'none'}`;
+}
+
 /**
- * Cross-organization (or cross-country) comparison for Admin benchmarking
- * (REQUIREMENTS.md, Group3_Admin). Averages are computed only over SUBMITTED responses; a
- * group with none gets null averages (not 0 — 0 would misleadingly read as "scored zero").
- *
- * `groupBy: 'country'` groups by each respondent's OpCo.country instead of their
- * organizationId — respondents with no OpCo assigned yet are excluded from that grouping
- * (there's no country to attribute them to). Reuses `OrganizationBenchmarkDto`'s shape for
- * both modes: in country mode, `organizationId`/`organizationName` both hold the country
- * name (used as the row key and label respectively) rather than an actual organization.
+ * One row per (Organization, OpCo) pair, optionally scoped to a single organization —
+ * shared by getBenchmarkingSummary (cross-org, Admin) and getOpCoBenchmarkingSummary
+ * (single-org, Executive/Admin). A synthetic "no OpCo" row (opCoId/country null, opCoName
+ * falls back to the organization's own name) is included for any organization that either
+ * has zero OpCos at all (small orgs) or has at least one NORMAL_USER not yet assigned one —
+ * SECOND_REVIEW.md item 9's "for small organizations, NatCo and Organization will be the
+ * same" plus not silently dropping unassigned respondents from the table.
  */
-export async function getBenchmarkingSummary(
-  questionnaireCode: string,
-  groupBy: BenchmarkingGroupBy = 'organization',
-): Promise<BenchmarkingSummaryDto> {
+async function computeBenchmarkRows(
+  questionnaire: { id: string; subScenarios: { code: SubScenarioCode }[] },
+  scopeOrganizationId?: string,
+): Promise<BenchmarkRowDto[]> {
+  const orgWhere = scopeOrganizationId ? { id: scopeOrganizationId } : {};
+  const organizations = await prisma.organization.findMany({
+    where: orgWhere,
+    orderBy: { name: 'asc' },
+    include: { opCos: { orderBy: { name: 'asc' } } },
+  });
+
+  const unassignedUserOrgIds = new Set(
+    (
+      await prisma.user.findMany({
+        where: {
+          role: 'NORMAL_USER',
+          opCoId: null,
+          ...(scopeOrganizationId ? { organizationId: scopeOrganizationId } : {}),
+        },
+        select: { organizationId: true },
+        distinct: ['organizationId'],
+      })
+    ).map((u) => u.organizationId),
+  );
+
+  const rowLabels: BenchmarkRowLabel[] = [];
+  for (const org of organizations) {
+    for (const opCo of org.opCos) {
+      rowLabels.push({
+        organizationId: org.id,
+        organizationName: org.name,
+        opCoId: opCo.id,
+        opCoName: opCo.name,
+        country: opCo.country,
+      });
+    }
+    if (org.opCos.length === 0 || unassignedUserOrgIds.has(org.id)) {
+      rowLabels.push({
+        organizationId: org.id,
+        organizationName: org.name,
+        opCoId: null,
+        opCoName: org.name,
+        country: null,
+      });
+    }
+  }
+
+  const respondentCounts = await prisma.user.groupBy({
+    by: ['organizationId', 'opCoId'],
+    where: { role: 'NORMAL_USER', ...(scopeOrganizationId ? { organizationId: scopeOrganizationId } : {}) },
+    _count: { _all: true },
+  });
+  const respondentCountByKey = new Map(
+    respondentCounts.map((r) => [rowKey(r.organizationId, r.opCoId), r._count._all]),
+  );
+
+  const submittedResponses = await prisma.questionnaireResponse.findMany({
+    where: {
+      questionnaireId: questionnaire.id,
+      status: 'SUBMITTED',
+      ...(scopeOrganizationId ? { user: { organizationId: scopeOrganizationId } } : {}),
+    },
+    include: {
+      user: { select: { organizationId: true, opCoId: true } },
+      result: { include: { subScenarioScores: { include: { subScenario: true } } } },
+    },
+  });
+  const byKey = groupScores(submittedResponses, (r) => rowKey(r.user.organizationId, r.user.opCoId));
+
+  return rowLabels.map((label) => {
+    const key = rowKey(label.organizationId, label.opCoId);
+    const acc = byKey.get(key);
+    return {
+      organizationId: label.organizationId,
+      organizationName: label.organizationName,
+      opCoId: label.opCoId,
+      opCoName: label.opCoName,
+      country: label.country,
+      respondentCount: respondentCountByKey.get(key) ?? 0,
+      submittedCount: acc?.finalScores.length ?? 0,
+      averageFinalScore: average(acc?.finalScores ?? []),
+      averageE2eAutomationRate: average(acc?.e2eRates ?? []),
+      subScenarioAverages: subScenarioAverages(acc, questionnaire.subScenarios),
+    };
+  });
+}
+
+async function loadQuestionnaireForBenchmarking(questionnaireCode: string) {
   const questionnaire = await prisma.questionnaire.findUnique({
     where: { code: questionnaireCode },
     include: { subScenarios: { orderBy: { sortOrder: 'asc' } } },
@@ -183,76 +275,26 @@ export async function getBenchmarkingSummary(
   if (!questionnaire) {
     throw new QuestionnaireNotFoundError();
   }
+  return questionnaire;
+}
 
-  const submittedResponses = await prisma.questionnaireResponse.findMany({
-    where: { questionnaireId: questionnaire.id, status: 'SUBMITTED' },
-    include: {
-      user: { select: { organizationId: true, opCo: { select: { country: true } } } },
-      result: { include: { subScenarioScores: { include: { subScenario: true } } } },
-    },
-  });
-
-  let groupLabels: { id: string; name: string }[];
-  let respondentCountByGroup: Map<string, number>;
-  let byGroup: Map<string, ScoreAccumulator>;
-
-  if (groupBy === 'organization') {
-    const organizations = await prisma.organization.findMany({ orderBy: { name: 'asc' } });
-    groupLabels = organizations.map((org) => ({ id: org.id, name: org.name }));
-
-    const respondentCounts = await prisma.user.groupBy({
-      by: ['organizationId'],
-      where: { role: 'NORMAL_USER' },
-      _count: { _all: true },
-    });
-    respondentCountByGroup = new Map(respondentCounts.map((r) => [r.organizationId, r._count._all]));
-
-    byGroup = groupScores(submittedResponses, (r) => r.user.organizationId);
-  } else {
-    const countries = await prisma.opCo.findMany({
-      select: { country: true },
-      distinct: ['country'],
-      orderBy: { country: 'asc' },
-    });
-    groupLabels = countries.map((c) => ({ id: c.country, name: c.country }));
-
-    const usersWithCountry = await prisma.user.findMany({
-      where: { role: 'NORMAL_USER', opCoId: { not: null } },
-      select: { opCo: { select: { country: true } } },
-    });
-    respondentCountByGroup = new Map();
-    for (const u of usersWithCountry) {
-      const country = u.opCo!.country;
-      respondentCountByGroup.set(country, (respondentCountByGroup.get(country) ?? 0) + 1);
-    }
-
-    byGroup = groupScores(submittedResponses, (r) => r.user.opCo?.country ?? null);
-  }
-
-  const organizationBenchmarks: OrganizationBenchmarkDto[] = groupLabels.map((group) => {
-    const acc = byGroup.get(group.id);
-    return {
-      organizationId: group.id,
-      organizationName: group.name,
-      respondentCount: respondentCountByGroup.get(group.id) ?? 0,
-      submittedCount: acc?.finalScores.length ?? 0,
-      averageFinalScore: average(acc?.finalScores ?? []),
-      averageE2eAutomationRate: average(acc?.e2eRates ?? []),
-      subScenarioAverages: subScenarioAverages(acc, questionnaire.subScenarios),
-    };
-  });
-
-  return {
-    questionnaireCode: questionnaire.code,
-    groupBy,
-    organizations: organizationBenchmarks,
-  };
+/**
+ * Cross-organization benchmarking for Admin (REQUIREMENTS.md, Group3_Admin) — one row per
+ * (Organization, OpCo) pair, so Organization/NatCo/Country are always visible together
+ * rather than being exclusive grouping modes (SECOND_REVIEW.md item 9). Averages are
+ * computed only over SUBMITTED responses; a row with none gets null averages (not 0 — 0
+ * would misleadingly read as "scored zero").
+ */
+export async function getBenchmarkingSummary(questionnaireCode: string): Promise<BenchmarkingSummaryDto> {
+  const questionnaire = await loadQuestionnaireForBenchmarking(questionnaireCode);
+  const rows = await computeBenchmarkRows(questionnaire);
+  return { questionnaireCode: questionnaire.code, rows };
 }
 
 /**
  * Benchmarks OpCos within a single organization — the Group CTO / Admin view of "how do my
- * NatCos compare for this HVS" (FIRST_REVIEW.md). Same averaging rules as
- * getBenchmarkingSummary; scoped to one organizationId. Callers are responsible for
+ * NatCos compare for this HVS" (FIRST_REVIEW.md). Same row shape and averaging rules as
+ * getBenchmarkingSummary, scoped to one organizationId. Callers are responsible for
  * authorizing that `organizationId` is one the requester may view (same convention as
  * getOrganizationQuestionnaireSummary).
  */
@@ -260,48 +302,7 @@ export async function getOpCoBenchmarkingSummary(
   organizationId: string,
   questionnaireCode: string,
 ): Promise<OpCoBenchmarkingSummaryDto> {
-  const questionnaire = await prisma.questionnaire.findUnique({
-    where: { code: questionnaireCode },
-    include: { subScenarios: { orderBy: { sortOrder: 'asc' } } },
-  });
-  if (!questionnaire) {
-    throw new QuestionnaireNotFoundError();
-  }
-
-  const opCos = await prisma.opCo.findMany({ where: { organizationId }, orderBy: { name: 'asc' } });
-
-  const respondentCounts = await prisma.user.groupBy({
-    by: ['opCoId'],
-    where: { organizationId, role: 'NORMAL_USER', opCoId: { not: null } },
-    _count: { _all: true },
-  });
-  const respondentCountByOpCo = new Map(
-    respondentCounts.map((r) => [r.opCoId as string, r._count._all]),
-  );
-
-  const submittedResponses = await prisma.questionnaireResponse.findMany({
-    where: { questionnaireId: questionnaire.id, status: 'SUBMITTED', user: { organizationId } },
-    include: {
-      user: { select: { opCoId: true } },
-      result: { include: { subScenarioScores: { include: { subScenario: true } } } },
-    },
-  });
-
-  const byOpCo = groupScores(submittedResponses, (r) => r.user.opCoId);
-
-  const opCoBenchmarks: OpCoBenchmarkDto[] = opCos.map((opCo) => {
-    const acc = byOpCo.get(opCo.id);
-    return {
-      opCoId: opCo.id,
-      opCoName: opCo.name,
-      country: opCo.country,
-      respondentCount: respondentCountByOpCo.get(opCo.id) ?? 0,
-      submittedCount: acc?.finalScores.length ?? 0,
-      averageFinalScore: average(acc?.finalScores ?? []),
-      averageE2eAutomationRate: average(acc?.e2eRates ?? []),
-      subScenarioAverages: subScenarioAverages(acc, questionnaire.subScenarios),
-    };
-  });
-
-  return { questionnaireCode: questionnaire.code, organizationId, opCos: opCoBenchmarks };
+  const questionnaire = await loadQuestionnaireForBenchmarking(questionnaireCode);
+  const rows = await computeBenchmarkRows(questionnaire, organizationId);
+  return { questionnaireCode: questionnaire.code, organizationId, rows };
 }

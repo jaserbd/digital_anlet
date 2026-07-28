@@ -85,7 +85,7 @@ afterAll(async () => {
 });
 
 describe('getBenchmarkingSummary (real DB)', () => {
-  it('averages scores across an organization\'s submitters and shows null for an organization with none', async () => {
+  it("averages scores across an organization's submitters and shows null for an organization with none", async () => {
     const submitter1 = await createUser(orgAId, 'all-a');
     const submitter2 = await createUser(orgAId, 'golden-master');
     await createUser(orgAId, 'not-started'); // counts toward respondentCount, not submittedCount
@@ -94,10 +94,15 @@ describe('getBenchmarkingSummary (real DB)', () => {
     await submitGoldenMasterPattern(submitter2); // final score 3.9145 (verified in scoring.test.ts)
 
     const summary = await getBenchmarkingSummary('RAN_FM_GB1059A');
-    const byName = Object.fromEntries(summary.organizations.map((o) => [o.organizationName, o]));
+    // Neither org has any OpCo yet at this point in the test, so each gets exactly one
+    // synthetic row whose opCoName falls back to the organization's own name.
+    const byName = Object.fromEntries(summary.rows.map((r) => [r.organizationName, r]));
 
     const orgA = byName[ORG_WITH_SUBMISSIONS_NAME];
     expect(orgA).toMatchObject({
+      opCoId: null,
+      opCoName: ORG_WITH_SUBMISSIONS_NAME,
+      country: null,
       respondentCount: 3,
       submittedCount: 2,
       // (4 + 3.9145) / 2 = 3.95725, rounded to 4dp (matches insights.service.ts's `average`)
@@ -110,6 +115,8 @@ describe('getBenchmarkingSummary (real DB)', () => {
 
     const orgB = byName[ORG_WITHOUT_RESPONDENTS_NAME];
     expect(orgB).toMatchObject({
+      opCoId: null,
+      opCoName: ORG_WITHOUT_RESPONDENTS_NAME,
       respondentCount: 0,
       submittedCount: 0,
       averageFinalScore: null,
@@ -119,7 +126,7 @@ describe('getBenchmarkingSummary (real DB)', () => {
   });
 });
 
-describe('getBenchmarkingSummary groupBy="country" and getOpCoBenchmarkingSummary (real DB)', () => {
+describe('getBenchmarkingSummary NatCo/country rows and getOpCoBenchmarkingSummary (real DB)', () => {
   // Country grouping is intentionally global across all organizations (an Admin benchmarks
   // countries cross-org), so these use unique, unmistakably-test-only country names —
   // real country names could collide with data seeded by other tests or manual QA.
@@ -151,23 +158,30 @@ describe('getBenchmarkingSummary groupBy="country" and getOpCoBenchmarkingSummar
     await prisma.opCo.deleteMany({ where: { id: { in: [opCoKenyaId, opCoNigeriaId] } } });
   });
 
-  it('groups the cross-org benchmarking summary by OpCo.country when groupBy="country"', async () => {
-    const summary = await getBenchmarkingSummary('RAN_FM_GB1059A', 'country');
-    expect(summary.groupBy).toBe('country');
-    const byCountry = Object.fromEntries(summary.organizations.map((o) => [o.organizationName, o]));
+  it('includes each OpCo as its own row, carrying Organization/NatCo/Country together', async () => {
+    const summary = await getBenchmarkingSummary('RAN_FM_GB1059A');
+    const byOpCoName = Object.fromEntries(summary.rows.map((r) => [r.opCoName, r]));
 
-    expect(byCountry[COUNTRY_A]).toMatchObject({ respondentCount: 1, submittedCount: 1, averageFinalScore: 4 });
-    expect(byCountry[COUNTRY_B]).toMatchObject({
+    expect(byOpCoName[OPCO_KENYA_NAME]).toMatchObject({
+      organizationName: ORG_WITH_SUBMISSIONS_NAME,
+      country: COUNTRY_A,
+      respondentCount: 1,
+      submittedCount: 1,
+      averageFinalScore: 4,
+    });
+    expect(byOpCoName[OPCO_NIGERIA_NAME]).toMatchObject({
+      organizationName: ORG_WITH_SUBMISSIONS_NAME,
+      country: COUNTRY_B,
       respondentCount: 1,
       submittedCount: 1,
       averageFinalScore: 3.9145,
     });
   });
 
-  it('benchmarks OpCos within one organization', async () => {
+  it('benchmarks OpCos within one organization, including a synthetic row for unassigned respondents', async () => {
     const summary = await getOpCoBenchmarkingSummary(orgAId, 'RAN_FM_GB1059A');
     expect(summary.organizationId).toBe(orgAId);
-    const byName = Object.fromEntries(summary.opCos.map((o) => [o.opCoName, o]));
+    const byName = Object.fromEntries(summary.rows.map((o) => [o.opCoName, o]));
 
     expect(byName[OPCO_KENYA_NAME]).toMatchObject({
       country: COUNTRY_A,
@@ -180,6 +194,14 @@ describe('getBenchmarkingSummary groupBy="country" and getOpCoBenchmarkingSummar
       respondentCount: 1,
       submittedCount: 1,
       averageFinalScore: 3.9145,
+    });
+    // The 3 users created in the first describe block (submitter1/2, not-started) still
+    // have no opCoId — they land in a synthetic row rather than being silently dropped.
+    expect(byName[ORG_WITH_SUBMISSIONS_NAME]).toMatchObject({
+      opCoId: null,
+      country: null,
+      respondentCount: 3,
+      submittedCount: 2,
     });
   });
 });

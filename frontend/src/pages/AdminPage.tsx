@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { BenchmarkingGroupBy, OrganizationDto, Role, UpdateUserRequestDto, UserDto } from '@anlet/shared';
+import type { OrganizationDto, Role, UpdateUserRequestDto, UserDto } from '@anlet/shared';
 import { organizationsApi } from '../api/organizationsApi';
 import { opCoApi } from '../api/opCoApi';
 import { usersApi } from '../api/usersApi';
@@ -8,7 +8,7 @@ import { insightsApi } from '../api/insightsApi';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { ApiError } from '../api/client';
 import { LogoutButton } from '../components/LogoutButton';
-import { ScoreBar } from '../components/ScoreBar';
+import { BenchmarkTable } from '../components/BenchmarkTable';
 
 export function AdminPage() {
   return (
@@ -374,7 +374,6 @@ function UserRow({
 function BenchmarkingSection() {
   const questionnairesQuery = useQuery({ queryKey: ['questionnaires'], queryFn: questionnaireApi.list });
   const [questionnaireCode, setQuestionnaireCode] = useState('');
-  const [groupBy, setGroupBy] = useState<BenchmarkingGroupBy>('organization');
 
   const effectiveCode = questionnaireCode || questionnairesQuery.data?.[0]?.code || '';
 
@@ -384,8 +383,8 @@ function BenchmarkingSection() {
     enabled: !!effectiveCode,
   });
   const benchmarkQuery = useQuery({
-    queryKey: ['benchmarking', effectiveCode, groupBy],
-    queryFn: () => insightsApi.getBenchmarkingSummary(effectiveCode, groupBy),
+    queryKey: ['benchmarking', effectiveCode],
+    queryFn: () => insightsApi.getBenchmarkingSummary(effectiveCode),
     enabled: !!effectiveCode,
   });
 
@@ -407,12 +406,11 @@ function BenchmarkingSection() {
   }
 
   const { subScenarios } = questionnaireQuery.data;
-  const groupLabel = groupBy === 'country' ? 'Country' : 'Organization';
 
   return (
     <section>
       <h2>Benchmarking</h2>
-      <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div style={{ marginBottom: '1rem' }}>
         <label>
           Assessment
           <select
@@ -427,66 +425,13 @@ function BenchmarkingSection() {
             ))}
           </select>
         </label>
-        <label>
-          Group by
-          <select
-            value={groupBy}
-            onChange={(e) => setGroupBy(e.target.value as BenchmarkingGroupBy)}
-            style={{ display: 'block' }}
-          >
-            <option value="organization">Organization</option>
-            <option value="country">Country</option>
-          </select>
-        </label>
       </div>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-          <thead>
-            <tr>
-              <th style={cellStyle}>{groupLabel}</th>
-              <th style={cellStyle}>Respondents</th>
-              <th style={cellStyle}>Submitted</th>
-              <th style={cellStyle}>Avg. final score</th>
-              <th style={cellStyle}>Avg. E2E rate</th>
-              {subScenarios.map((s) => (
-                <th key={s.id} style={cellStyle}>
-                  {s.name}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {benchmarkQuery.data.organizations.map((org) => (
-              <tr key={org.organizationId}>
-                <td style={cellStyle}>{org.organizationName}</td>
-                <td style={{ ...cellStyle, textAlign: 'center' }}>{org.respondentCount}</td>
-                <td style={{ ...cellStyle, textAlign: 'center' }}>{org.submittedCount}</td>
-                <td style={cellStyle}>
-                  <ScoreBar value={org.averageFinalScore} />
-                </td>
-                <td style={{ ...cellStyle, textAlign: 'center' }}>
-                  {org.averageE2eAutomationRate != null
-                    ? `${(org.averageE2eAutomationRate * 100).toFixed(0)}%`
-                    : '—'}
-                </td>
-                {subScenarios.map((s) => {
-                  const avg = org.subScenarioAverages.find((a) => a.subScenarioCode === s.code);
-                  return (
-                    <td key={s.id} style={{ ...cellStyle, textAlign: 'center' }}>
-                      {avg?.averageScore != null ? avg.averageScore.toFixed(2) : '—'}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <BenchmarkTable rows={benchmarkQuery.data.rows} subScenarios={subScenarios} />
       <p style={{ fontSize: '0.85em', color: '#666' }}>
-        Averages are computed over submitted responses only; a {groupLabel.toLowerCase()} with
-        none shows "—" rather than a misleading zero.
-        {groupBy === 'country' &&
-          ' Respondents with no OpCo assigned yet are excluded from country grouping.'}
+        Averages are computed over submitted responses only; a row with none shows "—" rather
+        than a misleading zero. A blank OpCo/Country means the respondent(s) haven't been
+        assigned an OpCo yet — for a small organization with no OpCos at all, the NatCo
+        column shows the organization's own name.
       </p>
     </section>
   );

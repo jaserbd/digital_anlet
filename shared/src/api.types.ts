@@ -161,9 +161,18 @@ export interface SubScenarioAverageDto {
   averageScore: number | null;
 }
 
-export interface OrganizationBenchmarkDto {
+// One row per (Organization, OpCo) pair (SECOND_REVIEW.md item 9) — every level (org,
+// NatCo, country) is always present on every row rather than being an exclusive grouping
+// mode. `opCoId`/`country` are null for a synthetic "no OpCo" row, which exists for any
+// organization that either has zero OpCos at all (small orgs — opCoName then falls back to
+// organizationName, matching the review's "NatCo and Organization will be the same") or has
+// at least one respondent who hasn't been assigned an OpCo yet.
+export interface BenchmarkRowDto {
   organizationId: string;
   organizationName: string;
+  opCoId: string | null;
+  opCoName: string;
+  country: string | null;
   respondentCount: number;
   submittedCount: number;
   averageFinalScore: number | null;
@@ -171,34 +180,18 @@ export interface OrganizationBenchmarkDto {
   subScenarioAverages: SubScenarioAverageDto[];
 }
 
-// Admin-only, cross-organization by default, or cross-country when groupBy = 'country'
-// (grouping key becomes each respondent's OpCo.country instead of their organizationId —
-// respondents with no OpCo yet are excluded from a country grouping).
-export type BenchmarkingGroupBy = 'organization' | 'country';
-
+// Admin-only, cross-organization.
 export interface BenchmarkingSummaryDto {
   questionnaireCode: string;
-  groupBy: BenchmarkingGroupBy;
-  organizations: OrganizationBenchmarkDto[];
+  rows: BenchmarkRowDto[];
 }
 
-// Same shape as OrganizationBenchmarkDto, keyed by OpCo instead of Organization — for the
+// Same row shape as BenchmarkingSummaryDto, scoped to one organization — for the
 // Executive/Admin "benchmark OpCos within one organization" view.
-export interface OpCoBenchmarkDto {
-  opCoId: string;
-  opCoName: string;
-  country: string;
-  respondentCount: number;
-  submittedCount: number;
-  averageFinalScore: number | null;
-  averageE2eAutomationRate: number | null;
-  subScenarioAverages: SubScenarioAverageDto[];
-}
-
 export interface OpCoBenchmarkingSummaryDto {
   questionnaireCode: string;
   organizationId: string;
-  opCos: OpCoBenchmarkDto[];
+  rows: BenchmarkRowDto[];
 }
 
 // Guideline point 7 in CORE_FM.xlsx: "final score = 50% * fault management score + 50% *

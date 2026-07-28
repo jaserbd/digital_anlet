@@ -1,5 +1,4 @@
 import type {
-  BenchmarkingGroupBy,
   BenchmarkingSummaryDto,
   OpCoBenchmarkingSummaryDto,
   OrganizationQuestionnaireSummaryDto,
@@ -11,9 +10,9 @@ export const insightsApi = {
     apiClient.get<OrganizationQuestionnaireSummaryDto>(
       `/organizations/${organizationId}/questionnaire-summary?questionnaireCode=${encodeURIComponent(questionnaireCode)}`,
     ),
-  getBenchmarkingSummary: (questionnaireCode: string, groupBy: BenchmarkingGroupBy = 'organization') =>
+  getBenchmarkingSummary: (questionnaireCode: string) =>
     apiClient.get<BenchmarkingSummaryDto>(
-      `/organizations/benchmarking?questionnaireCode=${encodeURIComponent(questionnaireCode)}&groupBy=${groupBy}`,
+      `/organizations/benchmarking?questionnaireCode=${encodeURIComponent(questionnaireCode)}`,
     ),
   getOpCoBenchmarkingSummary: (organizationId: string, questionnaireCode: string) =>
     apiClient.get<OpCoBenchmarkingSummaryDto>(

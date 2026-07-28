@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { insightsApi } from '../api/insightsApi';
 import { LogoutButton } from '../components/LogoutButton';
-import { ScoreBar } from '../components/ScoreBar';
+import { BenchmarkTable } from '../components/BenchmarkTable';
 import { groupByCognitiveActivity } from '../lib/cognitiveActivity';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -113,45 +113,11 @@ export function ExecutivePage() {
       <h2 style={{ marginTop: '2rem' }}>OpCo benchmarking (submitted responses only)</h2>
       {opCoBenchmarkQuery.isLoading && <p>Loading…</p>}
       {opCoBenchmarkQuery.data && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-            <thead>
-              <tr>
-                <th style={cellStyle}>OpCo</th>
-                <th style={cellStyle}>Country</th>
-                <th style={cellStyle}>Respondents</th>
-                <th style={cellStyle}>Submitted</th>
-                <th style={cellStyle}>Avg. final score</th>
-                <th style={cellStyle}>Avg. E2E rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              {opCoBenchmarkQuery.data.opCos.map((opCo) => (
-                <tr key={opCo.opCoId}>
-                  <td style={cellStyle}>{opCo.opCoName}</td>
-                  <td style={cellStyle}>{opCo.country}</td>
-                  <td style={{ ...cellStyle, textAlign: 'center' }}>{opCo.respondentCount}</td>
-                  <td style={{ ...cellStyle, textAlign: 'center' }}>{opCo.submittedCount}</td>
-                  <td style={cellStyle}>
-                    <ScoreBar value={opCo.averageFinalScore} />
-                  </td>
-                  <td style={{ ...cellStyle, textAlign: 'center' }}>
-                    {opCo.averageE2eAutomationRate != null
-                      ? `${(opCo.averageE2eAutomationRate * 100).toFixed(0)}%`
-                      : '—'}
-                  </td>
-                </tr>
-              ))}
-              {opCoBenchmarkQuery.data.opCos.length === 0 && (
-                <tr>
-                  <td style={cellStyle} colSpan={6}>
-                    No OpCos created for this organization yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <BenchmarkTable
+          rows={opCoBenchmarkQuery.data.rows}
+          subScenarios={questionnaire.subScenarios}
+          hideOrganizationColumn
+        />
       )}
 
       <h2 style={{ marginTop: '2rem' }}>Answer distribution (submitted responses only)</h2>

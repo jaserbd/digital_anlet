@@ -39,14 +39,9 @@ export async function getBenchmarkingSummaryHandler(req: Request, res: Response)
     res.status(400).json({ error: 'questionnaireCode query param is required' });
     return;
   }
-  const groupByParam = req.query.groupBy;
-  if (groupByParam != null && groupByParam !== 'organization' && groupByParam !== 'country') {
-    res.status(400).json({ error: 'groupBy must be "organization" or "country"' });
-    return;
-  }
 
   try {
-    const summary = await getBenchmarkingSummary(questionnaireCode, groupByParam ?? undefined);
+    const summary = await getBenchmarkingSummary(questionnaireCode);
     res.json(summary);
   } catch (err) {
     if (err instanceof QuestionnaireNotFoundError) {
