@@ -50,7 +50,7 @@ function handleKnownErrors(err: unknown, res: Response): boolean {
   }
   if (err instanceof UncoveredSkipError) {
     res.status(422).json({
-      error: 'Some skipped answers are missing a covering comment',
+      error: 'Some unanswered questions are missing a covering comment',
       missing: err.missing,
     });
     return true;

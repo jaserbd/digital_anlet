@@ -123,6 +123,36 @@ describe('computeScoreResult — golden master (RAN_FM.xlsx demo answers)', () =
   it('computes the exact E2E automation rate', () => {
     expect(result.e2eAutomationRate).toBe(0.7);
   });
+
+  it('exposes a per-question compensated score consistent with the sub-scenario overall score', () => {
+    // Equipment is all-A: the 3 capped questions (data-collection, fault-identification,
+    // solution-implementation) each hit their own top score and compensate up to the
+    // anchor average (4, since every anchor also scored A=4) — matching the known
+    // Equipment overallScore of 4.
+    const equipment = result.questionScores.filter((qs) => qs.subScenarioId === 'equipment');
+    const byQuestion = Object.fromEntries(equipment.map((qs) => [qs.questionId, qs]));
+    expect(byQuestion['data-collection']).toEqual({
+      questionId: 'data-collection',
+      subScenarioId: 'equipment',
+      originalScore: 3,
+      compensatedScore: 4,
+    });
+    expect(byQuestion['solution-implementation']).toEqual({
+      questionId: 'solution-implementation',
+      subScenarioId: 'equipment',
+      originalScore: 2,
+      compensatedScore: 4,
+    });
+    // Intent is itself an anchor (own top score 4 == ceiling) — never compensated.
+    expect(byQuestion['intent']).toEqual({
+      questionId: 'intent',
+      subScenarioId: 'equipment',
+      originalScore: 4,
+      compensatedScore: 4,
+    });
+    // Every question has an entry for every sub-scenario (8 questions x 5 sub-scenarios).
+    expect(result.questionScores).toHaveLength(RAN_FM_QUESTIONS.length * RAN_FM_SUB_SCENARIOS.length);
+  });
 });
 
 describe('computeScoreResult — compensation rule (per ANLET compensation PDF)', () => {
@@ -350,6 +380,28 @@ describe('computeScoreResult — skipped answers (re-normalization)', () => {
     // had instead been scored as 0, the result would be (4+0+0)/3 = 1.3333 — different.
     expect(result.subScenarioScores[0]?.overallScore).toBe(2);
     expect(result.finalScore).toBe(2);
+
+    const byQuestion = Object.fromEntries(result.questionScores.map((qs) => [qs.questionId, qs]));
+    expect(byQuestion['anchor-1']).toEqual({
+      questionId: 'anchor-1',
+      subScenarioId: 's1',
+      originalScore: 4,
+      compensatedScore: 4,
+    });
+    expect(byQuestion['anchor-2']).toEqual({
+      questionId: 'anchor-2',
+      subScenarioId: 's1',
+      originalScore: 0,
+      compensatedScore: 0,
+    });
+    // The skipped question still gets an entry (for the results-page matrix), just with
+    // both scores null instead of being omitted.
+    expect(byQuestion['capped']).toEqual({
+      questionId: 'capped',
+      subScenarioId: 's1',
+      originalScore: null,
+      compensatedScore: null,
+    });
   });
 
   it('sets overallScore to null when every question in a sub-scenario is skipped, and excludes it from the final score', () => {

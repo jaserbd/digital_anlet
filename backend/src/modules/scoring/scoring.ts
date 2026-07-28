@@ -1,4 +1,10 @@
-import type { AnswerOption, ScoreResultDto, SubScenarioCode, SubScenarioScore } from '@anlet/shared';
+import type {
+  AnswerOption,
+  QuestionScore,
+  ScoreResultDto,
+  SubScenarioCode,
+  SubScenarioScore,
+} from '@anlet/shared';
 import { round4 } from '../../lib/rounding';
 
 export interface ScoringQuestionInput {
@@ -60,6 +66,8 @@ export function computeScoreResult(params: ComputeScoreParams): ScoreResultDto {
     answers.map((a) => [`${a.questionId}:${a.subScenarioId}`, a.selectedOption]),
   );
 
+  const questionScores: QuestionScore[] = [];
+
   const subScenarioScores: SubScenarioScore[] = subScenarios.map((subScenario) => {
     const originalScores = new Map<string, number>();
     const selectedOptions = new Map<string, AnswerOption>();
@@ -78,6 +86,7 @@ export function computeScoreResult(params: ComputeScoreParams): ScoreResultDto {
     const answeredQuestions = questions.filter((q) => originalScores.has(q.id));
     const answeredWeightSum = answeredQuestions.reduce((sum, q) => sum + q.weight, 0);
 
+    const compensatedScores = new Map<string, number>();
     let overallScore: number | null = null;
     if (answeredWeightSum > 0) {
       const anchorQuestions = answeredQuestions.filter((q) => topScoreOf(q) === ceiling);
@@ -95,9 +104,21 @@ export function computeScoreResult(params: ComputeScoreParams): ScoreResultDto {
           own < ceiling && original === own && anchorAverage != null && anchorAverage > own
             ? anchorAverage
             : original;
+        compensatedScores.set(question.id, compensated);
         weightedSum += compensated * question.weight;
       }
       overallScore = round4(weightedSum / answeredWeightSum);
+    }
+
+    for (const question of questions) {
+      questionScores.push({
+        questionId: question.id,
+        subScenarioId: subScenario.id,
+        originalScore: originalScores.has(question.id) ? round4(originalScores.get(question.id)!) : null,
+        compensatedScore: compensatedScores.has(question.id)
+          ? round4(compensatedScores.get(question.id)!)
+          : null,
+      });
     }
 
     const e2eAchieved = questions
@@ -135,5 +156,6 @@ export function computeScoreResult(params: ComputeScoreParams): ScoreResultDto {
     finalScore: round4(finalScore),
     e2eAutomationRate: round4(e2eAutomationRate),
     subScenarioScores,
+    questionScores,
   };
 }

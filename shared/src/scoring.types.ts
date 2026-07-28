@@ -8,8 +8,20 @@ export interface SubScenarioScore {
   e2eAchieved: boolean;
 }
 
+// Per-question, per-sub-scenario score breakdown — the compensated score that feeds into
+// SubScenarioScore.overallScore's weighted average. Emitted for every (question,
+// subScenario) pair, including unanswered ones (both scores null there), so a results-page
+// matrix can render one row per question without re-deriving anything.
+export interface QuestionScore {
+  questionId: string;
+  subScenarioId: string;
+  originalScore: number | null;
+  compensatedScore: number | null;
+}
+
 export interface ScoreResultDto {
   finalScore: number;
   e2eAutomationRate: number;
   subScenarioScores: SubScenarioScore[];
+  questionScores: QuestionScore[];
 }

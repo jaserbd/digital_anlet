@@ -32,12 +32,19 @@ export async function getQuestionnaireByCode(code: string): Promise<Questionnair
   }
 
   const questions: QuestionDto[] = questionnaire.questions.map((q) => {
-    // Criteria numbers are deliberately not sent to the client — otherwise a user could
-    // infer which option scores highest (always A, per the domain model) without needing
-    // to reason about the questionnaire at all.
+    // Criteria numbers are intentionally exposed to the client (SECOND_REVIEW.md item 6) so
+    // users can see each option's score while answering — a deliberate reversal of the prior
+    // anti-gaming stance (criteria used to be stripped so users couldn't just pick the
+    // highest-scoring option without reasoning about the question).
     const optionText = [q.optionAText, q.optionBText, q.optionCText, q.optionDText];
-    const options = OPTION_LETTERS.map((option, i) => ({ option, text: optionText[i] })).filter(
-      (o): o is { option: AnswerOption; text: string } => o.text != null,
+    const optionCriteria = [q.optionACriteria, q.optionBCriteria, q.optionCCriteria, q.optionDCriteria];
+    const options = OPTION_LETTERS.map((option, i) => ({
+      option,
+      text: optionText[i],
+      criteria: optionCriteria[i] != null ? Number(optionCriteria[i]) : null,
+    })).filter(
+      (o): o is { option: AnswerOption; text: string; criteria: number } =>
+        o.text != null && o.criteria != null,
     );
     return {
       id: q.id,

@@ -86,7 +86,7 @@ export function QuestionnairePage() {
     onError: (err) => {
       setSubmitError(
         err instanceof ApiError && err.status === 422
-          ? 'Some skipped answers are missing a covering comment. Please check the Review step.'
+          ? 'Some unanswered questions are missing a covering comment. Please check the Review step.'
           : 'Failed to submit. Please try again.',
       );
     },
@@ -100,6 +100,7 @@ export function QuestionnairePage() {
     [questionnaireQuery.data],
   );
   const answeredCount = answers.size;
+  const totalUnanswered = totalRequired - answeredCount;
 
   const uncovered = useMemo<UncoveredGap[]>(() => {
     if (!questionnaireQuery.data) return [];
@@ -218,7 +219,9 @@ export function QuestionnairePage() {
       </button>
       <p>
         {answeredCount} / {totalRequired} answered
-        {uncovered.length > 0 && ` · ${uncovered.length} skipped without a comment`}
+        {totalUnanswered - uncovered.length > 0 &&
+          ` · ${totalUnanswered - uncovered.length} skipped (covered by a comment)`}
+        {uncovered.length > 0 && ` · ${uncovered.length} unanswered, needs a covering comment`}
       </p>
       <QuestionStepper
         questions={questionnaire.questions}
@@ -239,7 +242,13 @@ export function QuestionnairePage() {
         />
       )}
 
-      {isReviewStep && <ReviewStep uncovered={uncovered} comments={commentSummaries} />}
+      {isReviewStep && (
+        <ReviewStep
+          uncovered={uncovered}
+          skippedCoveredCount={totalUnanswered - uncovered.length}
+          comments={commentSummaries}
+        />
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
         <button type="button" disabled={stepIndex === 0} onClick={() => setStepIndex((i) => i - 1)}>

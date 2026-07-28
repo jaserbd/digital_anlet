@@ -15,13 +15,18 @@ export interface CommentSummaryEntry {
 
 interface ReviewStepProps {
   uncovered: UncoveredGap[];
+  skippedCoveredCount: number;
   comments: CommentSummaryEntry[];
 }
 
-// Shown as the final step before Submit: a warning summary of any skipped answers that
+// Shown as the final step before Submit: a warning summary of any unanswered questions that
 // still need a covering comment, then a dedicated list of every comment the user added
 // (per FIRST_REVIEW.md's "dedicated section for the user comments" requirement).
-export function ReviewStep({ uncovered, comments }: ReviewStepProps) {
+//
+// Terminology: "unanswered" is any (question, subScenario) with no selected option. Once an
+// unanswered pair is covered by a comment it's a "skip" (submittable, scored via
+// re-normalization); until then it's just "unanswered" and blocks submission.
+export function ReviewStep({ uncovered, skippedCoveredCount, comments }: ReviewStepProps) {
   return (
     <section>
       <h2>Review before submitting</h2>
@@ -29,8 +34,8 @@ export function ReviewStep({ uncovered, comments }: ReviewStepProps) {
         <div style={{ background: '#fff4e5', border: '1px solid #f0ad4e', borderRadius: 4, padding: '1rem' }}>
           <p>
             <strong>
-              You skipped {uncovered.length} answer{uncovered.length === 1 ? '' : 's'} without a covering
-              comment.
+              You have {uncovered.length} unanswered question{uncovered.length === 1 ? '' : 's'} without a
+              covering comment.
             </strong>{' '}
             Go back and either answer them, or add a comment tagged to that sub-scenario (or "None of the
             sub-scenarios"), before you can submit.
@@ -46,6 +51,12 @@ export function ReviewStep({ uncovered, comments }: ReviewStepProps) {
       ) : (
         <p style={{ color: 'green' }}>
           Every question is answered or has a covering comment. You're ready to submit.
+        </p>
+      )}
+      {skippedCoveredCount > 0 && (
+        <p style={{ color: '#666' }}>
+          {skippedCoveredCount} question{skippedCoveredCount === 1 ? ' is' : 's are'} left unanswered but
+          covered by a comment — these will be scored as skipped (excluded and re-normalized), not as 0.
         </p>
       )}
 

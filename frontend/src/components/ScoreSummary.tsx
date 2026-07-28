@@ -4,16 +4,26 @@ interface ScoreSummaryProps {
   finalScore: number;
   subScenarios: SubScenarioDto[];
   subScenarioScores: SubScenarioScore[];
+  // Set when a caller (e.g. ResultsPage) already renders the headline final score itself,
+  // above a more detailed breakdown table — avoids showing the same number twice.
+  hideFinalScore?: boolean;
 }
 
-export function ScoreSummary({ finalScore, subScenarios, subScenarioScores }: ScoreSummaryProps) {
+export function ScoreSummary({
+  finalScore,
+  subScenarios,
+  subScenarioScores,
+  hideFinalScore,
+}: ScoreSummaryProps) {
   const scoreByCode = new Map(subScenarioScores.map((s) => [s.subScenarioCode, s]));
 
   return (
     <section>
-      <p style={{ fontSize: '2.5rem', margin: '0.5rem 0' }}>
-        {finalScore.toFixed(2)} <span style={{ fontSize: '1rem', color: '#666' }}>/ 4</span>
-      </p>
+      {!hideFinalScore && (
+        <p style={{ fontSize: '2.5rem', margin: '0.5rem 0' }}>
+          {finalScore.toFixed(2)} <span style={{ fontSize: '1rem', color: '#666' }}>/ 4</span>
+        </p>
+      )}
       <table style={{ borderCollapse: 'collapse', width: '100%', maxWidth: 480 }}>
         <thead>
           <tr>

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { insightsApi } from '../api/insightsApi';
 import { LogoutButton } from '../components/LogoutButton';
 import { ScoreBar } from '../components/ScoreBar';
+import { groupByCognitiveActivity } from '../lib/cognitiveActivity';
 
 const STATUS_LABEL: Record<string, string> = {
   NOT_STARTED: 'Not started',
@@ -179,21 +180,31 @@ export function ExecutivePage() {
             </tr>
           </thead>
           <tbody>
-            {questionnaire.questions.map((q) => {
-              const counts = countsByKey.get(`${q.id}:${currentSubScenario.id}`);
-              const availableOptions = new Set(q.options.map((o) => o.option));
-              const cell = (option: 'A' | 'B' | 'C' | 'D') =>
-                availableOptions.has(option) ? (counts?.[option] ?? 0) : '—';
-              return (
-                <tr key={q.id}>
-                  <td style={cellStyle}>{q.serviceCapability}</td>
-                  <td style={{ ...cellStyle, textAlign: 'center' }}>{cell('A')}</td>
-                  <td style={{ ...cellStyle, textAlign: 'center' }}>{cell('B')}</td>
-                  <td style={{ ...cellStyle, textAlign: 'center' }}>{cell('C')}</td>
-                  <td style={{ ...cellStyle, textAlign: 'center' }}>{cell('D')}</td>
+            {groupByCognitiveActivity(questionnaire.questions).map((group) => (
+              <Fragment key={group.name}>
+                <tr>
+                  <td style={{ ...cellStyle, fontWeight: 'bold', background: '#f5f5f5' }} colSpan={5}>
+                    {group.name} — {group.questions.length} question{group.questions.length === 1 ? '' : 's'}
+                    {' '}({(group.weight * 100).toFixed(0)}%)
+                  </td>
                 </tr>
-              );
-            })}
+                {group.questions.map((q) => {
+                  const counts = countsByKey.get(`${q.id}:${currentSubScenario.id}`);
+                  const availableOptions = new Set(q.options.map((o) => o.option));
+                  const cell = (option: 'A' | 'B' | 'C' | 'D') =>
+                    availableOptions.has(option) ? (counts?.[option] ?? 0) : '—';
+                  return (
+                    <tr key={q.id}>
+                      <td style={{ ...cellStyle, paddingLeft: '1.5rem' }}>{q.serviceCapability}</td>
+                      <td style={{ ...cellStyle, textAlign: 'center' }}>{cell('A')}</td>
+                      <td style={{ ...cellStyle, textAlign: 'center' }}>{cell('B')}</td>
+                      <td style={{ ...cellStyle, textAlign: 'center' }}>{cell('C')}</td>
+                      <td style={{ ...cellStyle, textAlign: 'center' }}>{cell('D')}</td>
+                    </tr>
+                  );
+                })}
+              </Fragment>
+            ))}
           </tbody>
         </table>
       )}

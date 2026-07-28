@@ -21,5 +21,3 @@ As an admin, I have the access all the data of all organization. I can do the be
 
 
 At the end, We will conduct an workshop with the group CTO to compare the response of the different user of different OpCOs, and the comments comparison to identify the reason of the score and the scope of automation to improve the score. 
-
-

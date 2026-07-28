@@ -24,12 +24,14 @@ export class ForbiddenError extends Error {}
 export class ResponseAlreadySubmittedError extends Error {}
 export class ResultNotAvailableError extends Error {}
 
-// Thrown at submit time when one or more skipped (question, subScenario) answers have no
+// Thrown at submit time when one or more unanswered (question, subScenario) pairs have no
 // covering comment — carries the specific list so the frontend can show exactly what's
-// missing (mirrors the client-side warning computed from the same data).
+// missing (mirrors the client-side warning computed from the same data). An unanswered pair
+// that *does* have a covering comment is a "skip" and submits fine — see schema.prisma's
+// QuestionComment doc comment for the terminology distinction.
 export class UncoveredSkipError extends Error {
   constructor(public readonly missing: UncoveredSkipDto[]) {
-    super(`${missing.length} skipped answer(s) are missing a covering comment`);
+    super(`${missing.length} unanswered question(s) are missing a covering comment`);
   }
 }
 
@@ -152,7 +154,7 @@ export async function upsertAnswer(
 }
 
 // Un-answers a (question, subScenario) cell — lets a user who already picked an option
-// revert to "skipped" (see QuestionCard.tsx's "not answered" dropdown option). A no-op if
+// revert to "unanswered" (see QuestionCard.tsx's "not answered" dropdown option). A no-op if
 // the cell was never answered.
 export async function deleteAnswer(
   responseId: string,
@@ -284,6 +286,14 @@ export async function submitResponse(responseId: string, userId: string): Promis
             e2eAchieved: s.e2eAchieved,
           })),
         },
+        questionScores: {
+          create: result.questionScores.map((qs) => ({
+            questionId: qs.questionId,
+            subScenarioId: qs.subScenarioId,
+            originalScore: qs.originalScore,
+            compensatedScore: qs.compensatedScore,
+          })),
+        },
       },
     }),
   ]);
@@ -301,7 +311,10 @@ export async function getResult(responseId: string, userId: string): Promise<Sco
 
   const result = await prisma.scoreResult.findUnique({
     where: { responseId },
-    include: { subScenarioScores: { include: { subScenario: true } } },
+    include: {
+      subScenarioScores: { include: { subScenario: true } },
+      questionScores: true,
+    },
   });
   if (!result) {
     throw new ResultNotAvailableError();
@@ -314,6 +327,12 @@ export async function getResult(responseId: string, userId: string): Promise<Sco
       subScenarioCode: s.subScenario.code,
       overallScore: s.overallScore != null ? Number(s.overallScore) : null,
       e2eAchieved: s.e2eAchieved,
+    })),
+    questionScores: result.questionScores.map((qs) => ({
+      questionId: qs.questionId,
+      subScenarioId: qs.subScenarioId,
+      originalScore: qs.originalScore != null ? Number(qs.originalScore) : null,
+      compensatedScore: qs.compensatedScore != null ? Number(qs.compensatedScore) : null,
     })),
   };
 }
@@ -339,6 +358,9 @@ async function getLatestSubmittedResultByCode(
       overallScore: s.overallScore != null ? Number(s.overallScore) : null,
       e2eAchieved: s.e2eAchieved,
     })),
+    // getCoreDomainSummary (the only caller) only needs finalScore — not fetched here to
+    // avoid an unused extra include.
+    questionScores: [],
   };
 }
 

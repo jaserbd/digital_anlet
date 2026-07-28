@@ -54,15 +54,15 @@ model OpCo {
 }
 
 model User {
-  id             String   @id @default(cuid())
-  email          String   @unique
-  passwordHash   String
-  role           Role
-  firstName      String?
-  lastName       String?
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         Role
+  firstName    String?
+  lastName     String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
@@ -102,12 +102,12 @@ model Questionnaire {
 }
 
 model SubScenario {
-  id     String  @id @default(cuid())
+  id          String  @id @default(cuid())
   // Plain string, not an enum — sub-scenario identities are questionnaire-specific (RAN's
   // 5 codes, Core FM's 2, Core Stability's single synthetic "OVERALL"), not a fixed global
   // set. Unique per questionnaire, see @@unique below.
-  code   String
-  name   String
+  code        String
+  name        String
   description String? @db.Text
 
   // Share of real-world fault distribution; used both to weight the final score and to
@@ -123,18 +123,19 @@ model SubScenario {
 
   answers                 Answer[]
   subScenarioScoreResults SubScenarioScoreResult[]
+  questionScoreResults    QuestionScoreResult[]
   commentTags             QuestionCommentSubScenario[]
 
   @@unique([questionnaireId, code])
 }
 
 model Question {
-  id                 String  @id @default(cuid())
-  sortOrder          Int
-  cognitiveActivity  String // Intent | Awareness | Analysis | Decision | Execution (IAADE)
-  serviceCapability  String
-  questionText       String  @db.Text
-  weight             Decimal @db.Decimal(5, 4) // within-questionnaire weight; all sum to 1
+  id                String  @id @default(cuid())
+  sortOrder         Int
+  cognitiveActivity String // Intent | Awareness | Analysis | Decision | Execution (IAADE)
+  serviceCapability String
+  questionText      String  @db.Text
+  weight            Decimal @db.Decimal(5, 4) // within-questionnaire weight; all sum to 1
 
   optionAText String  @db.Text
   optionBText String? @db.Text
@@ -159,8 +160,9 @@ model Question {
   questionnaireId String
   questionnaire   Questionnaire @relation(fields: [questionnaireId], references: [id])
 
-  answers  Answer[]
-  comments QuestionComment[]
+  answers      Answer[]
+  comments     QuestionComment[]
+  scoreResults QuestionScoreResult[]
 
   @@unique([questionnaireId, sortOrder])
 }
@@ -173,7 +175,7 @@ model QuestionnaireResponse {
   updatedAt   DateTime       @updatedAt
 
   userId String
-  user   User @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
 
   questionnaireId String
   questionnaire   Questionnaire @relation(fields: [questionnaireId], references: [id])
@@ -203,9 +205,11 @@ model Answer {
 
 // One comment per question per response — the user's explanation, optionally tagged to
 // specific sub-scenarios (via QuestionCommentSubScenario) or to none of them
-// (appliesToNone). A skipped (question, subScenario) answer must be covered by a comment
+// (appliesToNone). An unanswered (question, subScenario) pair must be covered by a comment
 // tagged to that subScenario (or an appliesToNone comment on that question) before the
-// response can be submitted — see responses.service.ts submitResponse.
+// response can be submitted — see responses.service.ts submitResponse. Terminology: an
+// unanswered pair with no covering comment blocks submission; once covered, it's a "skip"
+// (submittable, scored via re-normalization — see scoring.ts).
 model QuestionComment {
   id            String   @id @default(cuid())
   commentText   String   @db.Text
@@ -246,12 +250,13 @@ model ScoreResult {
   response   QuestionnaireResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
 
   subScenarioScores SubScenarioScoreResult[]
+  questionScores    QuestionScoreResult[]
 }
 
 model SubScenarioScoreResult {
-  id String @id @default(cuid())
-  // Null only when every question in this sub-scenario was skipped — excluded from the
-  // final-score weighted average in that case (see scoring.ts).
+  id           String   @id @default(cuid())
+  // Null only when every question in this sub-scenario was left unanswered — excluded from
+  // the final-score weighted average in that case (see scoring.ts).
   overallScore Decimal? @db.Decimal(6, 4)
   e2eAchieved  Boolean
 
@@ -262,4 +267,26 @@ model SubScenarioScoreResult {
   subScenario   SubScenario @relation(fields: [subScenarioId], references: [id])
 
   @@unique([scoreResultId, subScenarioId])
+}
+
+// Per-question, per-sub-scenario breakdown of a ScoreResult — one row per (question,
+// subScenario) pair, including unanswered ones (both scores null there). Feeds the
+// results-page score matrix (SECOND_REVIEW.md item 7) without needing to recompute scoring
+// live; the compensated score is what actually contributes to the parent
+// SubScenarioScoreResult's weighted average (see scoring.ts).
+model QuestionScoreResult {
+  id               String   @id @default(cuid())
+  originalScore    Decimal? @db.Decimal(6, 4)
+  compensatedScore Decimal? @db.Decimal(6, 4)
+
+  scoreResultId String
+  scoreResult   ScoreResult @relation(fields: [scoreResultId], references: [id], onDelete: Cascade)
+
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id])
+
+  subScenarioId String
+  subScenario   SubScenario @relation(fields: [subScenarioId], references: [id])
+
+  @@unique([scoreResultId, questionId, subScenarioId])
 }

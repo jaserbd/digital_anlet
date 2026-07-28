@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { responsesApi } from '../api/responsesApi';
 import { ScoreSummary } from '../components/ScoreSummary';
+import { ScoreBreakdownTable } from '../components/ScoreBreakdownTable';
 import { E2EChecklistTable } from '../components/E2EChecklistTable';
 import { CoreDomainSummary } from '../components/CoreDomainSummary';
 import { LogoutButton } from '../components/LogoutButton';
@@ -53,10 +54,23 @@ export function ResultsPage() {
         <LogoutButton />
       </div>
 
+      <p style={{ fontSize: '2.5rem', margin: '0.5rem 0' }}>
+        {result.finalScore.toFixed(2)} <span style={{ fontSize: '1rem', color: '#666' }}>/ 4</span>
+      </p>
+
+      <h2>Score breakdown</h2>
+      <ScoreBreakdownTable
+        questions={questionnaire.questions}
+        subScenarios={questionnaire.subScenarios}
+        questionScores={result.questionScores}
+      />
+
+      <h2 style={{ marginTop: '1.5rem' }}>Sub-scenario summary</h2>
       <ScoreSummary
         finalScore={result.finalScore}
         subScenarios={questionnaire.subScenarios}
         subScenarioScores={result.subScenarioScores}
+        hideFinalScore
       />
 
       {questionnaire.hasE2ECheck && (

@@ -73,7 +73,8 @@ export function E2EChecklistTable({
         </tbody>
       </table>
       <p style={{ fontSize: '0.85em', color: '#666' }}>
-        S = System, P = People, – = skipped (counts as not-System for the E2E determination).
+        S = System, P = People, – = skipped (unanswered, covered by a comment — counts as
+        not-System for the E2E determination).
         {hasExcludedQuestion &&
           ' * Excluded from the end-to-end automation determination (Intent is assessed separately).'}
       </p>

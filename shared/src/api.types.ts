@@ -26,6 +26,8 @@ export interface SubScenarioDto {
 export interface QuestionOptionDto {
   option: AnswerOption;
   text: string;
+  // Intentionally exposed (SECOND_REVIEW.md item 6) — see backend questionnaire module.
+  criteria: number;
 }
 
 export interface QuestionDto {
@@ -37,7 +39,6 @@ export interface QuestionDto {
   weight: number;
   // false only for the Intent question — excluded from the E2E Automation Ratio Checklist.
   includeInE2ECheck: boolean;
-  // Criteria numbers are intentionally omitted — see backend questionnaire module.
   options: QuestionOptionDto[];
 }
 

@@ -24,13 +24,17 @@ export function QuestionCard({
   return (
     <fieldset style={{ marginBottom: '1.5rem', padding: '1rem' }}>
       <legend>
-        <strong>{question.serviceCapability}</strong> ({question.cognitiveActivity})
+        <strong>{question.serviceCapability}</strong> ({question.cognitiveActivity}) — weight{' '}
+        {(question.weight * 100).toFixed(0)}%
       </legend>
       <p style={{ whiteSpace: 'pre-wrap' }}>{question.questionText}</p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginBottom: '1rem' }}>
         {question.options.map((opt) => (
           <div key={opt.option}>
-            <strong>{opt.option}.</strong> <span style={{ whiteSpace: 'pre-wrap' }}>{opt.text}</span>
+            <strong>
+              {opt.option} ({opt.criteria}).
+            </strong>{' '}
+            <span style={{ whiteSpace: 'pre-wrap' }}>{opt.text}</span>
           </div>
         ))}
       </div>
@@ -39,6 +43,7 @@ export function QuestionCard({
         <thead>
           <tr>
             <th style={cellStyle}>Sub-scenario</th>
+            <th style={cellStyle}>Weight</th>
             <th style={cellStyle}>Answer</th>
           </tr>
         </thead>
@@ -46,6 +51,7 @@ export function QuestionCard({
           {subScenarios.map((s) => (
             <tr key={s.id}>
               <td style={cellStyle}>{s.name}</td>
+              <td style={cellStyle}>{(s.faultDistributionWeight * 100).toFixed(0)}%</td>
               <td style={cellStyle}>
                 <select
                   value={answers.get(s.id) ?? ''}
@@ -54,7 +60,7 @@ export function QuestionCard({
                   <option value="">— Not answered —</option>
                   {question.options.map((opt) => (
                     <option key={opt.option} value={opt.option}>
-                      {opt.option}
+                      {opt.option} ({opt.criteria})
                     </option>
                   ))}
                 </select>
