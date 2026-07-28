@@ -217,6 +217,12 @@ export function QuestionnairePage() {
       <button type="button" onClick={() => navigate('/domains')}>
         ← All assessments
       </button>
+      {questionnaire.guidelineText && (
+        <details style={{ margin: '1rem 0', border: '1px solid #ddd', borderRadius: 4, padding: '0.5rem 0.75rem' }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>Guideline</summary>
+          <p style={{ whiteSpace: 'pre-wrap', fontSize: '0.9em' }}>{questionnaire.guidelineText}</p>
+        </details>
+      )}
       <p>
         {answeredCount} / {totalRequired} answered
         {totalUnanswered - uncovered.length > 0 &&

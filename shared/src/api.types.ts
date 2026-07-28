@@ -40,6 +40,9 @@ export interface QuestionDto {
   // false only for the Intent question — excluded from the E2E Automation Ratio Checklist.
   includeInE2ECheck: boolean;
   options: QuestionOptionDto[];
+  // Per-question guidance from the source xlsx's Guideline sheet — only populated for RAN
+  // FM questions today (see CLAUDE.md). Shown as a collapsible section on the question card.
+  answeringGuideline: string | null;
 }
 
 export interface QuestionnaireDto {
@@ -49,6 +52,9 @@ export interface QuestionnaireDto {
   networkType: string;
   hvsCategory: string;
   hasE2ECheck: boolean;
+  // Questionnaire-level context from the source xlsx's Guideline sheet. Shown as a
+  // collapsible section above the question flow.
+  guidelineText: string | null;
   subScenarios: SubScenarioDto[];
   questions: QuestionDto[];
 }

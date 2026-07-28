@@ -46,4 +46,24 @@ describe('parseRanFmXlsx', () => {
     const byCapability = Object.fromEntries(parsed.questions.map((q) => [q.serviceCapability, q]));
     expect(byCapability['Fault Prediction']?.cognitiveActivity).toBe('Awareness');
   });
+
+  it('extracts questionnaire-level guideline text from the Guideline sheet (Introduction + Sub-scenarios)', () => {
+    expect(parsed.guidelineText).toContain('I. Introduction');
+    expect(parsed.guidelineText).toContain(
+      'The scope of this questionnaire is to assess RAN Fault Management scenario',
+    );
+    expect(parsed.guidelineText).toContain('II. Sub-scenarios');
+    expect(parsed.guidelineText).toContain('Sub-scenario-1:Equipment');
+  });
+
+  it('extracts a per-question Answering Guideline for every question, in question order', () => {
+    expect(parsed.questions.every((q) => !!q.answeringGuideline)).toBe(true);
+    const byCapability = Object.fromEntries(parsed.questions.map((q) => [q.serviceCapability, q]));
+    expect(byCapability['Intent-driven']?.answeringGuideline).toContain(
+      'The role of intent in autonomous networks',
+    );
+    expect(byCapability['Solution implementation']?.answeringGuideline).toContain(
+      'System automatically executes remote solution',
+    );
+  });
 });

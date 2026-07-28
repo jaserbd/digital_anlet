@@ -26,6 +26,26 @@ function readSheetRows(workbook: XLSX.WorkBook, sheetName: string): unknown[][] 
   return XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
 }
 
+// The Guideline sheet's numbered Introduction (rows 1-9, column A, 0-based indices 0-8)
+// covers both Core questionnaires — CORE_FM.xlsx has one Guideline sheet shared by Fault
+// Management and Stability (see CLAUDE.md). Unlike RAN_FM.xlsx, there's no per-question
+// "Answering Guideline" column here, so Core questions leave ParsedQuestion.answeringGuideline
+// null rather than fabricating one (SECOND_REVIEW.md item 4).
+const GUIDELINE_INTRO_ROWS: [number, number] = [0, 8];
+const GUIDELINE_TEXT_COLUMN = 0; // column A
+
+function extractCoreGuidelineText(workbook: XLSX.WorkBook): string | null {
+  const sheet = workbook.Sheets['Guideline'];
+  if (!sheet) return null;
+  const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+  const lines: string[] = [];
+  for (let row = GUIDELINE_INTRO_ROWS[0]; row <= GUIDELINE_INTRO_ROWS[1]; row++) {
+    const cell = rows[row]?.[GUIDELINE_TEXT_COLUMN] as string | null;
+    if (cell?.trim()) lines.push(cell.trim());
+  }
+  return lines.length > 0 ? lines.join('\n\n') : null;
+}
+
 // --- Core Network Fault Management --------------------------------------------------
 
 // Row5 (1-based) is a non-functional placeholder: Category "Intent", weight 0, question
@@ -94,6 +114,7 @@ export function parseCoreFaultManagementXlsx(xlsxPath?: string): ParsedQuestionn
       complianceWithStandards: null, // this sheet has no separate Y/N compliance column
       standardSource: (qRow[9] as string | null)?.trim() ?? null,
       includeInE2ECheck: true, // Intent (the only exclusion) isn't seeded as a question at all
+      answeringGuideline: null, // no per-question guidance in CORE_FM.xlsx's Guideline sheet
     });
   }
 
@@ -103,6 +124,7 @@ export function parseCoreFaultManagementXlsx(xlsxPath?: string): ParsedQuestionn
     networkType: 'Core',
     hvsCategory: 'Fault Management',
     hasE2ECheck: true,
+    guidelineText: extractCoreGuidelineText(workbook),
     subScenarios,
     questions,
   };
@@ -152,6 +174,7 @@ export function parseCoreStabilityXlsx(xlsxPath?: string): ParsedQuestionnaire {
       complianceWithStandards: null,
       standardSource: (qRow[9] as string | null)?.trim() ?? null,
       includeInE2ECheck: true, // irrelevant: this questionnaire has hasE2ECheck=false
+      answeringGuideline: null, // no per-question guidance in CORE_FM.xlsx's Guideline sheet
     });
   }
 
@@ -165,6 +188,7 @@ export function parseCoreStabilityXlsx(xlsxPath?: string): ParsedQuestionnaire {
     networkType: 'Core',
     hvsCategory: 'Stability',
     hasE2ECheck: false,
+    guidelineText: extractCoreGuidelineText(workbook),
     subScenarios,
     questions,
   };

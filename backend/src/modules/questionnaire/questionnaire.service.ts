@@ -55,6 +55,7 @@ export async function getQuestionnaireByCode(code: string): Promise<Questionnair
       weight: Number(q.weight),
       includeInE2ECheck: q.includeInE2ECheck,
       options,
+      answeringGuideline: q.answeringGuideline,
     };
   });
 
@@ -65,6 +66,7 @@ export async function getQuestionnaireByCode(code: string): Promise<Questionnair
     networkType: questionnaire.networkType,
     hvsCategory: questionnaire.hvsCategory,
     hasE2ECheck: questionnaire.hasE2ECheck,
+    guidelineText: questionnaire.guidelineText,
     subScenarios: questionnaire.subScenarios.map((s) => ({
       id: s.id,
       code: s.code,

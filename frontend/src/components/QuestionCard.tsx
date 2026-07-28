@@ -28,6 +28,12 @@ export function QuestionCard({
         {(question.weight * 100).toFixed(0)}%
       </legend>
       <p style={{ whiteSpace: 'pre-wrap' }}>{question.questionText}</p>
+      {question.answeringGuideline && (
+        <details style={{ margin: '0 0 1rem', border: '1px solid #ddd', borderRadius: 4, padding: '0.4rem 0.6rem' }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>Guideline for this question</summary>
+          <p style={{ whiteSpace: 'pre-wrap', fontSize: '0.9em' }}>{question.answeringGuideline}</p>
+        </details>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginBottom: '1rem' }}>
         {question.options.map((opt) => (
           <div key={opt.option}>

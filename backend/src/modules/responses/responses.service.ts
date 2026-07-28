@@ -214,7 +214,10 @@ export async function submitResponse(responseId: string, userId: string): Promis
 
   const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
     where: { id: response.questionnaireId },
-    include: { questions: true, subScenarios: true },
+    include: {
+      questions: { orderBy: { sortOrder: 'asc' } },
+      subScenarios: { orderBy: { sortOrder: 'asc' } },
+    },
   });
 
   const answeredKeys = new Set(response.answers.map((a) => `${a.questionId}:${a.subScenarioId}`));
@@ -312,8 +315,16 @@ export async function getResult(responseId: string, userId: string): Promise<Sco
   const result = await prisma.scoreResult.findUnique({
     where: { responseId },
     include: {
-      subScenarioScores: { include: { subScenario: true } },
-      questionScores: true,
+      subScenarioScores: {
+        include: { subScenario: true },
+        orderBy: { subScenario: { sortOrder: 'asc' } },
+      },
+      // Ordered to match computeScoreResult's emission order (subScenario-outer,
+      // question-inner) — Postgres doesn't otherwise guarantee row order on read, and this
+      // DTO is compared for exact equality against the freshly-computed result in tests.
+      questionScores: {
+        orderBy: [{ subScenario: { sortOrder: 'asc' } }, { question: { sortOrder: 'asc' } }],
+      },
     },
   });
   if (!result) {

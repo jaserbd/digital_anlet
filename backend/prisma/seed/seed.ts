@@ -37,6 +37,7 @@ async function seedQuestionnaire(parsed: ParsedQuestionnaire) {
       networkType: parsed.networkType,
       hvsCategory: parsed.hvsCategory,
       hasE2ECheck: parsed.hasE2ECheck,
+      guidelineText: parsed.guidelineText,
     },
     create: {
       code: parsed.code,
@@ -44,6 +45,7 @@ async function seedQuestionnaire(parsed: ParsedQuestionnaire) {
       networkType: parsed.networkType,
       hvsCategory: parsed.hvsCategory,
       hasE2ECheck: parsed.hasE2ECheck,
+      guidelineText: parsed.guidelineText,
     },
   });
 
@@ -86,6 +88,7 @@ async function seedQuestionnaire(parsed: ParsedQuestionnaire) {
         optionCCriteria: q.optionCriteria.C ?? null,
         optionDCriteria: q.optionCriteria.D ?? null,
         includeInE2ECheck: q.includeInE2ECheck,
+        answeringGuideline: q.answeringGuideline,
         complianceWithStandards: q.complianceWithStandards,
         standardSource: q.standardSource,
       },
@@ -105,6 +108,7 @@ async function seedQuestionnaire(parsed: ParsedQuestionnaire) {
         optionCCriteria: q.optionCriteria.C ?? null,
         optionDCriteria: q.optionCriteria.D ?? null,
         includeInE2ECheck: q.includeInE2ECheck,
+        answeringGuideline: q.answeringGuideline,
         complianceWithStandards: q.complianceWithStandards,
         standardSource: q.standardSource,
       },

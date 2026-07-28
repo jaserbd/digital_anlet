@@ -52,6 +52,13 @@ describe('parseCoreFaultManagementXlsx', () => {
   it('has hasE2ECheck true', () => {
     expect(parsed.hasE2ECheck).toBe(true);
   });
+
+  it('extracts questionnaire-level guideline text from the Guideline sheet, with no per-question guidance', () => {
+    expect(parsed.guidelineText).toContain(
+      'The assessment is questionnaire-based and it is used to evaluate the Autonomous Networks (AN) level',
+    );
+    expect(parsed.questions.every((q) => q.answeringGuideline === null)).toBe(true);
+  });
 });
 
 describe('parseCoreStabilityXlsx', () => {
@@ -79,5 +86,12 @@ describe('parseCoreStabilityXlsx', () => {
 
   it('has hasE2ECheck false (no sub-scenarios, no E2E checklist sheet exists for Stability)', () => {
     expect(parsed.hasE2ECheck).toBe(false);
+  });
+
+  it('shares the same guideline text as Core Fault Management (one Guideline sheet covers both)', () => {
+    expect(parsed.guidelineText).toContain(
+      'The assessment is questionnaire-based and it is used to evaluate the Autonomous Networks (AN) level',
+    );
+    expect(parsed.questions.every((q) => q.answeringGuideline === null)).toBe(true);
   });
 });
