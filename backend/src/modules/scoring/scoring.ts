@@ -41,6 +41,16 @@ function topScoreOf(question: ScoringQuestionInput): number {
  * ceiling (the highest top score across all questions), it is compensated up to the
  * average of the other questions whose top score *is* the ceiling — if that average is
  * higher. This is a general per-question rule, not a fixed list of "anchor" questions.
+ *
+ * Skipped answers: a (question, subScenario) pair with no answer is excluded from that
+ * sub-scenario's weighted average, and the remaining answered questions' weights are
+ * re-normalized (divided by their own weight sum, not the full questionnaire's) so the
+ * sub-scenario score stays meaningful despite the gap — callers (responses.service.ts)
+ * are responsible for ensuring every skip is covered by a comment before calling this.
+ * If every question in a sub-scenario is skipped, its overallScore is null and it is
+ * excluded from the final-score weighted average the same way. Compensation only
+ * considers *answered* anchor questions — if none are answered, compensation doesn't
+ * apply for that sub-scenario.
  */
 export function computeScoreResult(params: ComputeScoreParams): ScoreResultDto {
   const { questions, subScenarios, answers } = params;
@@ -56,11 +66,7 @@ export function computeScoreResult(params: ComputeScoreParams): ScoreResultDto {
 
     for (const question of questions) {
       const selected = answerByKey.get(`${question.id}:${subScenario.id}`);
-      if (!selected) {
-        throw new Error(
-          `Missing answer for question ${question.id} in sub-scenario ${subScenario.id}`,
-        );
-      }
+      if (!selected) continue; // skipped — excluded below, weights re-normalized
       const originalScore = question.optionCriteria[selected];
       if (originalScore == null) {
         throw new Error(`Question ${question.id} has no criteria for option ${selected}`);
@@ -69,18 +75,29 @@ export function computeScoreResult(params: ComputeScoreParams): ScoreResultDto {
       selectedOptions.set(question.id, selected);
     }
 
-    const anchorQuestions = questions.filter((q) => topScoreOf(q) === ceiling);
-    const anchorAverage =
-      anchorQuestions.reduce((sum, q) => sum + originalScores.get(q.id)!, 0) /
-      anchorQuestions.length;
+    const answeredQuestions = questions.filter((q) => originalScores.has(q.id));
+    const answeredWeightSum = answeredQuestions.reduce((sum, q) => sum + q.weight, 0);
 
-    let overallScore = 0;
-    for (const question of questions) {
-      const own = topScoreOf(question);
-      const original = originalScores.get(question.id)!;
-      const compensated =
-        own < ceiling && original === own && anchorAverage > own ? anchorAverage : original;
-      overallScore += compensated * question.weight;
+    let overallScore: number | null = null;
+    if (answeredWeightSum > 0) {
+      const anchorQuestions = answeredQuestions.filter((q) => topScoreOf(q) === ceiling);
+      const anchorAverage =
+        anchorQuestions.length > 0
+          ? anchorQuestions.reduce((sum, q) => sum + originalScores.get(q.id)!, 0) /
+            anchorQuestions.length
+          : null;
+
+      let weightedSum = 0;
+      for (const question of answeredQuestions) {
+        const own = topScoreOf(question);
+        const original = originalScores.get(question.id)!;
+        const compensated =
+          own < ceiling && original === own && anchorAverage != null && anchorAverage > own
+            ? anchorAverage
+            : original;
+        weightedSum += compensated * question.weight;
+      }
+      overallScore = round4(weightedSum / answeredWeightSum);
     }
 
     const e2eAchieved = questions
@@ -89,17 +106,25 @@ export function computeScoreResult(params: ComputeScoreParams): ScoreResultDto {
 
     return {
       subScenarioCode: subScenario.code,
-      overallScore: round4(overallScore),
+      overallScore,
       e2eAchieved,
     };
   });
 
-  const weightSum = subScenarios.reduce((sum, s) => sum + s.faultDistributionWeight, 0);
+  const scoredSubScenarios = subScenarios
+    .map((s, i) => ({ subScenario: s, score: subScenarioScores[i]! }))
+    .filter((x) => x.score.overallScore != null);
+  const weightSum = scoredSubScenarios.reduce(
+    (sum, x) => sum + x.subScenario.faultDistributionWeight,
+    0,
+  );
   const finalScore =
-    subScenarios.reduce((sum, s, i) => {
-      const score = subScenarioScores[i];
-      return score ? sum + score.overallScore * s.faultDistributionWeight : sum;
-    }, 0) / weightSum;
+    weightSum > 0
+      ? scoredSubScenarios.reduce(
+          (sum, x) => sum + x.score.overallScore! * x.subScenario.faultDistributionWeight,
+          0,
+        ) / weightSum
+      : 0;
 
   const e2eAutomationRate = subScenarios.reduce((sum, s, i) => {
     const score = subScenarioScores[i];

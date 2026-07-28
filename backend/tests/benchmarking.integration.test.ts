@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma';
-import { getBenchmarkingSummary } from '../src/modules/insights/insights.service';
+import { getBenchmarkingSummary, getOpCoBenchmarkingSummary } from '../src/modules/insights/insights.service';
 import { getOrCreateResponse, submitResponse, upsertAnswer } from '../src/modules/responses/responses.service';
 
 // Integration test against the real local Postgres. Requires the seed to have already run
@@ -116,5 +116,70 @@ describe('getBenchmarkingSummary (real DB)', () => {
       averageE2eAutomationRate: null,
     });
     expect(orgB?.subScenarioAverages.every((s) => s.averageScore === null)).toBe(true);
+  });
+});
+
+describe('getBenchmarkingSummary groupBy="country" and getOpCoBenchmarkingSummary (real DB)', () => {
+  // Country grouping is intentionally global across all organizations (an Admin benchmarks
+  // countries cross-org), so these use unique, unmistakably-test-only country names —
+  // real country names could collide with data seeded by other tests or manual QA.
+  const COUNTRY_A = '__integration-test-country-a__';
+  const COUNTRY_B = '__integration-test-country-b__';
+  const OPCO_KENYA_NAME = '__integration-test-opco-kenya__';
+  const OPCO_NIGERIA_NAME = '__integration-test-opco-nigeria__';
+  let opCoKenyaId: string;
+  let opCoNigeriaId: string;
+
+  beforeAll(async () => {
+    opCoKenyaId = (
+      await prisma.opCo.create({ data: { name: OPCO_KENYA_NAME, country: COUNTRY_A, organizationId: orgAId } })
+    ).id;
+    opCoNigeriaId = (
+      await prisma.opCo.create({ data: { name: OPCO_NIGERIA_NAME, country: COUNTRY_B, organizationId: orgAId } })
+    ).id;
+
+    const kenyaUser = await createUser(orgAId, 'opco-kenya');
+    const nigeriaUser = await createUser(orgAId, 'opco-nigeria');
+    await prisma.user.update({ where: { id: kenyaUser }, data: { opCoId: opCoKenyaId } });
+    await prisma.user.update({ where: { id: nigeriaUser }, data: { opCoId: opCoNigeriaId } });
+
+    await submitAllA(kenyaUser); // final score 4
+    await submitGoldenMasterPattern(nigeriaUser); // final score 3.9145
+  });
+
+  afterAll(async () => {
+    await prisma.opCo.deleteMany({ where: { id: { in: [opCoKenyaId, opCoNigeriaId] } } });
+  });
+
+  it('groups the cross-org benchmarking summary by OpCo.country when groupBy="country"', async () => {
+    const summary = await getBenchmarkingSummary('RAN_FM_GB1059A', 'country');
+    expect(summary.groupBy).toBe('country');
+    const byCountry = Object.fromEntries(summary.organizations.map((o) => [o.organizationName, o]));
+
+    expect(byCountry[COUNTRY_A]).toMatchObject({ respondentCount: 1, submittedCount: 1, averageFinalScore: 4 });
+    expect(byCountry[COUNTRY_B]).toMatchObject({
+      respondentCount: 1,
+      submittedCount: 1,
+      averageFinalScore: 3.9145,
+    });
+  });
+
+  it('benchmarks OpCos within one organization', async () => {
+    const summary = await getOpCoBenchmarkingSummary(orgAId, 'RAN_FM_GB1059A');
+    expect(summary.organizationId).toBe(orgAId);
+    const byName = Object.fromEntries(summary.opCos.map((o) => [o.opCoName, o]));
+
+    expect(byName[OPCO_KENYA_NAME]).toMatchObject({
+      country: COUNTRY_A,
+      respondentCount: 1,
+      submittedCount: 1,
+      averageFinalScore: 4,
+    });
+    expect(byName[OPCO_NIGERIA_NAME]).toMatchObject({
+      country: COUNTRY_B,
+      respondentCount: 1,
+      submittedCount: 1,
+      averageFinalScore: 3.9145,
+    });
   });
 });

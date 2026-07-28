@@ -1,4 +1,11 @@
-import type { AnswerOption, CoreDomainSummaryDto, ResponseDto, ScoreResultDto } from '@anlet/shared';
+import type {
+  AnswerOption,
+  CoreDomainSummaryDto,
+  QuestionCommentDto,
+  ResponseDto,
+  ScoreResultDto,
+  UncoveredSkipDto,
+} from '@anlet/shared';
 import { prisma } from '../../lib/prisma';
 import { round4 } from '../../lib/rounding';
 import {
@@ -15,14 +22,39 @@ const CORE_STABILITY_CODE = 'CORE_STABILITY_GB1059B';
 export class ResponseNotFoundError extends Error {}
 export class ForbiddenError extends Error {}
 export class ResponseAlreadySubmittedError extends Error {}
-export class IncompleteResponseError extends Error {}
 export class ResultNotAvailableError extends Error {}
+
+// Thrown at submit time when one or more skipped (question, subScenario) answers have no
+// covering comment — carries the specific list so the frontend can show exactly what's
+// missing (mirrors the client-side warning computed from the same data).
+export class UncoveredSkipError extends Error {
+  constructor(public readonly missing: UncoveredSkipDto[]) {
+    super(`${missing.length} skipped answer(s) are missing a covering comment`);
+  }
+}
+
+type CommentWithTags = {
+  questionId: string;
+  commentText: string;
+  appliesToNone: boolean;
+  subScenarios: { subScenarioId: string }[];
+};
+
+function toCommentDto(comment: CommentWithTags): QuestionCommentDto {
+  return {
+    questionId: comment.questionId,
+    commentText: comment.commentText,
+    appliesToNone: comment.appliesToNone,
+    subScenarioIds: comment.subScenarios.map((s) => s.subScenarioId),
+  };
+}
 
 function toResponseDto(response: {
   id: string;
   status: 'IN_PROGRESS' | 'SUBMITTED';
   questionnaire: { code: string };
   answers: { questionId: string; subScenarioId: string; selectedOption: AnswerOption }[];
+  comments: CommentWithTags[];
 }): ResponseDto {
   return {
     id: response.id,
@@ -33,13 +65,20 @@ function toResponseDto(response: {
       subScenarioId: a.subScenarioId,
       selectedOption: a.selectedOption,
     })),
+    comments: response.comments.map(toCommentDto),
   };
 }
+
+const RESPONSE_INCLUDE = {
+  questionnaire: true,
+  answers: true,
+  comments: { include: { subScenarios: true } },
+} as const;
 
 async function loadOwnedResponse(responseId: string, userId: string) {
   const response = await prisma.questionnaireResponse.findUnique({
     where: { id: responseId },
-    include: { questionnaire: true, answers: true },
+    include: RESPONSE_INCLUDE,
   });
   if (!response) {
     throw new ResponseNotFoundError();
@@ -71,7 +110,7 @@ export async function getOrCreateResponse(
   const existing = await prisma.questionnaireResponse.findFirst({
     where: { userId, questionnaireId: questionnaire.id },
     orderBy: { createdAt: 'desc' },
-    include: { questionnaire: true, answers: true },
+    include: RESPONSE_INCLUDE,
   });
   if (existing) {
     return toResponseDto(existing);
@@ -79,7 +118,7 @@ export async function getOrCreateResponse(
 
   const created = await prisma.questionnaireResponse.create({
     data: { userId, questionnaireId: questionnaire.id },
-    include: { questionnaire: true, answers: true },
+    include: RESPONSE_INCLUDE,
   });
   return toResponseDto(created);
 }
@@ -112,6 +151,59 @@ export async function upsertAnswer(
   });
 }
 
+// Un-answers a (question, subScenario) cell — lets a user who already picked an option
+// revert to "skipped" (see QuestionCard.tsx's "not answered" dropdown option). A no-op if
+// the cell was never answered.
+export async function deleteAnswer(
+  responseId: string,
+  userId: string,
+  input: { questionId: string; subScenarioId: string },
+): Promise<void> {
+  const response = await loadOwnedResponse(responseId, userId);
+  if (response.status !== 'IN_PROGRESS') {
+    throw new ResponseAlreadySubmittedError();
+  }
+
+  await prisma.answer.deleteMany({
+    where: { responseId, questionId: input.questionId, subScenarioId: input.subScenarioId },
+  });
+}
+
+export async function upsertComment(
+  responseId: string,
+  userId: string,
+  input: {
+    questionId: string;
+    commentText: string;
+    subScenarioIds: string[];
+    appliesToNone: boolean;
+  },
+): Promise<void> {
+  const response = await loadOwnedResponse(responseId, userId);
+  if (response.status !== 'IN_PROGRESS') {
+    throw new ResponseAlreadySubmittedError();
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const comment = await tx.questionComment.upsert({
+      where: { responseId_questionId: { responseId, questionId: input.questionId } },
+      update: { commentText: input.commentText, appliesToNone: input.appliesToNone },
+      create: {
+        responseId,
+        questionId: input.questionId,
+        commentText: input.commentText,
+        appliesToNone: input.appliesToNone,
+      },
+    });
+    await tx.questionCommentSubScenario.deleteMany({ where: { commentId: comment.id } });
+    if (input.subScenarioIds.length > 0) {
+      await tx.questionCommentSubScenario.createMany({
+        data: input.subScenarioIds.map((subScenarioId) => ({ commentId: comment.id, subScenarioId })),
+      });
+    }
+  });
+}
+
 export async function submitResponse(responseId: string, userId: string): Promise<ScoreResultDto> {
   const response = await loadOwnedResponse(responseId, userId);
   if (response.status !== 'IN_PROGRESS') {
@@ -123,9 +215,28 @@ export async function submitResponse(responseId: string, userId: string): Promis
     include: { questions: true, subScenarios: true },
   });
 
-  const expectedAnswerCount = questionnaire.questions.length * questionnaire.subScenarios.length;
-  if (response.answers.length < expectedAnswerCount) {
-    throw new IncompleteResponseError();
+  const answeredKeys = new Set(response.answers.map((a) => `${a.questionId}:${a.subScenarioId}`));
+  const commentCoverage = new Map<string, { appliesToNone: boolean; subScenarioIds: Set<string> }>();
+  for (const comment of response.comments) {
+    commentCoverage.set(comment.questionId, {
+      appliesToNone: comment.appliesToNone,
+      subScenarioIds: new Set(comment.subScenarios.map((s) => s.subScenarioId)),
+    });
+  }
+
+  const uncovered: UncoveredSkipDto[] = [];
+  for (const question of questionnaire.questions) {
+    for (const subScenario of questionnaire.subScenarios) {
+      if (answeredKeys.has(`${question.id}:${subScenario.id}`)) continue;
+      const coverage = commentCoverage.get(question.id);
+      const covered = coverage?.appliesToNone || coverage?.subScenarioIds.has(subScenario.id);
+      if (!covered) {
+        uncovered.push({ questionId: question.id, subScenarioId: subScenario.id });
+      }
+    }
+  }
+  if (uncovered.length > 0) {
+    throw new UncoveredSkipError(uncovered);
   }
 
   const questions: ScoringQuestionInput[] = questionnaire.questions.map((q) => ({
@@ -201,7 +312,7 @@ export async function getResult(responseId: string, userId: string): Promise<Sco
     e2eAutomationRate: Number(result.e2eAutomationRate),
     subScenarioScores: result.subScenarioScores.map((s) => ({
       subScenarioCode: s.subScenario.code,
-      overallScore: Number(s.overallScore),
+      overallScore: s.overallScore != null ? Number(s.overallScore) : null,
       e2eAchieved: s.e2eAchieved,
     })),
   };
@@ -225,7 +336,7 @@ async function getLatestSubmittedResultByCode(
     e2eAutomationRate: Number(response.result.e2eAutomationRate),
     subScenarioScores: response.result.subScenarioScores.map((s) => ({
       subScenarioCode: s.subScenario.code,
-      overallScore: Number(s.overallScore),
+      overallScore: s.overallScore != null ? Number(s.overallScore) : null,
       e2eAchieved: s.e2eAchieved,
     })),
   };

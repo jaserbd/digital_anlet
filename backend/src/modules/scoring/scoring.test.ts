@@ -323,3 +323,67 @@ describe('computeScoreResult — Core Network Stability (verified data, no compe
     expect(result.finalScore).toBe(3.8);
   });
 });
+
+describe('computeScoreResult — skipped answers (re-normalization)', () => {
+  // Same 3-question shape as the compensation-rule fixture above: two anchors (top=4),
+  // one capped question (top=3), all equal weight (1/3).
+  const questions: ScoringQuestionInput[] = [
+    { id: 'anchor-1', weight: 1 / 3, optionCriteria: { A: 4, B: 0 }, includeInE2ECheck: true },
+    { id: 'anchor-2', weight: 1 / 3, optionCriteria: { A: 4, B: 0 }, includeInE2ECheck: true },
+    { id: 'capped', weight: 1 / 3, optionCriteria: { A: 3, B: 0 }, includeInE2ECheck: true },
+  ];
+
+  it('excludes a skipped question and re-normalizes the remaining weights, instead of scoring it 0', () => {
+    const subScenarios: ScoringSubScenarioInput[] = [
+      { id: 's1', code: 'EQUIPMENT', faultDistributionWeight: 1 },
+    ];
+    const result = computeScoreResult({
+      questions,
+      subScenarios,
+      answers: [
+        { questionId: 'anchor-1', subScenarioId: 's1', selectedOption: 'A' }, // 4
+        { questionId: 'anchor-2', subScenarioId: 's1', selectedOption: 'B' }, // 0
+        // 'capped' has no answer at all — skipped, not scored as 0.
+      ],
+    });
+    // Re-normalized average of the two answered questions only: (4+0)/2 = 2. If the skip
+    // had instead been scored as 0, the result would be (4+0+0)/3 = 1.3333 — different.
+    expect(result.subScenarioScores[0]?.overallScore).toBe(2);
+    expect(result.finalScore).toBe(2);
+  });
+
+  it('sets overallScore to null when every question in a sub-scenario is skipped, and excludes it from the final score', () => {
+    const subScenarios: ScoringSubScenarioInput[] = [
+      { id: 's1-empty', code: 'EQUIPMENT', faultDistributionWeight: 0.6 },
+      { id: 's2-full', code: 'PROCESSING_ERROR', faultDistributionWeight: 0.4 },
+    ];
+    const result = computeScoreResult({
+      questions,
+      subScenarios,
+      answers: [
+        // s1-empty: no answers at all.
+        { questionId: 'anchor-1', subScenarioId: 's2-full', selectedOption: 'A' },
+        { questionId: 'anchor-2', subScenarioId: 's2-full', selectedOption: 'A' },
+        { questionId: 'capped', subScenarioId: 's2-full', selectedOption: 'A' }, // compensates to 4
+      ],
+    });
+    const s1 = result.subScenarioScores.find((s) => s.subScenarioCode === 'EQUIPMENT');
+    const s2 = result.subScenarioScores.find((s) => s.subScenarioCode === 'PROCESSING_ERROR');
+    expect(s1?.overallScore).toBeNull();
+    expect(s1?.e2eAchieved).toBe(false);
+    expect(s2?.overallScore).toBe(4);
+    // Final score is the weighted average of only the scored sub-scenario (s2), re-normalized
+    // by its own weight (0.4), not diluted by the empty s1: (4*0.4)/0.4 = 4.
+    expect(result.finalScore).toBe(4);
+  });
+
+  it('falls back to a final score of 0 without throwing when every sub-scenario is entirely skipped', () => {
+    const subScenarios: ScoringSubScenarioInput[] = [
+      { id: 's1', code: 'EQUIPMENT', faultDistributionWeight: 1 },
+    ];
+    const result = computeScoreResult({ questions, subScenarios, answers: [] });
+    expect(result.subScenarioScores[0]?.overallScore).toBeNull();
+    expect(result.finalScore).toBe(0);
+    expect(result.e2eAutomationRate).toBe(0);
+  });
+});

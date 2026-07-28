@@ -48,7 +48,13 @@ export function E2EChecklistTable({
                 const selected = answerByKey.get(`${q.id}:${s.id}`);
                 return (
                   <td key={s.id} style={{ ...cellStyle, textAlign: 'center' }}>
-                    {selected === 'A' ? 'S' : 'P'}
+                    {selected === 'A' ? (
+                      'S'
+                    ) : selected ? (
+                      'P'
+                    ) : (
+                      <span style={{ color: '#999' }}>–</span>
+                    )}
                   </td>
                 );
               })}
@@ -67,7 +73,7 @@ export function E2EChecklistTable({
         </tbody>
       </table>
       <p style={{ fontSize: '0.85em', color: '#666' }}>
-        S = System, P = People.
+        S = System, P = People, – = skipped (counts as not-System for the E2E determination).
         {hasExcludedQuestion &&
           ' * Excluded from the end-to-end automation determination (Intent is assessed separately).'}
       </p>

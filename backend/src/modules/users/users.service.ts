@@ -4,6 +4,8 @@ import { hashPassword } from '../../lib/password';
 
 export class EmailTakenError extends Error {}
 export class OrganizationNotFoundError extends Error {}
+export class UserNotFoundError extends Error {}
+export class OpCoNotInOrganizationError extends Error {}
 
 export interface CreateUserInput {
   email: string;
@@ -44,6 +46,38 @@ export async function createUser(input: CreateUserInput) {
       organizationId: true,
       firstName: true,
       lastName: true,
+      opCoId: true,
+      workingDomain: true,
+      designation: true,
+    },
+  });
+}
+
+/**
+ * Self-service profile completion (see ProfilePage.tsx) — a NORMAL_USER picks their OpCo
+ * (which encodes Country + Company) from a dropdown scoped to their own Organization, plus
+ * free-text Working Domain and Designation. Not an Admin action.
+ */
+export async function updateOwnProfile(
+  userId: string,
+  input: { opCoId: string; workingDomain: string; designation: string },
+): Promise<void> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    throw new UserNotFoundError();
+  }
+
+  const opCo = await prisma.opCo.findUnique({ where: { id: input.opCoId } });
+  if (!opCo || opCo.organizationId !== user.organizationId) {
+    throw new OpCoNotInOrganizationError();
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      opCoId: input.opCoId,
+      workingDomain: input.workingDomain,
+      designation: input.designation,
     },
   });
 }

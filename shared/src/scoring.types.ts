@@ -2,7 +2,9 @@ import type { SubScenarioCode } from './enums';
 
 export interface SubScenarioScore {
   subScenarioCode: SubScenarioCode;
-  overallScore: number;
+  // Null only when every question in this sub-scenario was skipped (no answer, covered by
+  // a comment) — excluded from the final-score weighted average in that case.
+  overallScore: number | null;
   e2eAchieved: boolean;
 }
 

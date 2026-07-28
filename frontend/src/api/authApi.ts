@@ -6,4 +6,6 @@ export const authApi = {
     apiClient.post<void>('/auth/login', { email, password }),
   logout: () => apiClient.post<void>('/auth/logout'),
   me: () => apiClient.get<AuthenticatedUserDto>('/auth/me'),
+  updateProfile: (input: { opCoId: string; workingDomain: string; designation: string }) =>
+    apiClient.put<void>('/auth/profile', input),
 };

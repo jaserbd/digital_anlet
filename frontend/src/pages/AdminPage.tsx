@@ -1,14 +1,14 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Role } from '@anlet/shared';
+import type { BenchmarkingGroupBy, Role } from '@anlet/shared';
 import { organizationsApi } from '../api/organizationsApi';
+import { opCoApi } from '../api/opCoApi';
 import { usersApi } from '../api/usersApi';
 import { insightsApi } from '../api/insightsApi';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { ApiError } from '../api/client';
 import { LogoutButton } from '../components/LogoutButton';
-
-const QUESTIONNAIRE_CODE = 'RAN_FM_GB1059A';
+import { ScoreBar } from '../components/ScoreBar';
 
 export function AdminPage() {
   return (
@@ -18,6 +18,8 @@ export function AdminPage() {
         <LogoutButton />
       </div>
       <CreateOrganizationForm />
+      <hr style={{ margin: '2rem 0' }} />
+      <CreateOpCoForm />
       <hr style={{ margin: '2rem 0' }} />
       <CreateUserForm />
       <hr style={{ margin: '2rem 0' }} />
@@ -62,6 +64,89 @@ function CreateOrganizationForm() {
         />
         <button type="submit" disabled={createOrg.isPending}>
           {createOrg.isPending ? 'Creating…' : 'Create'}
+        </button>
+      </form>
+      {message && (
+        <p style={{ color: message.kind === 'error' ? 'crimson' : 'green' }}>{message.text}</p>
+      )}
+    </section>
+  );
+}
+
+function CreateOpCoForm() {
+  const queryClient = useQueryClient();
+  const orgsQuery = useQuery({ queryKey: ['organizations'], queryFn: organizationsApi.list });
+
+  const [organizationId, setOrganizationId] = useState('');
+  const [name, setName] = useState('');
+  const [country, setCountry] = useState('');
+  const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+
+  const createOpCo = useMutation({
+    mutationFn: () => opCoApi.create({ name, country, organizationId }),
+    onSuccess: (opCo) => {
+      setMessage({ kind: 'success', text: `Created OpCo "${opCo.name}" (${opCo.country})` });
+      setName('');
+      setCountry('');
+      void queryClient.invalidateQueries({ queryKey: ['opcos', organizationId] });
+    },
+    onError: (err) => {
+      setMessage({ kind: 'error', text: err instanceof ApiError ? err.message : 'Failed to create OpCo' });
+    },
+  });
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setMessage(null);
+    createOpCo.mutate();
+  }
+
+  return (
+    <section>
+      <h2>Create OpCo</h2>
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: 320 }}>
+        <label>
+          Organization
+          <select
+            required
+            value={organizationId}
+            onChange={(e) => setOrganizationId(e.target.value)}
+            style={{ display: 'block', width: '100%' }}
+          >
+            <option value="" disabled>
+              {orgsQuery.isLoading ? 'Loading…' : 'Select an organization'}
+            </option>
+            {orgsQuery.data?.map((org) => (
+              <option key={org.id} value={org.id}>
+                {org.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          OpCo / NatCo name
+          <input
+            type="text"
+            required
+            placeholder="e.g. Vodafone Kenya"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            style={{ display: 'block', width: '100%' }}
+          />
+        </label>
+        <label>
+          Country
+          <input
+            type="text"
+            required
+            placeholder="e.g. Kenya"
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+            style={{ display: 'block', width: '100%' }}
+          />
+        </label>
+        <button type="submit" disabled={createOpCo.isPending || !organizationId}>
+          {createOpCo.isPending ? 'Creating…' : 'Create OpCo'}
         </button>
       </form>
       {message && (
@@ -163,48 +248,28 @@ function CreateUserForm() {
   );
 }
 
-const SCORE_BAR_MAX = 4;
-const SCORE_BAR_FILL = '#2563eb';
-const SCORE_BAR_TRACK = '#e5e7eb';
-
-function ScoreBar({ value }: { value: number | null }) {
-  if (value == null) {
-    return <span style={{ color: '#999' }}>—</span>;
-  }
-  const pct = Math.max(0, Math.min(100, (value / SCORE_BAR_MAX) * 100));
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-      <div
-        style={{
-          background: SCORE_BAR_TRACK,
-          borderRadius: 4,
-          height: 10,
-          width: 100,
-          overflow: 'hidden',
-          flexShrink: 0,
-        }}
-      >
-        <div style={{ background: SCORE_BAR_FILL, height: '100%', width: `${pct}%`, borderRadius: 4 }} />
-      </div>
-      <span>{value.toFixed(2)}</span>
-    </div>
-  );
-}
-
 function BenchmarkingSection() {
+  const questionnairesQuery = useQuery({ queryKey: ['questionnaires'], queryFn: questionnaireApi.list });
+  const [questionnaireCode, setQuestionnaireCode] = useState('');
+  const [groupBy, setGroupBy] = useState<BenchmarkingGroupBy>('organization');
+
+  const effectiveCode = questionnaireCode || questionnairesQuery.data?.[0]?.code || '';
+
   const questionnaireQuery = useQuery({
-    queryKey: ['questionnaire', QUESTIONNAIRE_CODE],
-    queryFn: () => questionnaireApi.get(QUESTIONNAIRE_CODE),
+    queryKey: ['questionnaire', effectiveCode],
+    queryFn: () => questionnaireApi.get(effectiveCode),
+    enabled: !!effectiveCode,
   });
   const benchmarkQuery = useQuery({
-    queryKey: ['benchmarking', QUESTIONNAIRE_CODE],
-    queryFn: () => insightsApi.getBenchmarkingSummary(QUESTIONNAIRE_CODE),
+    queryKey: ['benchmarking', effectiveCode, groupBy],
+    queryFn: () => insightsApi.getBenchmarkingSummary(effectiveCode, groupBy),
+    enabled: !!effectiveCode,
   });
 
-  if (questionnaireQuery.isLoading || benchmarkQuery.isLoading) {
+  if (questionnairesQuery.isLoading || questionnaireQuery.isLoading || benchmarkQuery.isLoading) {
     return (
       <section>
-        <h2>Organization benchmarking</h2>
+        <h2>Benchmarking</h2>
         <p>Loading…</p>
       </section>
     );
@@ -212,22 +277,50 @@ function BenchmarkingSection() {
   if (!questionnaireQuery.data || !benchmarkQuery.data) {
     return (
       <section>
-        <h2>Organization benchmarking</h2>
+        <h2>Benchmarking</h2>
         <p>Something went wrong loading the benchmarking summary.</p>
       </section>
     );
   }
 
   const { subScenarios } = questionnaireQuery.data;
+  const groupLabel = groupBy === 'country' ? 'Country' : 'Organization';
 
   return (
     <section>
-      <h2>Organization benchmarking</h2>
+      <h2>Benchmarking</h2>
+      <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <label>
+          Assessment
+          <select
+            value={effectiveCode}
+            onChange={(e) => setQuestionnaireCode(e.target.value)}
+            style={{ display: 'block' }}
+          >
+            {questionnairesQuery.data?.map((q) => (
+              <option key={q.code} value={q.code}>
+                {q.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Group by
+          <select
+            value={groupBy}
+            onChange={(e) => setGroupBy(e.target.value as BenchmarkingGroupBy)}
+            style={{ display: 'block' }}
+          >
+            <option value="organization">Organization</option>
+            <option value="country">Country</option>
+          </select>
+        </label>
+      </div>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
             <tr>
-              <th style={cellStyle}>Organization</th>
+              <th style={cellStyle}>{groupLabel}</th>
               <th style={cellStyle}>Respondents</th>
               <th style={cellStyle}>Submitted</th>
               <th style={cellStyle}>Avg. final score</th>
@@ -267,8 +360,10 @@ function BenchmarkingSection() {
         </table>
       </div>
       <p style={{ fontSize: '0.85em', color: '#666' }}>
-        Averages are computed over submitted responses only; an organization with none shows
-        "—" rather than a misleading zero.
+        Averages are computed over submitted responses only; a {groupLabel.toLowerCase()} with
+        none shows "—" rather than a misleading zero.
+        {groupBy === 'country' &&
+          ' Respondents with no OpCo assigned yet are excluded from country grouping.'}
       </p>
     </section>
   );

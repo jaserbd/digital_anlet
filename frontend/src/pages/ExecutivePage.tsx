@@ -1,11 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { insightsApi } from '../api/insightsApi';
 import { LogoutButton } from '../components/LogoutButton';
-
-const QUESTIONNAIRE_CODE = 'RAN_FM_GB1059A';
+import { ScoreBar } from '../components/ScoreBar';
 
 const STATUS_LABEL: Record<string, string> = {
   NOT_STARTED: 'Not started',
@@ -18,17 +17,35 @@ export function ExecutivePage() {
   const organizationId = user!.organizationId;
   const [subScenarioIndex, setSubScenarioIndex] = useState(0);
 
+  const questionnairesQuery = useQuery({ queryKey: ['questionnaires'], queryFn: questionnaireApi.list });
+  const [questionnaireCode, setQuestionnaireCode] = useState('');
+  const effectiveCode = questionnaireCode || questionnairesQuery.data?.[0]?.code || '';
+
   const questionnaireQuery = useQuery({
-    queryKey: ['questionnaire', QUESTIONNAIRE_CODE],
-    queryFn: () => questionnaireApi.get(QUESTIONNAIRE_CODE),
+    queryKey: ['questionnaire', effectiveCode],
+    queryFn: () => questionnaireApi.get(effectiveCode),
+    enabled: !!effectiveCode,
   });
 
   const summaryQuery = useQuery({
-    queryKey: ['organization-summary', organizationId, QUESTIONNAIRE_CODE],
-    queryFn: () => insightsApi.getOrganizationSummary(organizationId, QUESTIONNAIRE_CODE),
+    queryKey: ['organization-summary', organizationId, effectiveCode],
+    queryFn: () => insightsApi.getOrganizationSummary(organizationId, effectiveCode),
+    enabled: !!effectiveCode,
   });
 
-  if (questionnaireQuery.isLoading || summaryQuery.isLoading) {
+  const opCoBenchmarkQuery = useQuery({
+    queryKey: ['opco-benchmarking', organizationId, effectiveCode],
+    queryFn: () => insightsApi.getOpCoBenchmarkingSummary(organizationId, effectiveCode),
+    enabled: !!effectiveCode,
+  });
+
+  // Reset the sub-scenario tab when switching assessments — a different questionnaire may
+  // have fewer sub-scenarios than the previously selected tab index.
+  useEffect(() => {
+    setSubScenarioIndex(0);
+  }, [effectiveCode]);
+
+  if (questionnairesQuery.isLoading || questionnaireQuery.isLoading || summaryQuery.isLoading) {
     return <p>Loading…</p>;
   }
   if (!questionnaireQuery.data || !summaryQuery.data) {
@@ -46,11 +63,26 @@ export function ExecutivePage() {
   return (
     <main style={{ maxWidth: 900, margin: '2rem auto', fontFamily: 'sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>{questionnaire.name} — Organization Overview</h1>
+        <h1>Organization Overview</h1>
         <LogoutButton />
       </div>
 
-      <h2>Respondents</h2>
+      <label>
+        Assessment
+        <select
+          value={effectiveCode}
+          onChange={(e) => setQuestionnaireCode(e.target.value)}
+          style={{ display: 'block', marginBottom: '1rem' }}
+        >
+          {questionnairesQuery.data?.map((q) => (
+            <option key={q.code} value={q.code}>
+              {q.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <h2>{questionnaire.name} — Respondents</h2>
       <table style={{ borderCollapse: 'collapse', width: '100%', maxWidth: 600 }}>
         <thead>
           <tr>
@@ -76,6 +108,50 @@ export function ExecutivePage() {
           )}
         </tbody>
       </table>
+
+      <h2 style={{ marginTop: '2rem' }}>OpCo benchmarking (submitted responses only)</h2>
+      {opCoBenchmarkQuery.isLoading && <p>Loading…</p>}
+      {opCoBenchmarkQuery.data && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead>
+              <tr>
+                <th style={cellStyle}>OpCo</th>
+                <th style={cellStyle}>Country</th>
+                <th style={cellStyle}>Respondents</th>
+                <th style={cellStyle}>Submitted</th>
+                <th style={cellStyle}>Avg. final score</th>
+                <th style={cellStyle}>Avg. E2E rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {opCoBenchmarkQuery.data.opCos.map((opCo) => (
+                <tr key={opCo.opCoId}>
+                  <td style={cellStyle}>{opCo.opCoName}</td>
+                  <td style={cellStyle}>{opCo.country}</td>
+                  <td style={{ ...cellStyle, textAlign: 'center' }}>{opCo.respondentCount}</td>
+                  <td style={{ ...cellStyle, textAlign: 'center' }}>{opCo.submittedCount}</td>
+                  <td style={cellStyle}>
+                    <ScoreBar value={opCo.averageFinalScore} />
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: 'center' }}>
+                    {opCo.averageE2eAutomationRate != null
+                      ? `${(opCo.averageE2eAutomationRate * 100).toFixed(0)}%`
+                      : '—'}
+                  </td>
+                </tr>
+              ))}
+              {opCoBenchmarkQuery.data.opCos.length === 0 && (
+                <tr>
+                  <td style={cellStyle} colSpan={6}>
+                    No OpCos created for this organization yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <h2 style={{ marginTop: '2rem' }}>Answer distribution (submitted responses only)</h2>
       <nav style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>

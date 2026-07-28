@@ -27,7 +27,7 @@ export function ScoreSummary({ finalScore, subScenarios, subScenarioScores }: Sc
             <tr key={s.id}>
               <td style={cellStyle}>{s.name}</td>
               <td style={cellStyle}>{(s.faultDistributionWeight * 100).toFixed(0)}%</td>
-              <td style={cellStyle}>{scoreByCode.get(s.code)?.overallScore.toFixed(2) ?? '—'}</td>
+              <td style={cellStyle}>{scoreByCode.get(s.code)?.overallScore?.toFixed(2) ?? '—'}</td>
             </tr>
           ))}
         </tbody>

@@ -6,6 +6,12 @@ export interface AuthenticatedUserDto {
   email: string;
   role: Role;
   organizationId: string;
+  // Null until the user completes their profile (see ProfilePage) — a NORMAL_USER with
+  // opCoId == null is routed there before reaching the domain picker. Not required for
+  // EXECUTIVE/ADMIN, who don't answer questionnaires.
+  opCoId: string | null;
+  workingDomain: string | null;
+  designation: string | null;
 }
 
 export interface SubScenarioDto {
@@ -62,16 +68,41 @@ export interface AnswerDto {
   selectedOption: AnswerOption;
 }
 
+// One comment per question per response, optionally tagged to specific sub-scenarios
+// (subScenarioIds) or explicitly to none of them (appliesToNone) — see CLAUDE.md
+// "Per-question comments and skips".
+export interface QuestionCommentDto {
+  questionId: string;
+  commentText: string;
+  appliesToNone: boolean;
+  subScenarioIds: string[];
+}
+
 export interface ResponseDto {
   id: string;
   status: ResponseStatus;
   questionnaireCode: string;
   answers: AnswerDto[];
+  comments: QuestionCommentDto[];
+}
+
+// A skipped (question, subScenario) pair with no comment covering it — returned when
+// submission is blocked so the frontend can show exactly what's missing.
+export interface UncoveredSkipDto {
+  questionId: string;
+  subScenarioId: string;
 }
 
 export interface OrganizationDto {
   id: string;
   name: string;
+}
+
+export interface OpCoDto {
+  id: string;
+  name: string;
+  country: string;
+  organizationId: string;
 }
 
 export interface UserDto {
@@ -81,6 +112,9 @@ export interface UserDto {
   organizationId: string;
   firstName: string | null;
   lastName: string | null;
+  opCoId: string | null;
+  workingDomain: string | null;
+  designation: string | null;
 }
 
 export type RespondentStatus = 'NOT_STARTED' | ResponseStatus;
@@ -123,9 +157,34 @@ export interface OrganizationBenchmarkDto {
   subScenarioAverages: SubScenarioAverageDto[];
 }
 
+// Admin-only, cross-organization by default, or cross-country when groupBy = 'country'
+// (grouping key becomes each respondent's OpCo.country instead of their organizationId —
+// respondents with no OpCo yet are excluded from a country grouping).
+export type BenchmarkingGroupBy = 'organization' | 'country';
+
 export interface BenchmarkingSummaryDto {
   questionnaireCode: string;
+  groupBy: BenchmarkingGroupBy;
   organizations: OrganizationBenchmarkDto[];
+}
+
+// Same shape as OrganizationBenchmarkDto, keyed by OpCo instead of Organization — for the
+// Executive/Admin "benchmark OpCos within one organization" view.
+export interface OpCoBenchmarkDto {
+  opCoId: string;
+  opCoName: string;
+  country: string;
+  respondentCount: number;
+  submittedCount: number;
+  averageFinalScore: number | null;
+  averageE2eAutomationRate: number | null;
+  subScenarioAverages: SubScenarioAverageDto[];
+}
+
+export interface OpCoBenchmarkingSummaryDto {
+  questionnaireCode: string;
+  organizationId: string;
+  opCos: OpCoBenchmarkDto[];
 }
 
 // Guideline point 7 in CORE_FM.xlsx: "final score = 50% * fault management score + 50% *

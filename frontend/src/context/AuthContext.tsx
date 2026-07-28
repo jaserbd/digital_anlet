@@ -4,7 +4,7 @@ import type { AuthenticatedUserDto } from '@anlet/shared';
 import { ApiError } from '../api/client';
 import { authApi } from '../api/authApi';
 
-const ME_QUERY_KEY = ['auth', 'me'];
+export const ME_QUERY_KEY = ['auth', 'me'];
 
 async function fetchMe(): Promise<AuthenticatedUserDto | null> {
   try {

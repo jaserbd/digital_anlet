@@ -2,11 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma';
 import {
   ForbiddenError,
-  IncompleteResponseError,
+  UncoveredSkipError,
   getOrCreateResponse,
   getResult,
   submitResponse,
   upsertAnswer,
+  upsertComment,
 } from '../src/modules/responses/responses.service';
 
 // Integration tests against the real local Postgres (see docker-compose.yml). Requires the
@@ -91,7 +92,7 @@ describe('responses full submit flow (real DB)', () => {
     expect(revisited.status).toBe('SUBMITTED');
   });
 
-  it('rejects submitting an incomplete response', async () => {
+  it('rejects submitting a response with skipped answers that have no covering comment', async () => {
     const userId = await createTestUser('incomplete');
     const response = await getOrCreateResponse(userId, 'RAN_FM_GB1059A');
 
@@ -107,9 +108,59 @@ describe('responses full submit flow (real DB)', () => {
       selectedOption: 'A',
     });
 
-    await expect(submitResponse(response.id, userId)).rejects.toBeInstanceOf(
-      IncompleteResponseError,
+    const expectedMissingCount =
+      questionnaire.questions.length * questionnaire.subScenarios.length - 1;
+
+    await expect(submitResponse(response.id, userId)).rejects.toSatisfy((err: unknown) => {
+      expect(err).toBeInstanceOf(UncoveredSkipError);
+      expect((err as UncoveredSkipError).missing).toHaveLength(expectedMissingCount);
+      return true;
+    });
+  });
+
+  it('allows submitting once every skipped answer is covered by a comment, re-normalizing the score', async () => {
+    const userId = await createTestUser('skip-covered');
+    const response = await getOrCreateResponse(userId, 'RAN_FM_GB1059A');
+
+    const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
+      where: { code: 'RAN_FM_GB1059A' },
+      include: { questions: true, subScenarios: true },
+    });
+    const skippedQuestion = questionnaire.questions[0]!;
+    const skippedSubScenario = questionnaire.subScenarios[0]!;
+
+    for (const question of questionnaire.questions) {
+      for (const subScenario of questionnaire.subScenarios) {
+        if (question.id === skippedQuestion.id && subScenario.id === skippedSubScenario.id) {
+          continue; // deliberately left unanswered — covered by the comment below instead
+        }
+        await upsertAnswer(response.id, userId, {
+          questionId: question.id,
+          subScenarioId: subScenario.id,
+          selectedOption: 'A',
+        });
+      }
+    }
+
+    await upsertComment(response.id, userId, {
+      questionId: skippedQuestion.id,
+      commentText: 'Not applicable to this sub-scenario.',
+      subScenarioIds: [skippedSubScenario.id],
+      appliesToNone: false,
+    });
+
+    const result = await submitResponse(response.id, userId);
+    expect(result.subScenarioScores).toHaveLength(questionnaire.subScenarios.length);
+    // The sub-scenario with the skipped question is still scored (re-normalized over its
+    // remaining answered questions), not left at 0 or null — only a fully-skipped
+    // sub-scenario would be null (see scoring.test.ts).
+    const scoreForSkippedSubScenario = result.subScenarioScores.find(
+      (s) => s.subScenarioCode === skippedSubScenario.code,
     );
+    expect(scoreForSkippedSubScenario?.overallScore).not.toBeNull();
+
+    const persisted = await getResult(response.id, userId);
+    expect(persisted).toEqual(result);
   });
 
   it('rejects another user from reading or answering someone else’s response', async () => {

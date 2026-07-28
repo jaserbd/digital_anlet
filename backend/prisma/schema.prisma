@@ -32,6 +32,25 @@ model Organization {
   updatedAt DateTime @updatedAt
 
   users User[]
+  opCos OpCo[]
+}
+
+// A NatCo/OpCo within an Organization (e.g. "Vodafone Kenya" under "Vodafone Group").
+// Admin-managed, same pattern as Organization. Users self-select their OpCo (which encodes
+// their Country + Company) during profile completion — see User.opCoId.
+model OpCo {
+  id        String   @id @default(cuid())
+  name      String
+  country   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  users User[]
+
+  @@unique([organizationId, name])
 }
 
 model User {
@@ -47,6 +66,16 @@ model User {
 
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
+
+  // Nullable: filled in by the user themselves at profile completion, not at admin
+  // creation time. A NORMAL_USER with opCoId == null is routed to /profile before
+  // reaching the domain picker (see CLAUDE.md "Profile completion"). Not required for
+  // EXECUTIVE/ADMIN, who don't answer questionnaires.
+  opCoId String?
+  opCo   OpCo?   @relation(fields: [opCoId], references: [id])
+
+  workingDomain String?
+  designation   String?
 
   responses QuestionnaireResponse[]
 }
@@ -94,6 +123,7 @@ model SubScenario {
 
   answers                 Answer[]
   subScenarioScoreResults SubScenarioScoreResult[]
+  commentTags             QuestionCommentSubScenario[]
 
   @@unique([questionnaireId, code])
 }
@@ -129,7 +159,8 @@ model Question {
   questionnaireId String
   questionnaire   Questionnaire @relation(fields: [questionnaireId], references: [id])
 
-  answers Answer[]
+  answers  Answer[]
+  comments QuestionComment[]
 
   @@unique([questionnaireId, sortOrder])
 }
@@ -147,8 +178,9 @@ model QuestionnaireResponse {
   questionnaireId String
   questionnaire   Questionnaire @relation(fields: [questionnaireId], references: [id])
 
-  answers Answer[]
-  result  ScoreResult?
+  answers  Answer[]
+  comments QuestionComment[]
+  result   ScoreResult?
 }
 
 model Answer {
@@ -169,6 +201,39 @@ model Answer {
   @@unique([responseId, questionId, subScenarioId])
 }
 
+// One comment per question per response — the user's explanation, optionally tagged to
+// specific sub-scenarios (via QuestionCommentSubScenario) or to none of them
+// (appliesToNone). A skipped (question, subScenario) answer must be covered by a comment
+// tagged to that subScenario (or an appliesToNone comment on that question) before the
+// response can be submitted — see responses.service.ts submitResponse.
+model QuestionComment {
+  id            String   @id @default(cuid())
+  commentText   String   @db.Text
+  appliesToNone Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  responseId String
+  response   QuestionnaireResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id])
+
+  subScenarios QuestionCommentSubScenario[]
+
+  @@unique([responseId, questionId])
+}
+
+model QuestionCommentSubScenario {
+  commentId String
+  comment   QuestionComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  subScenarioId String
+  subScenario   SubScenario @relation(fields: [subScenarioId], references: [id])
+
+  @@id([commentId, subScenarioId])
+}
+
 // Write-once snapshot computed by the pure scoring module (backend/src/modules/scoring)
 // and persisted at submit time — not recomputed live on every dashboard read.
 model ScoreResult {
@@ -184,8 +249,10 @@ model ScoreResult {
 }
 
 model SubScenarioScoreResult {
-  id           String  @id @default(cuid())
-  overallScore Decimal @db.Decimal(6, 4)
+  id String @id @default(cuid())
+  // Null only when every question in this sub-scenario was skipped — excluded from the
+  // final-score weighted average in that case (see scoring.ts).
+  overallScore Decimal? @db.Decimal(6, 4)
   e2eAchieved  Boolean
 
   scoreResultId String

@@ -3,11 +3,22 @@ import { z } from 'zod';
 import { env } from '../../config/env';
 import { parseDurationMs } from '../../lib/duration';
 import { AUTH_COOKIE_NAME } from '../../middleware/auth';
-import { InvalidCredentialsError, login } from './auth.service';
+import {
+  OpCoNotInOrganizationError,
+  UserNotFoundError,
+  updateOwnProfile,
+} from '../users/users.service';
+import { InvalidCredentialsError, getAuthenticatedUser, login } from './auth.service';
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+});
+
+const updateProfileSchema = z.object({
+  opCoId: z.string().min(1),
+  workingDomain: z.string().trim().min(1).max(200),
+  designation: z.string().trim().min(1).max(200),
 });
 
 const cookieOptions = {
@@ -42,15 +53,38 @@ export function logoutHandler(_req: Request, res: Response) {
   res.status(204).end();
 }
 
-export function meHandler(req: Request, res: Response) {
+export async function meHandler(req: Request, res: Response) {
   if (!req.user) {
     res.status(401).json({ error: 'Not authenticated' });
     return;
   }
-  res.json({
-    id: req.user.sub,
-    email: req.user.email,
-    role: req.user.role,
-    organizationId: req.user.organizationId,
-  });
+  const user = await getAuthenticatedUser(req.user.sub);
+  if (!user) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+  res.json(user);
+}
+
+export async function updateProfileHandler(req: Request, res: Response) {
+  const parsed = updateProfileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request body' });
+    return;
+  }
+
+  try {
+    await updateOwnProfile(req.user!.sub, parsed.data);
+    res.status(204).end();
+  } catch (err) {
+    if (err instanceof UserNotFoundError) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    if (err instanceof OpCoNotInOrganizationError) {
+      res.status(400).json({ error: 'Selected OpCo does not belong to your organization' });
+      return;
+    }
+    throw err;
+  }
 }

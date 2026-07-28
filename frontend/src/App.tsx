@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
+import { ProfilePage } from './pages/ProfilePage';
 import { DomainPickerPage } from './pages/DomainPickerPage';
 import { QuestionnairePage } from './pages/QuestionnairePage';
 import { ResultsPage } from './pages/ResultsPage';
@@ -28,6 +29,7 @@ function App() {
           </Route>
 
           <Route element={<ProtectedRoute allowedRoles={['NORMAL_USER']} />}>
+            <Route path="/profile" element={<ProfilePage />} />
             <Route path="/domains" element={<DomainPickerPage />} />
             <Route path="/questionnaire/:code" element={<QuestionnaireRoute />} />
             <Route path="/results/:responseId" element={<ResultsPage />} />

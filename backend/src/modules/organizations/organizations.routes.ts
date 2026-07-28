@@ -4,6 +4,7 @@ import { authenticate } from '../../middleware/auth';
 import { requireRole } from '../../middleware/requireRole';
 import {
   getBenchmarkingSummaryHandler,
+  getOpCoBenchmarkingSummaryHandler,
   getOrganizationQuestionnaireSummaryHandler,
 } from '../insights/insights.controller';
 import { createOrganizationHandler, listOrganizationsHandler } from './organizations.controller';
@@ -31,4 +32,11 @@ organizationsRouter.get(
   authenticate,
   requireRole('EXECUTIVE', 'ADMIN'),
   asyncHandler(getOrganizationQuestionnaireSummaryHandler),
+);
+
+organizationsRouter.get(
+  '/:orgId/opco-benchmarking',
+  authenticate,
+  requireRole('EXECUTIVE', 'ADMIN'),
+  asyncHandler(getOpCoBenchmarkingSummaryHandler),
 );

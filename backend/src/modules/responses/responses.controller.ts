@@ -4,16 +4,18 @@ import { requireParam } from '../../lib/params';
 import { QuestionnaireNotFoundError } from '../questionnaire/questionnaire.service';
 import {
   ForbiddenError,
-  IncompleteResponseError,
   ResponseAlreadySubmittedError,
   ResponseNotFoundError,
   ResultNotAvailableError,
+  UncoveredSkipError,
+  deleteAnswer,
   getCoreDomainSummary,
   getOrCreateResponse,
   getResponse,
   getResult,
   submitResponse,
   upsertAnswer,
+  upsertComment,
 } from './responses.service';
 
 const createResponseSchema = z.object({
@@ -24,6 +26,13 @@ const upsertAnswerSchema = z.object({
   questionId: z.string().min(1),
   subScenarioId: z.string().min(1),
   selectedOption: z.enum(['A', 'B', 'C', 'D']),
+});
+
+const upsertCommentSchema = z.object({
+  questionId: z.string().min(1),
+  commentText: z.string().min(1),
+  subScenarioIds: z.array(z.string().min(1)),
+  appliesToNone: z.boolean(),
 });
 
 function handleKnownErrors(err: unknown, res: Response): boolean {
@@ -39,8 +48,11 @@ function handleKnownErrors(err: unknown, res: Response): boolean {
     res.status(409).json({ error: 'Response has already been submitted' });
     return true;
   }
-  if (err instanceof IncompleteResponseError) {
-    res.status(400).json({ error: 'All questions must be answered before submitting' });
+  if (err instanceof UncoveredSkipError) {
+    res.status(422).json({
+      error: 'Some skipped answers are missing a covering comment',
+      missing: err.missing,
+    });
     return true;
   }
   if (err instanceof ResultNotAvailableError) {
@@ -86,6 +98,33 @@ export async function upsertAnswerHandler(req: Request, res: Response) {
 
   try {
     await upsertAnswer(requireParam(req, 'id'), req.user!.sub, parsed.data);
+    res.status(204).end();
+  } catch (err) {
+    if (!handleKnownErrors(err, res)) throw err;
+  }
+}
+
+export async function deleteAnswerHandler(req: Request, res: Response) {
+  try {
+    await deleteAnswer(requireParam(req, 'id'), req.user!.sub, {
+      questionId: requireParam(req, 'questionId'),
+      subScenarioId: requireParam(req, 'subScenarioId'),
+    });
+    res.status(204).end();
+  } catch (err) {
+    if (!handleKnownErrors(err, res)) throw err;
+  }
+}
+
+export async function upsertCommentHandler(req: Request, res: Response) {
+  const parsed = upsertCommentSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request body' });
+    return;
+  }
+
+  try {
+    await upsertComment(requireParam(req, 'id'), req.user!.sub, parsed.data);
     res.status(204).end();
   } catch (err) {
     if (!handleKnownErrors(err, res)) throw err;

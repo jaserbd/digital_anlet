@@ -1,4 +1,4 @@
-import type { AnswerOption, CoreDomainSummaryDto, ResponseDto, ScoreResultDto } from '@anlet/shared';
+import type { CoreDomainSummaryDto, QuestionCommentDto, AnswerOption, ResponseDto, ScoreResultDto } from '@anlet/shared';
 import { apiClient } from './client';
 
 export const responsesApi = {
@@ -9,6 +9,12 @@ export const responsesApi = {
     responseId: string,
     answer: { questionId: string; subScenarioId: string; selectedOption: AnswerOption },
   ) => apiClient.put<void>(`/responses/${responseId}/answers`, answer),
+  deleteAnswer: (responseId: string, questionId: string, subScenarioId: string) =>
+    apiClient.delete<void>(`/responses/${responseId}/answers/${questionId}/${subScenarioId}`),
+  upsertComment: (
+    responseId: string,
+    comment: Omit<QuestionCommentDto, 'subScenarioIds'> & { subScenarioIds: string[] },
+  ) => apiClient.put<void>(`/responses/${responseId}/comments`, comment),
   submit: (responseId: string) =>
     apiClient.post<ScoreResultDto>(`/responses/${responseId}/submit`),
   getResult: (responseId: string) =>
