@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { BenchmarkingGroupBy, Role } from '@anlet/shared';
+import type { BenchmarkingGroupBy, OrganizationDto, Role, UpdateUserRequestDto, UserDto } from '@anlet/shared';
 import { organizationsApi } from '../api/organizationsApi';
 import { opCoApi } from '../api/opCoApi';
 import { usersApi } from '../api/usersApi';
@@ -22,6 +22,8 @@ export function AdminPage() {
       <CreateOpCoForm />
       <hr style={{ margin: '2rem 0' }} />
       <CreateUserForm />
+      <hr style={{ margin: '2rem 0' }} />
+      <ManageUsersSection />
       <hr style={{ margin: '2rem 0' }} />
       <BenchmarkingSection />
     </main>
@@ -245,6 +247,127 @@ function CreateUserForm() {
         <p style={{ color: message.kind === 'error' ? 'crimson' : 'green' }}>{message.text}</p>
       )}
     </section>
+  );
+}
+
+// Admin can only create brand-new users elsewhere (CreateUserForm) — this lets Admin
+// reassign an *existing* Executive/Normal-User account's Organization (and OpCo) without
+// recreating it (SECOND_REVIEW.md item 8). Reassigning org clears OpCo server-side (an OpCo
+// belongs to a specific org), which naturally re-triggers profile completion for a
+// NORMAL_USER on their next visit.
+function ManageUsersSection() {
+  const queryClient = useQueryClient();
+  const usersQuery = useQuery({ queryKey: ['users'], queryFn: () => usersApi.list() });
+  const orgsQuery = useQuery({ queryKey: ['organizations'], queryFn: organizationsApi.list });
+
+  return (
+    <section>
+      <h2>Existing users</h2>
+      {usersQuery.isLoading || orgsQuery.isLoading ? (
+        <p>Loading…</p>
+      ) : !usersQuery.data || !orgsQuery.data ? (
+        <p>Something went wrong loading users.</p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead>
+              <tr>
+                <th style={cellStyle}>Email</th>
+                <th style={cellStyle}>Role</th>
+                <th style={cellStyle}>Organization</th>
+                <th style={cellStyle}>OpCo</th>
+                <th style={cellStyle}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {usersQuery.data.map((user) => (
+                <UserRow
+                  key={user.id}
+                  user={user}
+                  organizations={orgsQuery.data!}
+                  onSaved={() => void queryClient.invalidateQueries({ queryKey: ['users'] })}
+                />
+              ))}
+              {usersQuery.data.length === 0 && (
+                <tr>
+                  <td style={cellStyle} colSpan={5}>
+                    No users yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function UserRow({
+  user,
+  organizations,
+  onSaved,
+}: {
+  user: UserDto;
+  organizations: OrganizationDto[];
+  onSaved: () => void;
+}) {
+  const [organizationId, setOrganizationId] = useState(user.organizationId);
+  const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const opCosQuery = useQuery({
+    queryKey: ['opcos', organizationId],
+    queryFn: () => opCoApi.list(organizationId),
+  });
+
+  const updateUser = useMutation({
+    mutationFn: (input: UpdateUserRequestDto) => usersApi.update(user.id, input),
+    onSuccess: () => {
+      setMessage({ kind: 'success', text: 'Saved' });
+      onSaved();
+    },
+    onError: (err) => {
+      setMessage({ kind: 'error', text: err instanceof ApiError ? err.message : 'Failed to save' });
+    },
+  });
+
+  const dirty = organizationId !== user.organizationId;
+
+  return (
+    <tr>
+      <td style={cellStyle}>{user.email}</td>
+      <td style={cellStyle}>{user.role}</td>
+      <td style={cellStyle}>
+        <select value={organizationId} onChange={(e) => setOrganizationId(e.target.value)}>
+          {organizations.map((org) => (
+            <option key={org.id} value={org.id}>
+              {org.name}
+            </option>
+          ))}
+        </select>
+      </td>
+      <td style={cellStyle}>
+        {dirty
+          ? '— will be cleared —'
+          : (opCosQuery.data?.find((o) => o.id === user.opCoId)?.name ?? '—')}
+      </td>
+      <td style={cellStyle}>
+        <button
+          type="button"
+          disabled={!dirty || updateUser.isPending}
+          onClick={() => {
+            setMessage(null);
+            updateUser.mutate({ organizationId });
+          }}
+        >
+          {updateUser.isPending ? 'Saving…' : 'Save'}
+        </button>
+        {message && (
+          <span style={{ marginLeft: '0.5rem', color: message.kind === 'error' ? 'crimson' : 'green' }}>
+            {message.text}
+          </span>
+        )}
+      </td>
+    </tr>
   );
 }
 

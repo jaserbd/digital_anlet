@@ -124,6 +124,13 @@ export interface UserDto {
   designation: string | null;
 }
 
+// Admin-only reassignment (SECOND_REVIEW.md item 8) — changing organizationId always clears
+// opCoId server-side unless a new opCoId (validated against the new org) is given too.
+export interface UpdateUserRequestDto {
+  organizationId?: string;
+  opCoId?: string | null;
+}
+
 export type RespondentStatus = 'NOT_STARTED' | ResponseStatus;
 
 export interface RespondentSummaryDto {
