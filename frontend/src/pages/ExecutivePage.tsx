@@ -17,6 +17,7 @@ export function ExecutivePage() {
   const { user } = useAuth();
   const organizationId = user!.organizationId;
   const [subScenarioIndex, setSubScenarioIndex] = useState(0);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   const questionnairesQuery = useQuery({ queryKey: ['questionnaires'], queryFn: questionnaireApi.list });
   const [questionnaireCode, setQuestionnaireCode] = useState('');
@@ -40,10 +41,17 @@ export function ExecutivePage() {
     enabled: !!effectiveCode,
   });
 
+  const drilldownQuery = useQuery({
+    queryKey: ['answer-drilldown', organizationId, effectiveCode],
+    queryFn: () => insightsApi.getAnswerDrilldown(organizationId, effectiveCode),
+    enabled: !!effectiveCode,
+  });
+
   // Reset the sub-scenario tab when switching assessments — a different questionnaire may
   // have fewer sub-scenarios than the previously selected tab index.
   useEffect(() => {
     setSubScenarioIndex(0);
+    setExpandedKey(null);
   }, [effectiveCode]);
 
   if (questionnairesQuery.isLoading || questionnaireQuery.isLoading || summaryQuery.isLoading) {
@@ -59,6 +67,12 @@ export function ExecutivePage() {
 
   const countsByKey = new Map(
     summary.answerDistribution.map((e) => [`${e.questionId}:${e.subScenarioId}`, e.counts]),
+  );
+  const respondentsByKey = new Map(
+    (drilldownQuery.data?.entries ?? []).map((e) => [
+      `${e.questionId}:${e.subScenarioId}:${e.option}`,
+      e.respondents,
+    ]),
   );
 
   return (
@@ -157,16 +171,57 @@ export function ExecutivePage() {
                 {group.questions.map((q) => {
                   const counts = countsByKey.get(`${q.id}:${currentSubScenario.id}`);
                   const availableOptions = new Set(q.options.map((o) => o.option));
-                  const cell = (option: 'A' | 'B' | 'C' | 'D') =>
-                    availableOptions.has(option) ? (counts?.[option] ?? 0) : '—';
+                  const expandedRespondents = expandedKey ? respondentsByKey.get(expandedKey) : undefined;
+                  const rowHasExpanded = expandedKey?.startsWith(`${q.id}:${currentSubScenario.id}:`);
                   return (
-                    <tr key={q.id}>
-                      <td style={{ ...cellStyle, paddingLeft: '1.5rem' }}>{q.serviceCapability}</td>
-                      <td style={{ ...cellStyle, textAlign: 'center' }}>{cell('A')}</td>
-                      <td style={{ ...cellStyle, textAlign: 'center' }}>{cell('B')}</td>
-                      <td style={{ ...cellStyle, textAlign: 'center' }}>{cell('C')}</td>
-                      <td style={{ ...cellStyle, textAlign: 'center' }}>{cell('D')}</td>
-                    </tr>
+                    <Fragment key={q.id}>
+                      <tr>
+                        <td style={{ ...cellStyle, paddingLeft: '1.5rem' }}>{q.serviceCapability}</td>
+                        {(['A', 'B', 'C', 'D'] as const).map((option) => {
+                          if (!availableOptions.has(option)) {
+                            return (
+                              <td key={option} style={{ ...cellStyle, textAlign: 'center' }}>
+                                —
+                              </td>
+                            );
+                          }
+                          const count = counts?.[option] ?? 0;
+                          const key = `${q.id}:${currentSubScenario.id}:${option}`;
+                          return (
+                            <td
+                              key={option}
+                              style={{
+                                ...cellStyle,
+                                textAlign: 'center',
+                                cursor: count > 0 ? 'pointer' : 'default',
+                                textDecoration: expandedKey === key ? 'underline' : 'none',
+                              }}
+                              onClick={() => count > 0 && setExpandedKey(expandedKey === key ? null : key)}
+                              title={count > 0 ? 'Click to see who chose this option' : undefined}
+                            >
+                              {count}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                      {rowHasExpanded && (
+                        <tr>
+                          <td colSpan={5} style={{ ...cellStyle, background: '#f9f9f9' }}>
+                            <strong>Respondents ({expandedKey!.split(':')[2]}):</strong>
+                            <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.25rem' }}>
+                              {(expandedRespondents ?? []).map((r) => (
+                                <li key={r.userId}>
+                                  {r.email} — {r.opCoName ?? 'no OpCo'}
+                                  {r.country ? `, ${r.country}` : ''}
+                                  {r.designation ? ` — ${r.designation}` : ''}
+                                  {r.workingDomain ? ` (${r.workingDomain})` : ''}
+                                </li>
+                              ))}
+                            </ul>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </Fragment>

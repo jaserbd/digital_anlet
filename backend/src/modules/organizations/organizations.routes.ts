@@ -3,6 +3,7 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import { authenticate } from '../../middleware/auth';
 import { requireRole } from '../../middleware/requireRole';
 import {
+  getAnswerDrilldownHandler,
   getBenchmarkingSummaryHandler,
   getOpCoBenchmarkingSummaryHandler,
   getOrganizationQuestionnaireSummaryHandler,
@@ -39,4 +40,11 @@ organizationsRouter.get(
   authenticate,
   requireRole('EXECUTIVE', 'ADMIN'),
   asyncHandler(getOpCoBenchmarkingSummaryHandler),
+);
+
+organizationsRouter.get(
+  '/:orgId/answer-drilldown',
+  authenticate,
+  requireRole('EXECUTIVE', 'ADMIN'),
+  asyncHandler(getAnswerDrilldownHandler),
 );

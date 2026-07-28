@@ -1,4 +1,5 @@
 import type {
+  AnswerDrilldownDto,
   BenchmarkingSummaryDto,
   OpCoBenchmarkingSummaryDto,
   OrganizationQuestionnaireSummaryDto,
@@ -17,5 +18,9 @@ export const insightsApi = {
   getOpCoBenchmarkingSummary: (organizationId: string, questionnaireCode: string) =>
     apiClient.get<OpCoBenchmarkingSummaryDto>(
       `/organizations/${organizationId}/opco-benchmarking?questionnaireCode=${encodeURIComponent(questionnaireCode)}`,
+    ),
+  getAnswerDrilldown: (organizationId: string, questionnaireCode: string) =>
+    apiClient.get<AnswerDrilldownDto>(
+      `/organizations/${organizationId}/answer-drilldown?questionnaireCode=${encodeURIComponent(questionnaireCode)}`,
     ),
 };

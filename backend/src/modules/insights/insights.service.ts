@@ -1,5 +1,7 @@
 import type {
   AnswerDistributionEntryDto,
+  AnswerDrilldownDto,
+  AnswerDrilldownEntryDto,
   AnswerOption,
   AnswerOptionCounts,
   BenchmarkingSummaryDto,
@@ -157,6 +159,74 @@ export async function getOrganizationQuestionnaireSummary(
   }
 
   return { questionnaireCode: questionnaire.code, respondents, answerDistribution };
+}
+
+/**
+ * Per-respondent answer visibility for Executive/Admin (SECOND_REVIEW.md item 10) — unlike
+ * getOrganizationQuestionnaireSummary's aggregate-only answerDistribution, this retains each
+ * individual respondent (email, OpCo/country, workingDomain/designation) behind every
+ * (question, subScenario, option) they chose. Scoped to SUBMITTED responses only, same
+ * convention as the rest of this module. Callers are responsible for authorizing that
+ * `organizationId` is one the requester may view (same convention as
+ * getOrganizationQuestionnaireSummary).
+ */
+export async function getAnswerDrilldown(
+  organizationId: string,
+  questionnaireCode: string,
+): Promise<AnswerDrilldownDto> {
+  const questionnaire = await prisma.questionnaire.findUnique({ where: { code: questionnaireCode } });
+  if (!questionnaire) {
+    throw new QuestionnaireNotFoundError();
+  }
+
+  const answers = await prisma.answer.findMany({
+    where: {
+      response: { questionnaireId: questionnaire.id, status: 'SUBMITTED', user: { organizationId } },
+    },
+    select: {
+      questionId: true,
+      subScenarioId: true,
+      selectedOption: true,
+      response: {
+        select: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              workingDomain: true,
+              designation: true,
+              opCo: { select: { name: true, country: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const byKey = new Map<string, AnswerDrilldownEntryDto>();
+  for (const a of answers) {
+    const key = `${a.questionId}:${a.subScenarioId}:${a.selectedOption}`;
+    let entry = byKey.get(key);
+    if (!entry) {
+      entry = {
+        questionId: a.questionId,
+        subScenarioId: a.subScenarioId,
+        option: a.selectedOption,
+        respondents: [],
+      };
+      byKey.set(key, entry);
+    }
+    entry.respondents.push({
+      userId: a.response.user.id,
+      email: a.response.user.email,
+      opCoName: a.response.user.opCo?.name ?? null,
+      country: a.response.user.opCo?.country ?? null,
+      workingDomain: a.response.user.workingDomain,
+      designation: a.response.user.designation,
+    });
+  }
+
+  return { questionnaireCode: questionnaire.code, entries: [...byKey.values()] };
 }
 
 interface BenchmarkRowLabel {

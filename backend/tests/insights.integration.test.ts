@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma';
-import { getOrganizationQuestionnaireSummary } from '../src/modules/insights/insights.service';
+import { getAnswerDrilldown, getOrganizationQuestionnaireSummary } from '../src/modules/insights/insights.service';
 import { getOrCreateResponse, submitResponse, upsertAnswer } from '../src/modules/responses/responses.service';
 
 // Integration test against the real local Postgres. Requires the seed to have already run
@@ -115,5 +115,46 @@ describe('getOrganizationQuestionnaireSummary (real DB)', () => {
     expect(summary.answerDistribution).toHaveLength(
       questionnaire.questions.length * questionnaire.subScenarios.length,
     );
+  });
+});
+
+describe('getAnswerDrilldown (real DB)', () => {
+  it('retains individual respondent identity per (question, subScenario, option), scoped to one organization', async () => {
+    const drilldownUserId = await createUser(orgAId, 'drilldown-submitter');
+    const otherOrgDrilldownUserId = await createUser(orgBId, 'drilldown-other-org');
+
+    // Org A: submits B for Intent-driven/Equipment. Org B: submits C for the same cell —
+    // must not leak into Org A's drilldown.
+    await answerAllAndSubmit(drilldownUserId, {
+      serviceCapability: 'Intent-driven',
+      subScenarioCode: 'EQUIPMENT',
+      option: 'B',
+    });
+    await answerAllAndSubmit(otherOrgDrilldownUserId, {
+      serviceCapability: 'Intent-driven',
+      subScenarioCode: 'EQUIPMENT',
+      option: 'C',
+    });
+
+    const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
+      where: { code: 'RAN_FM_GB1059A' },
+      include: { questions: true, subScenarios: true },
+    });
+    const intentQuestion = questionnaire.questions.find((q) => q.serviceCapability === 'Intent-driven')!;
+    const equipmentSubScenario = questionnaire.subScenarios.find((s) => s.code === 'EQUIPMENT')!;
+
+    const drilldown = await getAnswerDrilldown(orgAId, 'RAN_FM_GB1059A');
+
+    const entryB = drilldown.entries.find(
+      (e) => e.questionId === intentQuestion.id && e.subScenarioId === equipmentSubScenario.id && e.option === 'B',
+    );
+    expect(entryB?.respondents.map((r) => r.email)).toContain(
+      '__integration-test-insights-drilldown-submitter__@example.com',
+    );
+
+    const entryC = drilldown.entries.find(
+      (e) => e.questionId === intentQuestion.id && e.subScenarioId === equipmentSubScenario.id && e.option === 'C',
+    );
+    expect(entryC).toBeUndefined();
   });
 });

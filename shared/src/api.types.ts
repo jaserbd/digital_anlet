@@ -156,6 +156,33 @@ export interface OrganizationQuestionnaireSummaryDto {
   answerDistribution: AnswerDistributionEntryDto[];
 }
 
+// Individual-answer visibility for Executive/Admin (SECOND_REVIEW.md item 10) — "role" maps
+// to workingDomain/designation (the free-text profile fields), not the Role enum. Scoped to
+// SUBMITTED responses only, same convention as answerDistribution above. This exposes which
+// specific respondent picked which option — an intentional privacy/scope expansion over the
+// aggregate-only answerDistribution, not an oversight (the review's own example: a Group
+// CTO wants to see who, from which OpCo/country, chose which option).
+export interface DrilldownRespondentDto {
+  userId: string;
+  email: string;
+  opCoName: string | null;
+  country: string | null;
+  workingDomain: string | null;
+  designation: string | null;
+}
+
+export interface AnswerDrilldownEntryDto {
+  questionId: string;
+  subScenarioId: string;
+  option: AnswerOption;
+  respondents: DrilldownRespondentDto[];
+}
+
+export interface AnswerDrilldownDto {
+  questionnaireCode: string;
+  entries: AnswerDrilldownEntryDto[];
+}
+
 export interface SubScenarioAverageDto {
   subScenarioCode: SubScenarioCode;
   averageScore: number | null;
