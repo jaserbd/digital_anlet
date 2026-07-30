@@ -14,20 +14,20 @@ import {
   type ScoringQuestionInput,
   type ScoringSubScenarioInput,
 } from '../scoring/scoring';
-import { QuestionnaireNotFoundError } from '../questionnaire/questionnaire.service';
-
-const CORE_FAULT_MANAGEMENT_CODE = 'CORE_FM_GB1059B';
-const CORE_STABILITY_CODE = 'CORE_STABILITY_GB1059B';
+import { QuestionnaireNotFoundError, getAcceptingResponses } from '../questionnaire/questionnaire.service';
+import { CORE_FAULT_MANAGEMENT_CODE, CORE_STABILITY_CODE } from '../questionnaire/hvsGroups';
 
 export class ResponseNotFoundError extends Error {}
 export class ForbiddenError extends Error {}
 export class ResultNotAvailableError extends Error {}
 
-// Thrown when a mutation (answer/delete-answer/comment/submit) is attempted on a
-// questionnaire whose Admin-controlled acceptingResponses flag is false — replaces the old
-// "already submitted" guard entirely (SECOND_REVIEW.md item 1): while a questionnaire is
-// still accepting responses, a SUBMITTED response stays fully mutable (including
-// re-submitting); once closed, every mutation is blocked regardless of status.
+// Thrown when a mutation (answer/delete-answer/comment/submit) is attempted while the
+// caller's own organization's Admin-controlled acceptingResponses flag for this
+// questionnaire is false (THIRD_REVIEW.md item 7 — per-organization, not global) — replaces
+// the old "already submitted" guard entirely (SECOND_REVIEW.md item 1): while a
+// questionnaire is still accepting responses for that org, a SUBMITTED response stays fully
+// mutable (including re-submitting); once closed, every mutation is blocked regardless of
+// status.
 export class AcceptanceClosedError extends Error {}
 
 // Thrown at submit time when one or more unanswered (question, subScenario) pairs have no
@@ -97,6 +97,15 @@ async function loadOwnedResponse(responseId: string, userId: string) {
   return response;
 }
 
+// Resolves the caller's own-org accepting-responses flag for this response's questionnaire
+// (THIRD_REVIEW.md item 7 — was a single global Questionnaire.acceptingResponses read
+// directly off the loaded response). Shared by all 4 mutation guards below.
+async function assertAccepting(questionnaireId: string, organizationId: string): Promise<void> {
+  if (!(await getAcceptingResponses(questionnaireId, organizationId))) {
+    throw new AcceptanceClosedError();
+  }
+}
+
 /**
  * Returns the user's existing response for this questionnaire (IN_PROGRESS or
  * SUBMITTED) if one exists, creating a new one only if they've never started it.
@@ -134,12 +143,11 @@ export async function getOrCreateResponse(
 export async function upsertAnswer(
   responseId: string,
   userId: string,
+  organizationId: string,
   input: { questionId: string; subScenarioId: string; selectedOption: AnswerOption },
 ): Promise<void> {
   const response = await loadOwnedResponse(responseId, userId);
-  if (!response.questionnaire.acceptingResponses) {
-    throw new AcceptanceClosedError();
-  }
+  await assertAccepting(response.questionnaireId, organizationId);
 
   await prisma.answer.upsert({
     where: {
@@ -165,12 +173,11 @@ export async function upsertAnswer(
 export async function deleteAnswer(
   responseId: string,
   userId: string,
+  organizationId: string,
   input: { questionId: string; subScenarioId: string },
 ): Promise<void> {
   const response = await loadOwnedResponse(responseId, userId);
-  if (!response.questionnaire.acceptingResponses) {
-    throw new AcceptanceClosedError();
-  }
+  await assertAccepting(response.questionnaireId, organizationId);
 
   await prisma.answer.deleteMany({
     where: { responseId, questionId: input.questionId, subScenarioId: input.subScenarioId },
@@ -180,6 +187,7 @@ export async function deleteAnswer(
 export async function upsertComment(
   responseId: string,
   userId: string,
+  organizationId: string,
   input: {
     questionId: string;
     commentText: string;
@@ -188,9 +196,7 @@ export async function upsertComment(
   },
 ): Promise<void> {
   const response = await loadOwnedResponse(responseId, userId);
-  if (!response.questionnaire.acceptingResponses) {
-    throw new AcceptanceClosedError();
-  }
+  await assertAccepting(response.questionnaireId, organizationId);
 
   await prisma.$transaction(async (tx) => {
     const comment = await tx.questionComment.upsert({
@@ -218,11 +224,13 @@ export async function upsertComment(
 // whatever answers/comments are current and replaces the prior ScoreResult snapshot,
 // updating submittedAt. Blocked entirely once the questionnaire's acceptingResponses is
 // false, regardless of the response's own status.
-export async function submitResponse(responseId: string, userId: string): Promise<ScoreResultDto> {
+export async function submitResponse(
+  responseId: string,
+  userId: string,
+  organizationId: string,
+): Promise<ScoreResultDto> {
   const response = await loadOwnedResponse(responseId, userId);
-  if (!response.questionnaire.acceptingResponses) {
-    throw new AcceptanceClosedError();
-  }
+  await assertAccepting(response.questionnaireId, organizationId);
 
   const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
     where: { id: response.questionnaireId },
@@ -245,8 +253,12 @@ export async function submitResponse(responseId: string, userId: string): Promis
   for (const question of questionnaire.questions) {
     for (const subScenario of questionnaire.subScenarios) {
       if (answeredKeys.has(`${question.id}:${subScenario.id}`)) continue;
+      // Only an explicit tag on this specific sub-scenario counts as coverage
+      // (THIRD_REVIEW.md item 1) — a generic appliesToNone comment no longer excuses an
+      // actual skip. appliesToNone stays persisted/storable for a genuinely general comment
+      // on a question with nothing unanswered.
       const coverage = commentCoverage.get(question.id);
-      const covered = coverage?.appliesToNone || coverage?.subScenarioIds.has(subScenario.id);
+      const covered = coverage?.subScenarioIds.has(subScenario.id) ?? false;
       if (!covered) {
         uncovered.push({ questionId: question.id, subScenarioId: subScenario.id });
       }
@@ -410,5 +422,11 @@ export async function getCoreDomainSummary(userId: string): Promise<CoreDomainSu
       ? round4(0.5 * faultManagement.finalScore + 0.5 * stability.finalScore)
       : null;
 
-  return { faultManagement, stability, combinedScore };
+  return {
+    faultManagement,
+    faultManagementQuestionnaireCode: CORE_FAULT_MANAGEMENT_CODE,
+    stability,
+    stabilityQuestionnaireCode: CORE_STABILITY_CODE,
+    combinedScore,
+  };
 }

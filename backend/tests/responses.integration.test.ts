@@ -60,7 +60,7 @@ describe('responses full submit flow (real DB)', () => {
 
     for (const question of questionnaire.questions) {
       for (const subScenario of questionnaire.subScenarios) {
-        await upsertAnswer(response.id, userId, {
+        await upsertAnswer(response.id, userId, orgId, {
           questionId: question.id,
           subScenarioId: subScenario.id,
           selectedOption: 'A',
@@ -68,7 +68,7 @@ describe('responses full submit flow (real DB)', () => {
       }
     }
 
-    const result = await submitResponse(response.id, userId);
+    const result = await submitResponse(response.id, userId, orgId);
     // All-A across every question/sub-scenario -> every score hits its ceiling and every
     // sub-scenario achieves E2E, matching the scoring.test.ts unit-test golden master.
     expect(result.finalScore).toBe(4);
@@ -102,7 +102,7 @@ describe('responses full submit flow (real DB)', () => {
     });
     const firstQuestion = questionnaire.questions[0]!;
     const firstSubScenario = questionnaire.subScenarios[0]!;
-    await upsertAnswer(response.id, userId, {
+    await upsertAnswer(response.id, userId, orgId, {
       questionId: firstQuestion.id,
       subScenarioId: firstSubScenario.id,
       selectedOption: 'A',
@@ -111,7 +111,7 @@ describe('responses full submit flow (real DB)', () => {
     const expectedMissingCount =
       questionnaire.questions.length * questionnaire.subScenarios.length - 1;
 
-    await expect(submitResponse(response.id, userId)).rejects.toSatisfy((err: unknown) => {
+    await expect(submitResponse(response.id, userId, orgId)).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(UncoveredSkipError);
       expect((err as UncoveredSkipError).missing).toHaveLength(expectedMissingCount);
       return true;
@@ -134,7 +134,7 @@ describe('responses full submit flow (real DB)', () => {
         if (question.id === skippedQuestion.id && subScenario.id === skippedSubScenario.id) {
           continue; // deliberately left unanswered — covered by the comment below instead
         }
-        await upsertAnswer(response.id, userId, {
+        await upsertAnswer(response.id, userId, orgId, {
           questionId: question.id,
           subScenarioId: subScenario.id,
           selectedOption: 'A',
@@ -142,14 +142,14 @@ describe('responses full submit flow (real DB)', () => {
       }
     }
 
-    await upsertComment(response.id, userId, {
+    await upsertComment(response.id, userId, orgId, {
       questionId: skippedQuestion.id,
       commentText: 'Not applicable to this sub-scenario.',
       subScenarioIds: [skippedSubScenario.id],
       appliesToNone: false,
     });
 
-    const result = await submitResponse(response.id, userId);
+    const result = await submitResponse(response.id, userId, orgId);
     expect(result.subScenarioScores).toHaveLength(questionnaire.subScenarios.length);
     // The sub-scenario with the skipped question is still scored (re-normalized over its
     // remaining answered questions), not left at 0 or null — only a fully-skipped
@@ -163,13 +163,56 @@ describe('responses full submit flow (real DB)', () => {
     expect(persisted).toEqual(result);
   });
 
+  it('rejects submission when a skip is only covered by appliesToNone, not an explicit tag on that sub-scenario', async () => {
+    // THIRD_REVIEW.md item 1: a generic "None of the sub-scenarios" comment must not excuse
+    // an actual skip — only a comment explicitly tagged to the specific unanswered
+    // sub-scenario counts as coverage.
+    const userId = await createTestUser('none-not-coverage');
+    const response = await getOrCreateResponse(userId, 'RAN_FM_GB1059A');
+
+    const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
+      where: { code: 'RAN_FM_GB1059A' },
+      include: { questions: true, subScenarios: true },
+    });
+    const skippedQuestion = questionnaire.questions[0]!;
+    const skippedSubScenario = questionnaire.subScenarios[0]!;
+
+    for (const question of questionnaire.questions) {
+      for (const subScenario of questionnaire.subScenarios) {
+        if (question.id === skippedQuestion.id && subScenario.id === skippedSubScenario.id) {
+          continue; // deliberately left unanswered
+        }
+        await upsertAnswer(response.id, userId, orgId, {
+          questionId: question.id,
+          subScenarioId: subScenario.id,
+          selectedOption: 'A',
+        });
+      }
+    }
+
+    await upsertComment(response.id, userId, orgId, {
+      questionId: skippedQuestion.id,
+      commentText: 'General note, not tied to a specific sub-scenario.',
+      subScenarioIds: [],
+      appliesToNone: true,
+    });
+
+    await expect(submitResponse(response.id, userId, orgId)).rejects.toSatisfy((err: unknown) => {
+      expect(err).toBeInstanceOf(UncoveredSkipError);
+      expect((err as UncoveredSkipError).missing).toEqual([
+        { questionId: skippedQuestion.id, subScenarioId: skippedSubScenario.id },
+      ]);
+      return true;
+    });
+  });
+
   it('rejects another user from reading or answering someone else’s response', async () => {
     const userId = await createTestUser('owner');
     const otherUserId = await createTestUser('intruder');
     const response = await getOrCreateResponse(userId, 'RAN_FM_GB1059A');
 
     await expect(
-      upsertAnswer(response.id, otherUserId, {
+      upsertAnswer(response.id, otherUserId, orgId, {
         questionId: 'irrelevant',
         subScenarioId: 'irrelevant',
         selectedOption: 'A',

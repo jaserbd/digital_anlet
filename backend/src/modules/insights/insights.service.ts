@@ -1,3 +1,4 @@
+import type { Role } from '@anlet/shared';
 import type {
   AnswerDistributionEntryDto,
   AnswerDrilldownDto,
@@ -6,6 +7,14 @@ import type {
   AnswerOptionCounts,
   BenchmarkingSummaryDto,
   BenchmarkRowDto,
+  CognitiveActivityAverageDto,
+  CognitiveActivitySummaryDto,
+  CombinedBenchmarkingSummaryDto,
+  CombinedBenchmarkRowDto,
+  CommentDrilldownEntryDto,
+  CrossOrgCommentCollectionDto,
+  CrossOrgCommentEntryDto,
+  DrilldownRespondentIdentityDto,
   OpCoBenchmarkingSummaryDto,
   OrganizationQuestionnaireSummaryDto,
   RespondentSummaryDto,
@@ -13,8 +22,15 @@ import type {
   SubScenarioCode,
 } from '@anlet/shared';
 import { prisma } from '../../lib/prisma';
+import { round4 } from '../../lib/rounding';
 
 export class QuestionnaireNotFoundError extends Error {}
+
+// An Executive can now also answer/submit a questionnaire personally (MANAGEMENT_VIEW.md
+// item 2) — that response merges into the same Respondents table / benchmarking averages a
+// Normal User's does, so every respondent-scoped query below counts both roles. Admin never
+// answers questionnaires and is excluded.
+const RESPONDENT_ROLES: Role[] = ['NORMAL_USER', 'EXECUTIVE'];
 
 function emptyCounts(): AnswerOptionCounts {
   return { A: 0, B: 0, C: 0, D: 0 };
@@ -36,6 +52,7 @@ interface ScoreAccumulator {
   finalScores: number[];
   e2eRates: number[];
   subScenarioScores: Map<SubScenarioCode, number[]>;
+  commentCount: number;
 }
 
 interface ScoredResponseLike {
@@ -44,6 +61,7 @@ interface ScoredResponseLike {
     e2eAutomationRate: unknown;
     subScenarioScores: { overallScore: unknown; subScenario: { code: SubScenarioCode } }[];
   } | null;
+  _count: { comments: number };
 }
 
 function groupScores<T extends ScoredResponseLike, K extends string>(
@@ -59,9 +77,11 @@ function groupScores<T extends ScoredResponseLike, K extends string>(
       finalScores: [],
       e2eRates: [],
       subScenarioScores: new Map<SubScenarioCode, number[]>(),
+      commentCount: 0,
     };
     acc.finalScores.push(Number(response.result.finalScore));
     acc.e2eRates.push(Number(response.result.e2eAutomationRate));
+    acc.commentCount += response._count.comments;
     for (const s of response.result.subScenarioScores) {
       if (s.overallScore == null) continue; // fully-skipped sub-scenario — excluded, not 0
       const scores = acc.subScenarioScores.get(s.subScenario.code) ?? [];
@@ -106,9 +126,10 @@ export async function getOrganizationQuestionnaireSummary(
   }
 
   const users = await prisma.user.findMany({
-    where: { organizationId, role: 'NORMAL_USER' },
+    where: { organizationId, role: { in: RESPONDENT_ROLES } },
     orderBy: { email: 'asc' },
     include: {
+      opCo: { select: { id: true, name: true, country: true } },
       responses: {
         where: { questionnaireId: questionnaire.id },
         orderBy: { createdAt: 'desc' },
@@ -127,6 +148,11 @@ export async function getOrganizationQuestionnaireSummary(
       lastName: u.lastName,
       status: latest?.status ?? 'NOT_STARTED',
       finalScore: latest?.result ? Number(latest.result.finalScore) : null,
+      opCoId: u.opCo?.id ?? null,
+      opCoName: u.opCo?.name ?? null,
+      country: u.opCo?.country ?? null,
+      workingDomain: u.workingDomain,
+      designation: u.designation,
     };
   });
 
@@ -161,14 +187,44 @@ export async function getOrganizationQuestionnaireSummary(
   return { questionnaireCode: questionnaire.code, respondents, answerDistribution };
 }
 
+type IdentitySourceUser = {
+  id: string;
+  email: string;
+  workingDomain: string | null;
+  designation: string | null;
+  opCo: { id: string; name: string; country: string } | null;
+};
+
+function toIdentity(user: IdentitySourceUser): DrilldownRespondentIdentityDto {
+  return {
+    userId: user.id,
+    email: user.email,
+    opCoId: user.opCo?.id ?? null,
+    opCoName: user.opCo?.name ?? null,
+    country: user.opCo?.country ?? null,
+    workingDomain: user.workingDomain,
+    designation: user.designation,
+  };
+}
+
+const IDENTITY_SELECT = {
+  id: true,
+  email: true,
+  workingDomain: true,
+  designation: true,
+  opCo: { select: { id: true, name: true, country: true } },
+} as const;
+
 /**
  * Per-respondent answer visibility for Executive/Admin (SECOND_REVIEW.md item 10) — unlike
  * getOrganizationQuestionnaireSummary's aggregate-only answerDistribution, this retains each
  * individual respondent (email, OpCo/country, workingDomain/designation) behind every
- * (question, subScenario, option) they chose. Scoped to SUBMITTED responses only, same
- * convention as the rest of this module. Callers are responsible for authorizing that
- * `organizationId` is one the requester may view (same convention as
- * getOrganizationQuestionnaireSummary).
+ * (question, subScenario, option) they chose, plus (THIRD_REVIEW.md item 8) that
+ * respondent's own comment for the specific question, and the full org-scoped comment list
+ * independently (`comments`) for the Organization Deep-Dive page and GroupedCommentsList.
+ * Scoped to SUBMITTED responses only, same convention as the rest of this module. Callers
+ * are responsible for authorizing that `organizationId` is one the requester may view (same
+ * convention as getOrganizationQuestionnaireSummary).
  */
 export async function getAnswerDrilldown(
   organizationId: string,
@@ -179,28 +235,40 @@ export async function getAnswerDrilldown(
     throw new QuestionnaireNotFoundError();
   }
 
-  const answers = await prisma.answer.findMany({
-    where: {
-      response: { questionnaireId: questionnaire.id, status: 'SUBMITTED', user: { organizationId } },
-    },
-    select: {
-      questionId: true,
-      subScenarioId: true,
-      selectedOption: true,
-      response: {
-        select: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              workingDomain: true,
-              designation: true,
-              opCo: { select: { name: true, country: true } },
-            },
-          },
-        },
+  const responseScope = { questionnaireId: questionnaire.id, status: 'SUBMITTED' as const, user: { organizationId } };
+
+  const [answers, comments] = await Promise.all([
+    prisma.answer.findMany({
+      where: { response: responseScope },
+      select: {
+        questionId: true,
+        subScenarioId: true,
+        selectedOption: true,
+        response: { select: { user: { select: IDENTITY_SELECT } } },
       },
-    },
+    }),
+    prisma.questionComment.findMany({
+      where: { response: responseScope },
+      select: {
+        questionId: true,
+        commentText: true,
+        appliesToNone: true,
+        subScenarios: { select: { subScenarioId: true } },
+        response: { select: { user: { select: IDENTITY_SELECT } } },
+      },
+    }),
+  ]);
+
+  const commentByUserAndQuestion = new Map<string, string>();
+  const commentEntries: CommentDrilldownEntryDto[] = comments.map((c) => {
+    commentByUserAndQuestion.set(`${c.response.user.id}:${c.questionId}`, c.commentText);
+    return {
+      questionId: c.questionId,
+      subScenarioIds: c.subScenarios.map((s) => s.subScenarioId),
+      appliesToNone: c.appliesToNone,
+      commentText: c.commentText,
+      respondent: toIdentity(c.response.user),
+    };
   });
 
   const byKey = new Map<string, AnswerDrilldownEntryDto>();
@@ -217,16 +285,129 @@ export async function getAnswerDrilldown(
       byKey.set(key, entry);
     }
     entry.respondents.push({
-      userId: a.response.user.id,
-      email: a.response.user.email,
-      opCoName: a.response.user.opCo?.name ?? null,
-      country: a.response.user.opCo?.country ?? null,
-      workingDomain: a.response.user.workingDomain,
-      designation: a.response.user.designation,
+      ...toIdentity(a.response.user),
+      comment: commentByUserAndQuestion.get(`${a.response.user.id}:${a.questionId}`) ?? null,
     });
   }
 
-  return { questionnaireCode: questionnaire.code, entries: [...byKey.values()] };
+  return { questionnaireCode: questionnaire.code, entries: [...byKey.values()], comments: commentEntries };
+}
+
+/**
+ * IAADE/Cognitive-Activity spider-chart data for Executive/Admin (ADMIN_2.md item 1) — the
+ * aggregate analogue of what a Normal User already gets for free from their own
+ * ScoreResultDto.questionScores. Averages QuestionScoreResult.compensatedScore across
+ * SUBMITTED responses, grouped by each question's cognitiveActivity (ordered by that
+ * activity's first question sortOrder, mirroring the frontend's groupByCognitiveActivity
+ * contiguous-run assumption), plus the same responses' overall finalScore for the headline
+ * number shown next to the chart. A null averageScore/averageFinalScore means no matching
+ * SUBMITTED response had a score there — never a misleading 0 (same convention as
+ * computeBenchmarkRows below). Callers are responsible for authorizing that `organizationId`
+ * is one the requester may view (same convention as getAnswerDrilldown).
+ */
+export async function getCognitiveActivitySummary(
+  organizationId: string,
+  questionnaireCode: string,
+  filters: { opCoId?: string; country?: string },
+): Promise<CognitiveActivitySummaryDto> {
+  const questionnaire = await prisma.questionnaire.findUnique({ where: { code: questionnaireCode } });
+  if (!questionnaire) {
+    throw new QuestionnaireNotFoundError();
+  }
+
+  const scoreResults = await prisma.scoreResult.findMany({
+    where: {
+      response: {
+        questionnaireId: questionnaire.id,
+        status: 'SUBMITTED',
+        user: {
+          organizationId,
+          ...(filters.opCoId ? { opCoId: filters.opCoId } : {}),
+          ...(filters.country ? { opCo: { country: filters.country } } : {}),
+        },
+      },
+    },
+    select: {
+      finalScore: true,
+      questionScores: {
+        select: {
+          compensatedScore: true,
+          question: { select: { cognitiveActivity: true, sortOrder: true } },
+        },
+      },
+    },
+  });
+
+  const byActivity = new Map<string, { sum: number; count: number; sortOrder: number }>();
+  let finalScoreSum = 0;
+  for (const sr of scoreResults) {
+    finalScoreSum += Number(sr.finalScore);
+    for (const qs of sr.questionScores) {
+      if (qs.compensatedScore == null) continue; // skipped — excluded, not 0 (scoring.ts convention)
+      const key = qs.question.cognitiveActivity;
+      const entry = byActivity.get(key) ?? { sum: 0, count: 0, sortOrder: qs.question.sortOrder };
+      entry.sum += Number(qs.compensatedScore);
+      entry.count += 1;
+      byActivity.set(key, entry);
+    }
+  }
+
+  const activities: CognitiveActivityAverageDto[] = [...byActivity.entries()]
+    .sort((a, b) => a[1].sortOrder - b[1].sortOrder)
+    .map(([cognitiveActivity, entry]) => ({
+      cognitiveActivity,
+      averageScore: entry.count > 0 ? round4(entry.sum / entry.count) : null,
+    }));
+
+  return {
+    activities,
+    averageFinalScore: scoreResults.length > 0 ? round4(finalScoreSum / scoreResults.length) : null,
+    sampleSize: scoreResults.length,
+  };
+}
+
+/**
+ * Cross-organization Comment Collection for Admin (ADMIN.md item 3) — the unscoped analogue
+ * of getAnswerDrilldown's `comments` half: every comment for this questionnaire across every
+ * organization at once, each carrying its respondent's organization identity (which
+ * getAnswerDrilldown's per-org callers have no need for, since it's already implied by the
+ * organizationId they passed in). Scoped to SUBMITTED responses only, same convention as the
+ * rest of this module.
+ */
+export async function getCrossOrgCommentCollection(questionnaireCode: string): Promise<CrossOrgCommentCollectionDto> {
+  const questionnaire = await prisma.questionnaire.findUnique({ where: { code: questionnaireCode } });
+  if (!questionnaire) {
+    throw new QuestionnaireNotFoundError();
+  }
+
+  const comments = await prisma.questionComment.findMany({
+    where: { response: { questionnaireId: questionnaire.id, status: 'SUBMITTED' } },
+    select: {
+      questionId: true,
+      commentText: true,
+      appliesToNone: true,
+      subScenarios: { select: { subScenarioId: true } },
+      response: {
+        select: {
+          user: {
+            select: { ...IDENTITY_SELECT, organization: { select: { id: true, name: true } } },
+          },
+        },
+      },
+    },
+  });
+
+  const commentEntries: CrossOrgCommentEntryDto[] = comments.map((c) => ({
+    questionId: c.questionId,
+    subScenarioIds: c.subScenarios.map((s) => s.subScenarioId),
+    appliesToNone: c.appliesToNone,
+    commentText: c.commentText,
+    respondent: toIdentity(c.response.user),
+    organizationId: c.response.user.organization.id,
+    organizationName: c.response.user.organization.name,
+  }));
+
+  return { questionnaireCode: questionnaire.code, comments: commentEntries };
 }
 
 interface BenchmarkRowLabel {
@@ -246,7 +427,8 @@ function rowKey(organizationId: string, opCoId: string | null): string {
  * shared by getBenchmarkingSummary (cross-org, Admin) and getOpCoBenchmarkingSummary
  * (single-org, Executive/Admin). A synthetic "no OpCo" row (opCoId/country null, opCoName
  * falls back to the organization's own name) is included for any organization that either
- * has zero OpCos at all (small orgs) or has at least one NORMAL_USER not yet assigned one —
+ * has zero OpCos at all (small orgs) or has at least one respondent (Normal User or
+ * Executive) not yet assigned one —
  * SECOND_REVIEW.md item 9's "for small organizations, NatCo and Organization will be the
  * same" plus not silently dropping unassigned respondents from the table.
  */
@@ -265,7 +447,7 @@ async function computeBenchmarkRows(
     (
       await prisma.user.findMany({
         where: {
-          role: 'NORMAL_USER',
+          role: { in: RESPONDENT_ROLES },
           opCoId: null,
           ...(scopeOrganizationId ? { organizationId: scopeOrganizationId } : {}),
         },
@@ -299,7 +481,7 @@ async function computeBenchmarkRows(
 
   const respondentCounts = await prisma.user.groupBy({
     by: ['organizationId', 'opCoId'],
-    where: { role: 'NORMAL_USER', ...(scopeOrganizationId ? { organizationId: scopeOrganizationId } : {}) },
+    where: { role: { in: RESPONDENT_ROLES }, ...(scopeOrganizationId ? { organizationId: scopeOrganizationId } : {}) },
     _count: { _all: true },
   });
   const respondentCountByKey = new Map(
@@ -315,6 +497,7 @@ async function computeBenchmarkRows(
     include: {
       user: { select: { organizationId: true, opCoId: true } },
       result: { include: { subScenarioScores: { include: { subScenario: true } } } },
+      _count: { select: { comments: true } },
     },
   });
   const byKey = groupScores(submittedResponses, (r) => rowKey(r.user.organizationId, r.user.opCoId));
@@ -333,6 +516,7 @@ async function computeBenchmarkRows(
       averageFinalScore: average(acc?.finalScores ?? []),
       averageE2eAutomationRate: average(acc?.e2eRates ?? []),
       subScenarioAverages: subScenarioAverages(acc, questionnaire.subScenarios),
+      commentCount: acc?.commentCount ?? 0,
     };
   });
 }
@@ -375,4 +559,54 @@ export async function getOpCoBenchmarkingSummary(
   const questionnaire = await loadQuestionnaireForBenchmarking(questionnaireCode);
   const rows = await computeBenchmarkRows(questionnaire, organizationId);
   return { questionnaireCode: questionnaire.code, organizationId, rows };
+}
+
+/**
+ * Org/OpCo-wide analogue of responses.service.ts's getCoreDomainSummary (which is per-user
+ * only) — blends two already-computed BenchmarkRowDto sets (one per HVS-group member
+ * questionnaire) 50/50 per CORE_FM.xlsx's Guideline point 7 (FORTH_REVIEW.md items 5/6). Row
+ * labels are identical between the two calls since they derive from org/OpCo membership,
+ * not from the questionnaire itself, so every row in `rowsA` has a matching row in `rowsB`.
+ */
+export async function getCombinedBenchmarkingSummary(
+  group: { groupCode: string; questionnaireCodes: string[] },
+  scopeOrganizationId?: string,
+): Promise<CombinedBenchmarkingSummaryDto> {
+  const [codeA, codeB] = group.questionnaireCodes;
+  if (!codeA || !codeB) {
+    throw new QuestionnaireNotFoundError();
+  }
+  const [qA, qB] = await Promise.all([
+    loadQuestionnaireForBenchmarking(codeA),
+    loadQuestionnaireForBenchmarking(codeB),
+  ]);
+  const [rowsA, rowsB] = await Promise.all([
+    computeBenchmarkRows(qA, scopeOrganizationId),
+    computeBenchmarkRows(qB, scopeOrganizationId),
+  ]);
+  const byKeyB = new Map(rowsB.map((r) => [rowKey(r.organizationId, r.opCoId), r]));
+
+  const rows: CombinedBenchmarkRowDto[] = rowsA.map((rowA) => {
+    const rowB = byKeyB.get(rowKey(rowA.organizationId, rowA.opCoId))!;
+    const combinedAverageFinalScore =
+      rowA.averageFinalScore != null && rowB.averageFinalScore != null
+        ? round4(0.5 * rowA.averageFinalScore + 0.5 * rowB.averageFinalScore)
+        : null;
+    return {
+      organizationId: rowA.organizationId,
+      organizationName: rowA.organizationName,
+      opCoId: rowA.opCoId,
+      opCoName: rowA.opCoName,
+      country: rowA.country,
+      faultManagement: rowA,
+      stability: rowB,
+      combinedAverageFinalScore,
+    };
+  });
+
+  return {
+    groupCode: group.groupCode,
+    ...(scopeOrganizationId ? { organizationId: scopeOrganizationId } : {}),
+    rows,
+  };
 }

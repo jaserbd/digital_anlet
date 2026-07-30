@@ -5,18 +5,43 @@ import { parseDurationMs } from '../../lib/duration';
 import { AUTH_COOKIE_NAME } from '../../middleware/auth';
 import {
   OpCoNotInOrganizationError,
+  OpCoRequiredError,
   UserNotFoundError,
   updateOwnProfile,
 } from '../users/users.service';
-import { InvalidCredentialsError, getAuthenticatedUser, login } from './auth.service';
+import {
+  InvalidCredentialsError,
+  InvalidResetTokenError,
+  changeOwnPassword,
+  getAuthenticatedUser,
+  login,
+  requestPasswordReset,
+  resetPassword,
+} from './auth.service';
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
 
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8),
+});
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  newPassword: z.string().min(8),
+});
+
 const updateProfileSchema = z.object({
-  opCoId: z.string().min(1),
+  // Optional here regardless of role — updateOwnProfile enforces it's still required for a
+  // NORMAL_USER (an Executive may skip it, MANAGEMENT_REVIEW2.md item 2).
+  opCoId: z.string().min(1).optional(),
   workingDomain: z.string().trim().min(1).max(200),
   designation: z.string().trim().min(1).max(200),
 });
@@ -66,6 +91,61 @@ export async function meHandler(req: Request, res: Response) {
   res.json(user);
 }
 
+export async function changePasswordHandler(req: Request, res: Response) {
+  const parsed = changePasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request body' });
+    return;
+  }
+
+  try {
+    await changeOwnPassword(req.user!.sub, parsed.data.currentPassword, parsed.data.newPassword);
+    res.status(204).end();
+  } catch (err) {
+    if (err instanceof InvalidCredentialsError) {
+      res.status(401).json({ error: 'Current password is incorrect' });
+      return;
+    }
+    if (err instanceof UserNotFoundError) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    throw err;
+  }
+}
+
+export async function forgotPasswordHandler(req: Request, res: Response) {
+  const parsed = forgotPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request body' });
+    return;
+  }
+
+  // Always 204, regardless of whether the email is registered — see requestPasswordReset's
+  // own doc comment for why (no user-enumeration signal).
+  await requestPasswordReset(parsed.data.email);
+  res.status(204).end();
+}
+
+export async function resetPasswordHandler(req: Request, res: Response) {
+  const parsed = resetPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request body' });
+    return;
+  }
+
+  try {
+    await resetPassword(parsed.data.token, parsed.data.newPassword);
+    res.status(204).end();
+  } catch (err) {
+    if (err instanceof InvalidResetTokenError) {
+      res.status(400).json({ error: 'This reset link is invalid or has expired' });
+      return;
+    }
+    throw err;
+  }
+}
+
 export async function updateProfileHandler(req: Request, res: Response) {
   const parsed = updateProfileSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -83,6 +163,10 @@ export async function updateProfileHandler(req: Request, res: Response) {
     }
     if (err instanceof OpCoNotInOrganizationError) {
       res.status(400).json({ error: 'Selected OpCo does not belong to your organization' });
+      return;
+    }
+    if (err instanceof OpCoRequiredError) {
+      res.status(400).json({ error: 'OpCo is required' });
       return;
     }
     throw err;

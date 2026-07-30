@@ -5,8 +5,11 @@ import {
   EmailTakenError,
   OpCoNotInOrganizationError,
   OrganizationNotFoundError,
+  UserHasResponsesError,
   UserNotFoundError,
   createUser,
+  createUsersBulk,
+  deleteUser,
   listUsers,
   updateUser,
 } from './users.service';
@@ -43,6 +46,30 @@ export async function createUserHandler(req: Request, res: Response) {
     }
     throw err;
   }
+}
+
+const bulkCreateUsersSchema = z.object({
+  rows: z
+    .array(
+      z.object({
+        email: z.string().email(),
+        role: z.enum(['NORMAL_USER', 'EXECUTIVE']),
+        organization: z.string().trim().min(1),
+        password: z.string().min(8).optional(),
+      }),
+    )
+    .min(1),
+});
+
+export async function bulkCreateUsersHandler(req: Request, res: Response) {
+  const parsed = bulkCreateUsersSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request body' });
+    return;
+  }
+
+  const results = await createUsersBulk(parsed.data.rows);
+  res.status(201).json(results);
 }
 
 export async function listUsersHandler(req: Request, res: Response) {
@@ -87,6 +114,33 @@ export async function updateUserHandler(req: Request, res: Response) {
     }
     if (err instanceof OpCoNotInOrganizationError) {
       res.status(400).json({ error: 'OpCo does not belong to the target organization' });
+      return;
+    }
+    throw err;
+  }
+}
+
+export async function deleteUserHandler(req: Request, res: Response) {
+  const userId = req.params.id;
+  if (typeof userId !== 'string') {
+    res.status(400).json({ error: 'Invalid user id' });
+    return;
+  }
+
+  try {
+    await deleteUser(userId);
+    res.status(204).end();
+  } catch (err) {
+    if (err instanceof UserNotFoundError) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    if (err instanceof CannotModifyAdminError) {
+      res.status(403).json({ error: 'Admin accounts cannot be deleted' });
+      return;
+    }
+    if (err instanceof UserHasResponsesError) {
+      res.status(409).json({ error: 'Cannot delete a user who has questionnaire response history' });
       return;
     }
     throw err;

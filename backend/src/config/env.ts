@@ -22,6 +22,17 @@ const envSchema = z.object({
   // Seed-time bootstrap admin account (idempotent upsert, see prisma/seed/seed.ts).
   ADMIN_EMAIL: z.string().email(),
   ADMIN_PASSWORD: z.string().min(8),
+  // Password-reset email delivery (OVERVIEW.md item 12) — a plain SMTP relay (see
+  // lib/mailer.ts) rather than a vendor-specific SDK, so any provider works.
+  SMTP_HOST: z.string().min(1),
+  SMTP_PORT: z.coerce.number(),
+  SMTP_USER: z.string().min(1),
+  SMTP_PASSWORD: z.string().min(1),
+  SMTP_FROM: z.string().email(),
+  // The frontend's own origin, used to build the emailed reset link — the backend can't
+  // infer this from its own request in dev (backend :4000, frontend :5173 behind Vite's
+  // proxy); in production single-host deploy this is just the app's own URL.
+  APP_BASE_URL: z.string().url(),
 });
 
 export const env = envSchema.parse(process.env);

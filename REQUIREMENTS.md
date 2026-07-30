@@ -20,7 +20,7 @@ There is an excel file called RAN_FM. This File has 4 Tabs.
 One is Guideline. This section provides the guideline of the answers of the questions. Here we  will find Cognitive Activity (IAADE), Service Capability	Question, Answering Guideline and information about Sub-scenarios.		
 
 Sub-scenarios:		
-The sub-scenarios are introduced based on the alarmType defined in 3GPP TS 28.111. Below is the list of most common representative sub-scenarios for RAN fault management:			
+The sub-scenarios are introduced based on the alarmType defined in 3GPxP TS 28.111. Below is the list of most common representative sub-scenarios for RAN fault management:			
     Sub-scenario-1:Equipment：An alarm/fault of this type is associated with an equipment fault.			
     Sub-scenario-2:Processing Error: An alarm/fault of this type is associated with a software or processing fault.			
     Sub-scenario-3:Communications: An alarm/fault of this type is associated with the procedure and/or process required conveying information from one point to another.			

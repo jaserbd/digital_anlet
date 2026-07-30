@@ -2,14 +2,24 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { AnswerOption } from '@anlet/shared';
+import Button from '@mui/material/Button';
+import Alert from '@mui/material/Alert';
+import Typography from '@mui/material/Typography';
+import Stack from '@mui/material/Stack';
+import Accordion from '@mui/material/Accordion';
+import AccordionSummary from '@mui/material/AccordionSummary';
+import AccordionDetails from '@mui/material/AccordionDetails';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { responsesApi } from '../api/responsesApi';
 import { ApiError } from '../api/client';
 import { QuestionCard } from '../components/QuestionCard';
 import { QuestionStepper } from '../components/QuestionStepper';
 import { EMPTY_COMMENT, type CommentState } from '../components/QuestionCommentEditor';
-import { ReviewStep, type CommentSummaryEntry, type UncoveredGap } from '../components/ReviewStep';
-import { LogoutButton } from '../components/LogoutButton';
+import { ReviewStep, type UncoveredGap } from '../components/ReviewStep';
+import type { CommentEntry } from '../components/GroupedCommentsList';
+import { PageShell } from '../components/PageShell';
+import { formatQuestionLabel } from '../lib/cognitiveActivity';
 
 function answerKey(questionId: string, subScenarioId: string) {
   return `${questionId}:${subScenarioId}`;
@@ -57,17 +67,33 @@ export function QuestionnairePage() {
     }
   }, [hydrated, responseQuery.data]);
 
+  // Once an Admin closes this questionnaire for the user's organization mid-edit (item 7 made
+  // acceptance per-org, so this can now happen to an IN_PROGRESS response, not just a
+  // SUBMITTED one), a save can 409 without the user otherwise noticing — surface it and
+  // refetch the questionnaire so the closed-guard below takes over on the next render.
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  function handleMutationError(err: unknown) {
+    if (err instanceof ApiError && err.status === 409) {
+      setMutationError('This assessment was just closed by an admin. Your last change was not saved.');
+      void questionnaireQuery.refetch();
+    } else {
+      setMutationError('Failed to save. Please try again.');
+    }
+  }
+
   const answerMutation = useMutation({
     mutationFn: (vars: {
       questionId: string;
       subScenarioId: string;
       selectedOption: AnswerOption;
     }) => responsesApi.upsertAnswer(responseQuery.data!.id, vars),
+    onError: handleMutationError,
   });
 
   const deleteAnswerMutation = useMutation({
     mutationFn: (vars: { questionId: string; subScenarioId: string }) =>
       responsesApi.deleteAnswer(responseQuery.data!.id, vars.questionId, vars.subScenarioId),
+    onError: handleMutationError,
   });
 
   const commentMutation = useMutation({
@@ -77,6 +103,7 @@ export function QuestionnairePage() {
       subScenarioIds: string[];
       appliesToNone: boolean;
     }) => responsesApi.upsertComment(responseQuery.data!.id, vars),
+    onError: handleMutationError,
   });
 
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -111,13 +138,11 @@ export function QuestionnairePage() {
       for (const s of subScenarios) {
         if (answers.has(answerKey(q.id, s.id))) continue;
         const covered =
-          !!comment &&
-          comment.commentText.trim().length > 0 &&
-          (comment.appliesToNone || comment.subScenarioIds.includes(s.id));
+          !!comment && comment.commentText.trim().length > 0 && comment.subScenarioIds.includes(s.id);
         if (!covered) {
           result.push({
             questionId: q.id,
-            questionLabel: q.serviceCapability,
+            questionLabel: formatQuestionLabel(q),
             subScenarioId: s.id,
             subScenarioLabel: s.name,
           });
@@ -127,20 +152,30 @@ export function QuestionnairePage() {
     return result;
   }, [questionnaireQuery.data, answers, comments]);
 
-  const commentSummaries = useMemo<CommentSummaryEntry[]>(() => {
-    if (!questionnaireQuery.data) return [];
+  const coverageByQuestionId = useMemo(() => {
+    const map = new Map<string, { answeredCount: number; total: number }>();
+    if (!questionnaireQuery.data) return map;
     const { questions, subScenarios } = questionnaireQuery.data;
-    return questions
+    for (const q of questions) {
+      let answeredCount = 0;
+      for (const s of subScenarios) {
+        if (answers.has(answerKey(q.id, s.id))) answeredCount++;
+      }
+      map.set(q.id, { answeredCount, total: subScenarios.length });
+    }
+    return map;
+  }, [questionnaireQuery.data, answers]);
+
+  const commentEntries = useMemo<CommentEntry[]>(() => {
+    if (!questionnaireQuery.data) return [];
+    return questionnaireQuery.data.questions
       .filter((q) => comments.has(q.id) && comments.get(q.id)!.commentText.trim().length > 0)
       .map((q) => {
         const c = comments.get(q.id)!;
         return {
           questionId: q.id,
-          questionLabel: q.serviceCapability,
           commentText: c.commentText,
-          subScenarioLabels: c.subScenarioIds
-            .map((id) => subScenarios.find((s) => s.id === id)?.name)
-            .filter((name): name is string => !!name),
+          subScenarioIds: c.subScenarioIds,
           appliesToNone: c.appliesToNone,
         };
       });
@@ -158,15 +193,30 @@ export function QuestionnairePage() {
     return <p>Something went wrong loading the questionnaire.</p>;
   }
 
-  // Once the questionnaire closes (Admin toggle), a SUBMITTED response is locked exactly
-  // like before this phase — redirect straight to results. While still open, a SUBMITTED
-  // user is let back in to keep editing and re-submit (SECOND_REVIEW.md item 1).
-  if (responseQuery.data.status === 'SUBMITTED' && !questionnaireQuery.data.acceptingResponses) {
-    navigate(`/results/${responseQuery.data.id}`, { replace: true });
-    return null;
-  }
-
   const questionnaire = questionnaireQuery.data;
+
+  // Once the questionnaire closes for this user's organization (Admin toggle, now
+  // per-organization — THIRD_REVIEW.md item 7), a SUBMITTED response is locked exactly like
+  // before — redirect straight to results. An IN_PROGRESS response has no results to show,
+  // so it gets a plain closed notice instead. While still open, a SUBMITTED user is let back
+  // in to keep editing and re-submit (SECOND_REVIEW.md item 1).
+  if (!questionnaire.acceptingResponses) {
+    if (responseQuery.data.status === 'SUBMITTED') {
+      navigate(`/results/${responseQuery.data.id}`, { replace: true });
+      return null;
+    }
+    return (
+      <PageShell title={questionnaire.name} maxWidth={800}>
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          This assessment is currently closed for your organization and no longer accepting
+          responses.
+        </Alert>
+        <Button variant="outlined" onClick={() => navigate('/domains')}>
+          ← All assessments
+        </Button>
+      </PageShell>
+    );
+  }
   const isEditingSubmitted = responseQuery.data.status === 'SUBMITTED';
   const isReviewStep = stepIndex === questionnaire.questions.length;
   const currentQuestion = questionnaire.questions[stepIndex];
@@ -212,44 +262,53 @@ export function QuestionnairePage() {
     return !uncovered.some((g) => g.questionId === questionId);
   }
 
+  function jumpToQuestion(questionId: string) {
+    const idx = questionnaire.questions.findIndex((q) => q.id === questionId);
+    if (idx >= 0) setStepIndex(idx);
+  }
+
   return (
-    <main style={{ maxWidth: 800, margin: '2rem auto', fontFamily: 'sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>{questionnaire.name}</h1>
-        <LogoutButton />
-      </div>
-      <button type="button" onClick={() => navigate('/domains')}>
+    <PageShell title={questionnaire.name} maxWidth={800}>
+      <Button onClick={() => navigate('/domains')} sx={{ mb: 2 }}>
         ← All assessments
-      </button>
+      </Button>
       {isEditingSubmitted && (
-        <p style={{ background: '#eef6ff', border: '1px solid #b6d4fe', borderRadius: 4, padding: '0.5rem 0.75rem' }}>
+        <Alert severity="info" sx={{ mb: 2 }}>
           You already submitted this response. You can keep editing and re-submit until an
           admin closes this assessment.
-        </p>
+        </Alert>
       )}
       {questionnaire.guidelineText && (
-        <details style={{ margin: '1rem 0', border: '1px solid #ddd', borderRadius: 4, padding: '0.5rem 0.75rem' }}>
-          <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>Guideline</summary>
-          <p style={{ whiteSpace: 'pre-wrap', fontSize: '0.9em' }}>{questionnaire.guidelineText}</p>
-        </details>
+        <Accordion sx={{ mb: 2 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography sx={{ fontWeight: 700 }}>Guideline</Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+              {questionnaire.guidelineText}
+            </Typography>
+          </AccordionDetails>
+        </Accordion>
       )}
-      <p>
+      <Typography color="text.secondary" sx={{ mb: 2 }}>
         {answeredCount} / {totalRequired} answered
         {totalUnanswered - uncovered.length > 0 &&
           ` · ${totalUnanswered - uncovered.length} skipped (covered by a comment)`}
         {uncovered.length > 0 && ` · ${uncovered.length} unanswered, needs a covering comment`}
-      </p>
+      </Typography>
       <QuestionStepper
         questions={questionnaire.questions}
         currentIndex={stepIndex}
         isComplete={isQuestionComplete}
         onSelect={setStepIndex}
+        coverageByQuestionId={coverageByQuestionId}
       />
 
       {!isReviewStep && currentQuestion && (
         <QuestionCard
           key={currentQuestion.id}
           question={currentQuestion}
+          ordinal={stepIndex + 1}
           subScenarios={questionnaire.subScenarios}
           answers={answersForCurrentQuestion}
           comment={comments.get(currentQuestion.id) ?? EMPTY_COMMENT}
@@ -262,21 +321,24 @@ export function QuestionnairePage() {
         <ReviewStep
           uncovered={uncovered}
           skippedCoveredCount={totalUnanswered - uncovered.length}
-          comments={commentSummaries}
+          questions={questionnaire.questions}
+          subScenarios={questionnaire.subScenarios}
+          comments={commentEntries}
+          onJumpTo={jumpToQuestion}
         />
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
-        <button type="button" disabled={stepIndex === 0} onClick={() => setStepIndex((i) => i - 1)}>
+      <Stack direction="row" sx={{ justifyContent: 'space-between', mt: 2 }}>
+        <Button variant="outlined" disabled={stepIndex === 0} onClick={() => setStepIndex((i) => i - 1)}>
           Previous
-        </button>
+        </Button>
         {!isReviewStep ? (
-          <button type="button" onClick={() => setStepIndex((i) => i + 1)}>
+          <Button variant="contained" onClick={() => setStepIndex((i) => i + 1)}>
             Next
-          </button>
+          </Button>
         ) : (
-          <button
-            type="button"
+          <Button
+            variant="contained"
             disabled={uncovered.length > 0 || submitMutation.isPending}
             onClick={() => {
               setSubmitError(null);
@@ -290,10 +352,19 @@ export function QuestionnairePage() {
               : isEditingSubmitted
                 ? 'Update submission'
                 : 'Submit'}
-          </button>
+          </Button>
         )}
-      </div>
-      {submitError && <p style={{ color: 'crimson' }}>{submitError}</p>}
-    </main>
+      </Stack>
+      {submitError && (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {submitError}
+        </Alert>
+      )}
+      {mutationError && (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {mutationError}
+        </Alert>
+      )}
+    </PageShell>
   );
 }

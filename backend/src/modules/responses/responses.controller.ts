@@ -97,7 +97,7 @@ export async function upsertAnswerHandler(req: Request, res: Response) {
   }
 
   try {
-    await upsertAnswer(requireParam(req, 'id'), req.user!.sub, parsed.data);
+    await upsertAnswer(requireParam(req, 'id'), req.user!.sub, req.user!.organizationId, parsed.data);
     res.status(204).end();
   } catch (err) {
     if (!handleKnownErrors(err, res)) throw err;
@@ -106,7 +106,7 @@ export async function upsertAnswerHandler(req: Request, res: Response) {
 
 export async function deleteAnswerHandler(req: Request, res: Response) {
   try {
-    await deleteAnswer(requireParam(req, 'id'), req.user!.sub, {
+    await deleteAnswer(requireParam(req, 'id'), req.user!.sub, req.user!.organizationId, {
       questionId: requireParam(req, 'questionId'),
       subScenarioId: requireParam(req, 'subScenarioId'),
     });
@@ -124,7 +124,7 @@ export async function upsertCommentHandler(req: Request, res: Response) {
   }
 
   try {
-    await upsertComment(requireParam(req, 'id'), req.user!.sub, parsed.data);
+    await upsertComment(requireParam(req, 'id'), req.user!.sub, req.user!.organizationId, parsed.data);
     res.status(204).end();
   } catch (err) {
     if (!handleKnownErrors(err, res)) throw err;
@@ -133,7 +133,7 @@ export async function upsertCommentHandler(req: Request, res: Response) {
 
 export async function submitResponseHandler(req: Request, res: Response) {
   try {
-    const result = await submitResponse(requireParam(req, 'id'), req.user!.sub);
+    const result = await submitResponse(requireParam(req, 'id'), req.user!.sub, req.user!.organizationId);
     res.json(result);
   } catch (err) {
     if (!handleKnownErrors(err, res)) throw err;

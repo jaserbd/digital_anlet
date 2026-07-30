@@ -2,6 +2,8 @@ import { prisma } from '../../lib/prisma';
 
 export class OpCoNameTakenError extends Error {}
 export class OrganizationNotFoundError extends Error {}
+export class OpCoNotFoundError extends Error {}
+export class OpCoHasDependentsError extends Error {}
 
 export function listOpCos(organizationId: string) {
   return prisma.opCo.findMany({
@@ -30,4 +32,21 @@ export async function createOpCo(input: { name: string; country: string; organiz
     data: input,
     select: { id: true, name: true, country: true, organizationId: true },
   });
+}
+
+// Admin-only delete (ADMIN.md item 1). Blocked (not cascaded) if any user is still assigned
+// to this OpCo — User.opCoId has no onDelete: Cascade, so those respondents' history would
+// otherwise be orphaned.
+export async function deleteOpCo(id: string): Promise<void> {
+  const opCo = await prisma.opCo.findUnique({ where: { id } });
+  if (!opCo) {
+    throw new OpCoNotFoundError();
+  }
+
+  const userCount = await prisma.user.count({ where: { opCoId: id } });
+  if (userCount > 0) {
+    throw new OpCoHasDependentsError();
+  }
+
+  await prisma.opCo.delete({ where: { id } });
 }

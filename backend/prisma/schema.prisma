@@ -33,6 +33,7 @@ model Organization {
 
   users User[]
   opCos OpCo[]
+  questionnaireOrgSettings QuestionnaireOrgSetting[]
 }
 
 // A NatCo/OpCo within an Organization (e.g. "Vodafone Kenya" under "Vodafone Group").
@@ -64,6 +65,12 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // True for every admin-created account (single-create and bulk-CSV alike) — the admin-set
+  // password is explicitly one-time; the user must set their own on first login (OVERVIEW.md
+  // item 4). Cleared by PUT /api/auth/change-password. Defaults false so existing/seeded
+  // accounts (notably the bootstrap Admin, created outside createUser) are unaffected.
+  mustChangePassword Boolean @default(false)
+
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
 
@@ -78,6 +85,21 @@ model User {
   designation   String?
 
   responses QuestionnaireResponse[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+// Forgot-password flow (OVERVIEW.md item 12) — a single-use, expiring token emailed as a
+// reset link. Only the token's hash is stored (mirrors why User.passwordHash is hashed, not
+// plaintext) so a DB leak alone can't be used to redeem outstanding reset links.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // Generic questionnaire model: RAN Fault Management (GB1059A), Core Network Fault
@@ -95,10 +117,6 @@ model Questionnaire {
   // Sub-scenarios for RAN; the numbered Introduction for Core FM/Stability). Shown as a
   // collapsible section above the question flow (SECOND_REVIEW.md item 4).
   guidelineText      String?  @db.Text
-  // Admin-controlled open/close toggle (SECOND_REVIEW.md item 1) — while true, a response
-  // stays fully mutable (including re-submitting) regardless of its status; once false, every
-  // mutation is blocked, including for already-SUBMITTED responses. See responses.service.ts.
-  acceptingResponses Boolean  @default(true)
   version            Int      @default(1)
   isActive           Boolean  @default(true)
   createdAt          DateTime @default(now())
@@ -107,6 +125,26 @@ model Questionnaire {
   subScenarios SubScenario[]
   questions    Question[]
   responses    QuestionnaireResponse[]
+  orgSettings  QuestionnaireOrgSetting[]
+}
+
+// Admin-controlled per-(questionnaire, organization) open/close toggle (THIRD_REVIEW.md item
+// 7) — replaced a single global Questionnaire.acceptingResponses boolean, since a large
+// multi-org deployment needs to close one organization's acceptance without affecting
+// others. While true, a response stays fully mutable (including re-submitting) regardless of
+// its status; once false, every mutation for that org is blocked, including for
+// already-SUBMITTED responses. Absence of a row (shouldn't normally happen — every
+// org/questionnaire pair is backfilled on creation, see organizations.service.ts and
+// seed.ts) defaults to true. See questionnaire.service.ts/responses.service.ts.
+model QuestionnaireOrgSetting {
+  questionnaireId    String
+  questionnaire      Questionnaire @relation(fields: [questionnaireId], references: [id])
+  organizationId     String
+  organization       Organization  @relation(fields: [organizationId], references: [id])
+  acceptingResponses Boolean       @default(true)
+  updatedAt          DateTime      @updatedAt
+
+  @@id([questionnaireId, organizationId])
 }
 
 model SubScenario {

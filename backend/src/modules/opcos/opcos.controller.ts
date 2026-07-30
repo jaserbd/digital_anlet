@@ -1,6 +1,14 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { createOpCo, listOpCos, OpCoNameTakenError, OrganizationNotFoundError } from './opcos.service';
+import {
+  createOpCo,
+  deleteOpCo,
+  listOpCos,
+  OpCoHasDependentsError,
+  OpCoNameTakenError,
+  OpCoNotFoundError,
+  OrganizationNotFoundError,
+} from './opcos.service';
 
 const createOpCoSchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -41,6 +49,29 @@ export async function createOpCoHandler(req: Request, res: Response) {
     }
     if (err instanceof OrganizationNotFoundError) {
       res.status(400).json({ error: 'Organization not found' });
+      return;
+    }
+    throw err;
+  }
+}
+
+export async function deleteOpCoHandler(req: Request, res: Response) {
+  const id = req.params.id;
+  if (typeof id !== 'string') {
+    res.status(400).json({ error: 'Invalid OpCo id' });
+    return;
+  }
+
+  try {
+    await deleteOpCo(id);
+    res.status(204).end();
+  } catch (err) {
+    if (err instanceof OpCoNotFoundError) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    if (err instanceof OpCoHasDependentsError) {
+      res.status(409).json({ error: 'Cannot delete an OpCo that still has users assigned — reassign them first' });
       return;
     }
     throw err;

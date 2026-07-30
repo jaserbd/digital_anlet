@@ -1,5 +1,5 @@
 const SCORE_BAR_MAX = 4;
-const SCORE_BAR_FILL = '#2563eb';
+const SCORE_BAR_FILL = '#e20074';
 const SCORE_BAR_TRACK = '#e5e7eb';
 
 export function ScoreBar({ value }: { value: number | null }) {

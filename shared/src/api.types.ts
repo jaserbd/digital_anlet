@@ -12,6 +12,25 @@ export interface AuthenticatedUserDto {
   opCoId: string | null;
   workingDomain: string | null;
   designation: string | null;
+  // True for every admin-created account until they set their own password (OVERVIEW.md
+  // item 4) — ProtectedRoute redirects to /change-password before anything else while true.
+  mustChangePassword: boolean;
+}
+
+export interface ChangePasswordRequestDto {
+  currentPassword: string;
+  newPassword: string;
+}
+
+// Forgot-password flow (OVERVIEW.md item 12). ForgotPasswordRequestDto's response is always
+// 204 regardless of whether the email exists — no user-enumeration signal.
+export interface ForgotPasswordRequestDto {
+  email: string;
+}
+
+export interface ResetPasswordRequestDto {
+  token: string;
+  newPassword: string;
 }
 
 export interface SubScenarioDto {
@@ -55,20 +74,27 @@ export interface QuestionnaireDto {
   // Questionnaire-level context from the source xlsx's Guideline sheet. Shown as a
   // collapsible section above the question flow.
   guidelineText: string | null;
-  // Admin-controlled open/close toggle (SECOND_REVIEW.md item 1). While true, a SUBMITTED
-  // response stays editable and re-submittable; once false, QuestionnairePage redirects a
-  // SUBMITTED user straight to results (today's original locked-forever behavior).
+  // Admin-controlled open/close toggle, scoped to the requesting user's own organization
+  // (THIRD_REVIEW.md item 7 — was a single global flag). While true, a SUBMITTED response
+  // stays editable and re-submittable; once false, QuestionnairePage redirects a SUBMITTED
+  // user straight to results (today's original locked-forever behavior).
   acceptingResponses: boolean;
   subScenarios: SubScenarioDto[];
   questions: QuestionDto[];
 }
 
 // Lightweight listing for the Domain -> questionnaire picker — no questions/sub-scenarios.
+// No acceptingResponses here (THIRD_REVIEW.md item 7 made it per-organization, not global —
+// see QuestionnaireDto.acceptingResponses / SetAcceptingResponsesRequestDto below).
 export interface QuestionnaireSummaryDto {
   code: string;
   name: string;
   networkType: string;
   hvsCategory: string;
+}
+
+export interface SetAcceptingResponsesRequestDto {
+  organizationId: string;
   acceptingResponses: boolean;
 }
 
@@ -136,8 +162,34 @@ export interface UpdateUserRequestDto {
   opCoId?: string | null;
 }
 
+// Bulk user creation from an uploaded CSV (OVERVIEW.md item 4) — one row per user, parsed
+// client-side and posted as a plain JSON array (no multipart upload needed). `organization`
+// is an exact organization name, resolved server-side. `password` is optional — omitted rows
+// get a generated one-time password (see BulkCreateUsersResultDto.tempPassword).
+export interface BulkCreateUsersRowDto {
+  email: string;
+  role: Extract<Role, 'NORMAL_USER' | 'EXECUTIVE'>;
+  organization: string;
+  password?: string;
+}
+
+// One result per input row, in the same order — a bad row (unknown org, taken email, weak
+// password) doesn't abort the rest of the batch.
+export interface BulkCreateUsersResultDto {
+  row: number;
+  email: string;
+  status: 'created' | 'error';
+  // Only present when status === 'created' — the one-time password (either the row's own or
+  // a generated one), shown to the Admin exactly once since it isn't stored in plain text.
+  tempPassword?: string;
+  error?: string;
+}
+
 export type RespondentStatus = 'NOT_STARTED' | ResponseStatus;
 
+// MANAGEMENT_VIEW.md item 2b: NatCo/country/workingDomain/designation added so the
+// Executive's Respondents table can filter/export on the same identity fields already
+// exposed by DrilldownRespondentIdentityDto, without a full per-question drilldown fetch.
 export interface RespondentSummaryDto {
   userId: string;
   email: string;
@@ -145,6 +197,11 @@ export interface RespondentSummaryDto {
   lastName: string | null;
   status: RespondentStatus;
   finalScore: number | null;
+  opCoId: string | null;
+  opCoName: string | null;
+  country: string | null;
+  workingDomain: string | null;
+  designation: string | null;
 }
 
 export type AnswerOptionCounts = Record<AnswerOption, number>;
@@ -167,13 +224,22 @@ export interface OrganizationQuestionnaireSummaryDto {
 // specific respondent picked which option — an intentional privacy/scope expansion over the
 // aggregate-only answerDistribution, not an oversight (the review's own example: a Group
 // CTO wants to see who, from which OpCo/country, chose which option).
-export interface DrilldownRespondentDto {
+export interface DrilldownRespondentIdentityDto {
   userId: string;
   email: string;
+  opCoId: string | null;
   opCoName: string | null;
   country: string | null;
   workingDomain: string | null;
   designation: string | null;
+}
+
+// THIRD_REVIEW.md item 8: adds this respondent's own comment for the specific question this
+// entry is under (comment collection is a core purpose of the app, per the review) —
+// distinct from CommentDrilldownEntryDto below, which is the full org-scoped comment list
+// independent of any particular answer option.
+export interface DrilldownRespondentDto extends DrilldownRespondentIdentityDto {
+  comment: string | null;
 }
 
 export interface AnswerDrilldownEntryDto {
@@ -183,9 +249,35 @@ export interface AnswerDrilldownEntryDto {
   respondents: DrilldownRespondentDto[];
 }
 
+// Full org-scoped comment list (THIRD_REVIEW.md item 8) — feeds both the Organization
+// Deep-Dive page's per-NatCo Comments-column expansion and GroupedCommentsList's
+// multi-respondent rendering.
+export interface CommentDrilldownEntryDto {
+  questionId: string;
+  subScenarioIds: string[];
+  appliesToNone: boolean;
+  commentText: string;
+  respondent: DrilldownRespondentIdentityDto;
+}
+
 export interface AnswerDrilldownDto {
   questionnaireCode: string;
   entries: AnswerDrilldownEntryDto[];
+  comments: CommentDrilldownEntryDto[];
+}
+
+// Cross-organization analogue of CommentDrilldownEntryDto (ADMIN.md item 3) — Admin's
+// Comment Collection table across every organization at once, so it needs the
+// organization identity CommentDrilldownEntryDto doesn't carry (that one is already scoped to
+// a single organizationId by its caller).
+export interface CrossOrgCommentEntryDto extends CommentDrilldownEntryDto {
+  organizationId: string;
+  organizationName: string;
+}
+
+export interface CrossOrgCommentCollectionDto {
+  questionnaireCode: string;
+  comments: CrossOrgCommentEntryDto[];
 }
 
 export interface SubScenarioAverageDto {
@@ -210,6 +302,9 @@ export interface BenchmarkRowDto {
   averageFinalScore: number | null;
   averageE2eAutomationRate: number | null;
   subScenarioAverages: SubScenarioAverageDto[];
+  // Count of QuestionComment rows across this row's SUBMITTED responses (THIRD_REVIEW.md
+  // item 8) — feeds the Organization Deep-Dive page's clickable Comments column.
+  commentCount: number;
 }
 
 // Admin-only, cross-organization.
@@ -231,6 +326,59 @@ export interface OpCoBenchmarkingSummaryDto {
 // half hasn't been submitted yet.
 export interface CoreDomainSummaryDto {
   faultManagement: ScoreResultDto | null;
+  faultManagementQuestionnaireCode: string;
   stability: ScoreResultDto | null;
+  stabilityQuestionnaireCode: string;
   combinedScore: number | null;
+}
+
+// FORTH_REVIEW.md items 5/6: a Domain -> HVS picker entry, collapsing questionnaires that
+// belong to the same HVS group (today, only Core Fault Management + Stability) into one
+// selectable item instead of listing them separately. `kind: 'single'` behaves exactly like
+// the existing QuestionnaireSummaryDto-driven pickers; `kind: 'group'` carries the member
+// questionnaireCodes so the caller can fetch/link to each half.
+export interface HvsListItemDto {
+  kind: 'single' | 'group';
+  key: string; // questionnaire code for 'single', HVS group code for 'group'
+  name: string;
+  networkType: string;
+  questionnaireCodes: string[];
+}
+
+// One row per (Organization, OpCo) pair, blending two BenchmarkRowDtos (one per HVS-group
+// member questionnaire) 50/50 per CORE_FM.xlsx's Guideline point 7 — the org/OpCo-wide
+// analogue of CoreDomainSummaryDto, which is per-user only.
+export interface CombinedBenchmarkRowDto {
+  organizationId: string;
+  organizationName: string;
+  opCoId: string | null;
+  opCoName: string;
+  country: string | null;
+  faultManagement: BenchmarkRowDto;
+  stability: BenchmarkRowDto;
+  combinedAverageFinalScore: number | null;
+}
+
+export interface CombinedBenchmarkingSummaryDto {
+  groupCode: string;
+  organizationId?: string; // present only for the single-organization (Executive/Admin) variant
+  rows: CombinedBenchmarkRowDto[];
+}
+
+// ADMIN_2.md item 1: one axis of the IAADE/Cognitive-Activity spider chart — averageScore is
+// null only when every matched response's questions in this activity were skipped (excluded,
+// same "no misleading zero" convention as BenchmarkRowDto.averageFinalScore).
+export interface CognitiveActivityAverageDto {
+  cognitiveActivity: string;
+  averageScore: number | null;
+}
+
+// Executive/Admin aggregate view (org- and optionally OpCo/country-scoped) of the same
+// per-Cognitive-Activity averaging a Normal User's own result already gets for free from
+// ScoreResultDto.questionScores. sampleSize is the count of SUBMITTED responses matched by
+// the filters — 0 means averageFinalScore/every activity's averageScore are null, not 0.
+export interface CognitiveActivitySummaryDto {
+  activities: CognitiveActivityAverageDto[];
+  averageFinalScore: number | null;
+  sampleSize: number;
 }

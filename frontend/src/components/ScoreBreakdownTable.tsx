@@ -1,5 +1,12 @@
-import type { CSSProperties } from 'react';
 import type { QuestionDto, QuestionScore, SubScenarioDto } from '@anlet/shared';
+import Table from '@mui/material/Table';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableContainer from '@mui/material/TableContainer';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
+import Paper from '@mui/material/Paper';
+import Typography from '@mui/material/Typography';
 
 interface ScoreBreakdownTableProps {
   questions: QuestionDto[];
@@ -18,56 +25,53 @@ export function ScoreBreakdownTable({ questions, subScenarios, questionScores }:
   );
 
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-        <thead>
-          <tr>
-            <th style={cellStyle}>Cognitive Activity</th>
-            <th style={cellStyle}>Service Capability</th>
-            <th style={cellStyle}>Weight</th>
-            {subScenarios.map((s) => (
-              <th key={s.id} style={cellStyle}>
-                {s.name} ({(s.faultDistributionWeight * 100).toFixed(0)}%)
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {questions.map((q, i) => {
-            const showCognitiveActivity = i === 0 || questions[i - 1]!.cognitiveActivity !== q.cognitiveActivity;
-            return (
-              <tr key={q.id}>
-                <td style={cellStyle}>{showCognitiveActivity ? q.cognitiveActivity : ''}</td>
-                <td style={cellStyle}>{q.serviceCapability}</td>
-                <td style={{ ...cellStyle, textAlign: 'center' }}>{(q.weight * 100).toFixed(0)}%</td>
-                {subScenarios.map((s) => {
-                  const qs = scoreByKey.get(`${q.id}:${s.id}`);
-                  return (
-                    <td key={s.id} style={{ ...cellStyle, textAlign: 'center' }}>
-                      {qs?.compensatedScore != null ? (
-                        qs.compensatedScore.toFixed(2)
-                      ) : (
-                        <span style={{ color: '#999' }}>—</span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      <p style={{ fontSize: '0.85em', color: '#666' }}>
-        Each cell is the question's compensated score for that sub-scenario (see the
-        compensation rule in CLAUDE.md) — "—" means the question was skipped for that
-        sub-scenario.
-      </p>
+    <div>
+      <TableContainer component={Paper} variant="outlined">
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Cognitive Activity</TableCell>
+              <TableCell>Service Capability</TableCell>
+              <TableCell align="center">Weight</TableCell>
+              {subScenarios.map((s) => (
+                <TableCell key={s.id} align="center">
+                  {s.name} ({(s.faultDistributionWeight * 100).toFixed(0)}%)
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {questions.map((q, i) => {
+              const showCognitiveActivity = i === 0 || questions[i - 1]!.cognitiveActivity !== q.cognitiveActivity;
+              return (
+                <TableRow key={q.id}>
+                  <TableCell>{showCognitiveActivity ? q.cognitiveActivity : ''}</TableCell>
+                  <TableCell>{q.serviceCapability}</TableCell>
+                  <TableCell align="center">{(q.weight * 100).toFixed(0)}%</TableCell>
+                  {subScenarios.map((s) => {
+                    const qs = scoreByKey.get(`${q.id}:${s.id}`);
+                    return (
+                      <TableCell key={s.id} align="center">
+                        {qs?.compensatedScore != null ? (
+                          qs.compensatedScore.toFixed(2)
+                        ) : (
+                          <Typography component="span" color="text.disabled">
+                            —
+                          </Typography>
+                        )}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+        Each cell is the question's compensated score for that sub-scenario — see the
+        TMF compensation rule. "—" means the question was skipped for that sub-scenario.
+      </Typography>
     </div>
   );
 }
-
-const cellStyle: CSSProperties = {
-  border: '1px solid #ccc',
-  padding: '0.4rem 0.6rem',
-  fontSize: '0.9em',
-};

@@ -1,514 +1,206 @@
-import { useState, type FormEvent } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { OrganizationDto, Role, UpdateUserRequestDto, UserDto } from '@anlet/shared';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import Button from '@mui/material/Button';
+import TextField from '@mui/material/TextField';
+import MenuItem from '@mui/material/MenuItem';
+import List from '@mui/material/List';
+import ListItemButton from '@mui/material/ListItemButton';
+import ListItemText from '@mui/material/ListItemText';
+import Typography from '@mui/material/Typography';
+import Box from '@mui/material/Box';
 import { organizationsApi } from '../api/organizationsApi';
-import { opCoApi } from '../api/opCoApi';
-import { usersApi } from '../api/usersApi';
 import { insightsApi } from '../api/insightsApi';
 import { questionnaireApi } from '../api/questionnaireApi';
-import { ApiError } from '../api/client';
-import { LogoutButton } from '../components/LogoutButton';
+import { PageShell } from '../components/PageShell';
+import { SectionCard } from '../components/SectionCard';
 import { BenchmarkTable } from '../components/BenchmarkTable';
+import { CombinedBenchmarkTable } from '../components/CombinedBenchmarkTable';
+import { buildCrossOrgCommentCollectionRows, CommentCollectionTable } from '../components/CommentCollectionTable';
 
 export function AdminPage() {
+  const navigate = useNavigate();
   return (
-    <main style={{ maxWidth: 900, margin: '2rem auto', fontFamily: 'sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>Admin</h1>
-        <LogoutButton />
-      </div>
-      <CreateOrganizationForm />
-      <hr style={{ margin: '2rem 0' }} />
-      <CreateOpCoForm />
-      <hr style={{ margin: '2rem 0' }} />
-      <CreateUserForm />
-      <hr style={{ margin: '2rem 0' }} />
-      <ManageUsersSection />
-      <hr style={{ margin: '2rem 0' }} />
-      <QuestionnaireSettingsSection />
-      <hr style={{ margin: '2rem 0' }} />
+    <PageShell title="Admin" maxWidth={1400}>
+      <Button variant="contained" onClick={() => navigate('/admin/management')} sx={{ mb: 3 }}>
+        Management Console →
+      </Button>
+      <OrganizationsSection />
       <BenchmarkingSection />
-    </main>
+    </PageShell>
   );
 }
 
-// Admin-controlled open/close toggle per questionnaire (SECOND_REVIEW.md item 1). While
-// accepting, users can edit and re-submit their responses at any time; once closed, every
-// response for this assessment locks permanently (matches the app's original behavior).
-function QuestionnaireSettingsSection() {
-  const queryClient = useQueryClient();
-  const questionnairesQuery = useQuery({ queryKey: ['questionnaires'], queryFn: questionnaireApi.list });
-  const [questionnaireCode, setQuestionnaireCode] = useState('');
-  const effectiveCode = questionnaireCode || questionnairesQuery.data?.[0]?.code || '';
-  const current = questionnairesQuery.data?.find((q) => q.code === effectiveCode);
-
-  const toggleMutation = useMutation({
-    mutationFn: (accepting: boolean) => questionnaireApi.setAcceptingResponses(effectiveCode, accepting),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['questionnaires'] });
-      void queryClient.invalidateQueries({ queryKey: ['questionnaire', effectiveCode] });
-    },
-  });
-
-  if (questionnairesQuery.isLoading) {
-    return (
-      <section>
-        <h2>Questionnaire settings</h2>
-        <p>Loading…</p>
-      </section>
-    );
-  }
-
-  return (
-    <section>
-      <h2>Questionnaire settings</h2>
-      <label>
-        Assessment
-        <select
-          value={effectiveCode}
-          onChange={(e) => setQuestionnaireCode(e.target.value)}
-          style={{ display: 'block', marginBottom: '0.75rem' }}
-        >
-          {questionnairesQuery.data?.map((q) => (
-            <option key={q.code} value={q.code}>
-              {q.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      {current && (
-        <p>
-          Status: <strong>{current.acceptingResponses ? 'Accepting responses' : 'Closed'}</strong>{' '}
-          <button
-            type="button"
-            disabled={toggleMutation.isPending}
-            onClick={() => toggleMutation.mutate(!current.acceptingResponses)}
-          >
-            {toggleMutation.isPending
-              ? 'Saving…'
-              : current.acceptingResponses
-                ? 'Close (lock all responses)'
-                : 'Reopen'}
-          </button>
-        </p>
-      )}
-      <p style={{ fontSize: '0.85em', color: '#666' }}>
-        While accepting, users can edit and re-submit their responses for this assessment at
-        any time. Once closed, every response locks permanently.
-      </p>
-    </section>
-  );
-}
-
-function CreateOrganizationForm() {
-  const queryClient = useQueryClient();
-  const [name, setName] = useState('');
-  const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
-
-  const createOrg = useMutation({
-    mutationFn: () => organizationsApi.create(name),
-    onSuccess: (org) => {
-      setMessage({ kind: 'success', text: `Created organization "${org.name}"` });
-      setName('');
-      void queryClient.invalidateQueries({ queryKey: ['organizations'] });
-    },
-    onError: (err) => {
-      setMessage({ kind: 'error', text: err instanceof ApiError ? err.message : 'Failed to create organization' });
-    },
-  });
-
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setMessage(null);
-    createOrg.mutate();
-  }
-
-  return (
-    <section>
-      <h2>Create organization</h2>
-      <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '0.5rem' }}>
-        <input
-          type="text"
-          required
-          placeholder="Organization name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <button type="submit" disabled={createOrg.isPending}>
-          {createOrg.isPending ? 'Creating…' : 'Create'}
-        </button>
-      </form>
-      {message && (
-        <p style={{ color: message.kind === 'error' ? 'crimson' : 'green' }}>{message.text}</p>
-      )}
-    </section>
-  );
-}
-
-function CreateOpCoForm() {
-  const queryClient = useQueryClient();
-  const orgsQuery = useQuery({ queryKey: ['organizations'], queryFn: organizationsApi.list });
-
-  const [organizationId, setOrganizationId] = useState('');
-  const [name, setName] = useState('');
-  const [country, setCountry] = useState('');
-  const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
-
-  const createOpCo = useMutation({
-    mutationFn: () => opCoApi.create({ name, country, organizationId }),
-    onSuccess: (opCo) => {
-      setMessage({ kind: 'success', text: `Created OpCo "${opCo.name}" (${opCo.country})` });
-      setName('');
-      setCountry('');
-      void queryClient.invalidateQueries({ queryKey: ['opcos', organizationId] });
-    },
-    onError: (err) => {
-      setMessage({ kind: 'error', text: err instanceof ApiError ? err.message : 'Failed to create OpCo' });
-    },
-  });
-
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setMessage(null);
-    createOpCo.mutate();
-  }
-
-  return (
-    <section>
-      <h2>Create OpCo</h2>
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: 320 }}>
-        <label>
-          Organization
-          <select
-            required
-            value={organizationId}
-            onChange={(e) => setOrganizationId(e.target.value)}
-            style={{ display: 'block', width: '100%' }}
-          >
-            <option value="" disabled>
-              {orgsQuery.isLoading ? 'Loading…' : 'Select an organization'}
-            </option>
-            {orgsQuery.data?.map((org) => (
-              <option key={org.id} value={org.id}>
-                {org.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          OpCo / NatCo name
-          <input
-            type="text"
-            required
-            placeholder="e.g. Vodafone Kenya"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            style={{ display: 'block', width: '100%' }}
-          />
-        </label>
-        <label>
-          Country
-          <input
-            type="text"
-            required
-            placeholder="e.g. Kenya"
-            value={country}
-            onChange={(e) => setCountry(e.target.value)}
-            style={{ display: 'block', width: '100%' }}
-          />
-        </label>
-        <button type="submit" disabled={createOpCo.isPending || !organizationId}>
-          {createOpCo.isPending ? 'Creating…' : 'Create OpCo'}
-        </button>
-      </form>
-      {message && (
-        <p style={{ color: message.kind === 'error' ? 'crimson' : 'green' }}>{message.text}</p>
-      )}
-    </section>
-  );
-}
-
-function CreateUserForm() {
-  const orgsQuery = useQuery({ queryKey: ['organizations'], queryFn: organizationsApi.list });
-
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState<Extract<Role, 'NORMAL_USER' | 'EXECUTIVE'>>('NORMAL_USER');
-  const [organizationId, setOrganizationId] = useState('');
-  const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
-
-  const createUser = useMutation({
-    mutationFn: () => usersApi.create({ email, password, role, organizationId }),
-    onSuccess: (user) => {
-      setMessage({ kind: 'success', text: `Created user "${user.email}"` });
-      setEmail('');
-      setPassword('');
-    },
-    onError: (err) => {
-      setMessage({ kind: 'error', text: err instanceof ApiError ? err.message : 'Failed to create user' });
-    },
-  });
-
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setMessage(null);
-    createUser.mutate();
-  }
-
-  return (
-    <section>
-      <h2>Create user</h2>
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: 320 }}>
-        <label>
-          Email
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{ display: 'block', width: '100%' }}
-          />
-        </label>
-        <label>
-          Password
-          <input
-            type="password"
-            required
-            minLength={8}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{ display: 'block', width: '100%' }}
-          />
-        </label>
-        <label>
-          Role
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value as typeof role)}
-            style={{ display: 'block', width: '100%' }}
-          >
-            <option value="NORMAL_USER">Normal User</option>
-            <option value="EXECUTIVE">Executive</option>
-          </select>
-        </label>
-        <label>
-          Organization
-          <select
-            required
-            value={organizationId}
-            onChange={(e) => setOrganizationId(e.target.value)}
-            style={{ display: 'block', width: '100%' }}
-          >
-            <option value="" disabled>
-              {orgsQuery.isLoading ? 'Loading…' : 'Select an organization'}
-            </option>
-            {orgsQuery.data?.map((org) => (
-              <option key={org.id} value={org.id}>
-                {org.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="submit" disabled={createUser.isPending || !organizationId}>
-          {createUser.isPending ? 'Creating…' : 'Create user'}
-        </button>
-      </form>
-      {message && (
-        <p style={{ color: message.kind === 'error' ? 'crimson' : 'green' }}>{message.text}</p>
-      )}
-    </section>
-  );
-}
-
-// Admin can only create brand-new users elsewhere (CreateUserForm) — this lets Admin
-// reassign an *existing* Executive/Normal-User account's Organization (and OpCo) without
-// recreating it (SECOND_REVIEW.md item 8). Reassigning org clears OpCo server-side (an OpCo
-// belongs to a specific org), which naturally re-triggers profile completion for a
-// NORMAL_USER on their next visit.
-function ManageUsersSection() {
-  const queryClient = useQueryClient();
-  const usersQuery = useQuery({ queryKey: ['users'], queryFn: () => usersApi.list() });
+// Plain organization directory (ADMIN.md item 2) — a direct entry point into
+// OrganizationDeepDivePage's Executive-parity view for any organization, alongside the
+// existing Benchmarking table's org autocomplete/click-through (which stays working too).
+// A dense list, not ChoiceCard tiles (OVERVIEW.md item 5) — that treatment is reserved for
+// few-option "pick your path" screens, not admin directories that can grow arbitrarily long.
+function OrganizationsSection() {
+  const navigate = useNavigate();
   const orgsQuery = useQuery({ queryKey: ['organizations'], queryFn: organizationsApi.list });
 
   return (
-    <section>
-      <h2>Existing users</h2>
-      {usersQuery.isLoading || orgsQuery.isLoading ? (
-        <p>Loading…</p>
-      ) : !usersQuery.data || !orgsQuery.data ? (
-        <p>Something went wrong loading users.</p>
+    <SectionCard title="Organizations">
+      {orgsQuery.isLoading ? (
+        <Typography color="text.secondary">Loading…</Typography>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-            <thead>
-              <tr>
-                <th style={cellStyle}>Email</th>
-                <th style={cellStyle}>Role</th>
-                <th style={cellStyle}>Organization</th>
-                <th style={cellStyle}>OpCo</th>
-                <th style={cellStyle}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {usersQuery.data.map((user) => (
-                <UserRow
-                  key={user.id}
-                  user={user}
-                  organizations={orgsQuery.data!}
-                  onSaved={() => void queryClient.invalidateQueries({ queryKey: ['users'] })}
-                />
-              ))}
-              {usersQuery.data.length === 0 && (
-                <tr>
-                  <td style={cellStyle} colSpan={5}>
-                    No users yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function UserRow({
-  user,
-  organizations,
-  onSaved,
-}: {
-  user: UserDto;
-  organizations: OrganizationDto[];
-  onSaved: () => void;
-}) {
-  const [organizationId, setOrganizationId] = useState(user.organizationId);
-  const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
-  const opCosQuery = useQuery({
-    queryKey: ['opcos', organizationId],
-    queryFn: () => opCoApi.list(organizationId),
-  });
-
-  const updateUser = useMutation({
-    mutationFn: (input: UpdateUserRequestDto) => usersApi.update(user.id, input),
-    onSuccess: () => {
-      setMessage({ kind: 'success', text: 'Saved' });
-      onSaved();
-    },
-    onError: (err) => {
-      setMessage({ kind: 'error', text: err instanceof ApiError ? err.message : 'Failed to save' });
-    },
-  });
-
-  const dirty = organizationId !== user.organizationId;
-
-  return (
-    <tr>
-      <td style={cellStyle}>{user.email}</td>
-      <td style={cellStyle}>{user.role}</td>
-      <td style={cellStyle}>
-        <select value={organizationId} onChange={(e) => setOrganizationId(e.target.value)}>
-          {organizations.map((org) => (
-            <option key={org.id} value={org.id}>
-              {org.name}
-            </option>
+        <List disablePadding>
+          {orgsQuery.data?.map((org) => (
+            <ListItemButton
+              key={org.id}
+              onClick={() => navigate(`/admin/organizations/${org.id}`)}
+              sx={{ borderRadius: 1 }}
+            >
+              <ListItemText primary={org.name} />
+            </ListItemButton>
           ))}
-        </select>
-      </td>
-      <td style={cellStyle}>
-        {dirty
-          ? '— will be cleared —'
-          : (opCosQuery.data?.find((o) => o.id === user.opCoId)?.name ?? '—')}
-      </td>
-      <td style={cellStyle}>
-        <button
-          type="button"
-          disabled={!dirty || updateUser.isPending}
-          onClick={() => {
-            setMessage(null);
-            updateUser.mutate({ organizationId });
-          }}
-        >
-          {updateUser.isPending ? 'Saving…' : 'Save'}
-        </button>
-        {message && (
-          <span style={{ marginLeft: '0.5rem', color: message.kind === 'error' ? 'crimson' : 'green' }}>
-            {message.text}
-          </span>
-        )}
-      </td>
-    </tr>
+          {orgsQuery.data?.length === 0 && (
+            <Typography color="text.secondary">No organizations yet.</Typography>
+          )}
+        </List>
+      )}
+    </SectionCard>
   );
 }
 
 function BenchmarkingSection() {
-  const questionnairesQuery = useQuery({ queryKey: ['questionnaires'], queryFn: questionnaireApi.list });
-  const [questionnaireCode, setQuestionnaireCode] = useState('');
+  const navigate = useNavigate();
+  // listHvsEntries (FORTH_REVIEW.md items 5/6) collapses Core Fault Management + Stability
+  // into one selectable "Core Network Fault Management & Stability Assessment" entry instead
+  // of two independent questionnaire rows — everything else keeps working exactly as before.
+  const hvsEntriesQuery = useQuery({ queryKey: ['hvs-entries'], queryFn: questionnaireApi.listHvsEntries });
+  const orgsQuery = useQuery({ queryKey: ['organizations'], queryFn: organizationsApi.list });
+  const [hvsKey, setHvsKey] = useState('');
 
-  const effectiveCode = questionnaireCode || questionnairesQuery.data?.[0]?.code || '';
+  const effectiveEntry = hvsEntriesQuery.data?.find((e) => e.key === hvsKey) ?? hvsEntriesQuery.data?.[0];
+  const isGroup = effectiveEntry?.kind === 'group';
 
   const questionnaireQuery = useQuery({
-    queryKey: ['questionnaire', effectiveCode],
-    queryFn: () => questionnaireApi.get(effectiveCode),
-    enabled: !!effectiveCode,
+    queryKey: ['questionnaire', effectiveEntry?.key],
+    queryFn: () => questionnaireApi.get(effectiveEntry!.questionnaireCodes[0]!),
+    enabled: !!effectiveEntry && !isGroup,
   });
   const benchmarkQuery = useQuery({
-    queryKey: ['benchmarking', effectiveCode],
-    queryFn: () => insightsApi.getBenchmarkingSummary(effectiveCode),
-    enabled: !!effectiveCode,
+    queryKey: ['benchmarking', effectiveEntry?.key],
+    queryFn: () => insightsApi.getBenchmarkingSummary(effectiveEntry!.key),
+    enabled: !!effectiveEntry && !isGroup,
+  });
+  const combinedQuery = useQuery({
+    queryKey: ['combined-benchmarking', effectiveEntry?.key],
+    queryFn: () => insightsApi.getCombinedBenchmarkingSummary(effectiveEntry!.key),
+    enabled: !!effectiveEntry && isGroup,
   });
 
-  if (questionnairesQuery.isLoading || questionnaireQuery.isLoading || benchmarkQuery.isLoading) {
+  if (hvsEntriesQuery.isLoading) {
     return (
-      <section>
-        <h2>Benchmarking</h2>
-        <p>Loading…</p>
-      </section>
+      <SectionCard title="Benchmarking">
+        <Typography color="text.secondary">Loading…</Typography>
+      </SectionCard>
     );
   }
-  if (!questionnaireQuery.data || !benchmarkQuery.data) {
-    return (
-      <section>
-        <h2>Benchmarking</h2>
-        <p>Something went wrong loading the benchmarking summary.</p>
-      </section>
-    );
-  }
-
-  const { subScenarios } = questionnaireQuery.data;
 
   return (
-    <section>
-      <h2>Benchmarking</h2>
-      <div style={{ marginBottom: '1rem' }}>
-        <label>
-          Assessment
-          <select
-            value={effectiveCode}
-            onChange={(e) => setQuestionnaireCode(e.target.value)}
-            style={{ display: 'block' }}
-          >
-            {questionnairesQuery.data?.map((q) => (
-              <option key={q.code} value={q.code}>
-                {q.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <BenchmarkTable rows={benchmarkQuery.data.rows} subScenarios={subScenarios} />
-      <p style={{ fontSize: '0.85em', color: '#666' }}>
-        Averages are computed over submitted responses only; a row with none shows "—" rather
-        than a misleading zero. A blank OpCo/Country means the respondent(s) haven't been
-        assigned an OpCo yet — for a small organization with no OpCos at all, the NatCo
-        column shows the organization's own name.
-      </p>
-    </section>
+    <SectionCard title="Benchmarking">
+      <TextField
+        select
+        label="Assessment"
+        value={effectiveEntry?.key ?? ''}
+        onChange={(e) => setHvsKey(e.target.value)}
+        sx={{ mb: 2, minWidth: 320 }}
+      >
+        {hvsEntriesQuery.data?.map((entry) => (
+          <MenuItem key={entry.key} value={entry.key}>
+            {entry.name}
+          </MenuItem>
+        ))}
+      </TextField>
+      {isGroup ? (
+        combinedQuery.data ? (
+          <>
+            <CombinedBenchmarkTable
+              rows={combinedQuery.data.rows}
+              exportFileNamePrefix={`admin-${effectiveEntry?.key ?? 'benchmarking'}`}
+            />
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Combined avg is the 50/50 blend of Fault Management and Stability per the Core
+              Domain guideline; either half shows "—" for a row with no submissions yet.
+            </Typography>
+          </>
+        ) : (
+          <Typography color="text.secondary">Loading…</Typography>
+        )
+      ) : questionnaireQuery.data && benchmarkQuery.data ? (
+        <>
+          <BenchmarkTable
+            rows={benchmarkQuery.data.rows}
+            subScenarios={questionnaireQuery.data.subScenarios}
+            organizations={orgsQuery.data ?? []}
+            onOrganizationSelect={(org) => navigate(`/admin/organizations/${org.id}`)}
+            exportFileNamePrefix={`admin-${questionnaireQuery.data.code}`}
+          />
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Type an organization's name in the Organization filter (or click its name in a
+            row) to open its Deep-Dive page — NatCos, comments, and per-question breakdowns.
+            Averages here are computed over submitted responses only; a row with none shows
+            "—" rather than a misleading zero. A blank OpCo/Country means the respondent(s)
+            haven't been assigned an OpCo yet — for a small organization with no OpCos at
+            all, the NatCo column shows the organization's own name.
+          </Typography>
+        </>
+      ) : (
+        <Typography color="text.secondary">Loading…</Typography>
+      )}
+
+      {effectiveEntry && (
+        <Box sx={{ mt: 3 }}>
+          {effectiveEntry.questionnaireCodes.map((code) => (
+            <Box key={code} sx={{ mb: 3 }}>
+              <CrossOrgCommentCollectionSection questionnaireCode={code} />
+            </Box>
+          ))}
+        </Box>
+      )}
+    </SectionCard>
   );
 }
 
-const cellStyle = {
-  border: '1px solid #ccc',
-  padding: '0.4rem 0.6rem',
-  textAlign: 'left' as const,
-};
+// Cross-organization Comment Collection (ADMIN.md item 3) — every comment for this
+// questionnaire across every organization at once, with Organization as the first column.
+// Rendered once per member questionnaire code by BenchmarkingSection above (1 for a plain
+// HVS, 2 for the Core FM+Stability group — comments don't blend across questionnaires the
+// way scores do, so this is two separate tables rather than one combined one).
+function CrossOrgCommentCollectionSection({ questionnaireCode }: { questionnaireCode: string }) {
+  const questionnaireQuery = useQuery({
+    queryKey: ['questionnaire', questionnaireCode],
+    queryFn: () => questionnaireApi.get(questionnaireCode),
+  });
+  const commentsQuery = useQuery({
+    queryKey: ['cross-org-comment-collection', questionnaireCode],
+    queryFn: () => insightsApi.getCrossOrgCommentCollection(questionnaireCode),
+  });
+
+  if (questionnaireQuery.isLoading) {
+    return <Typography color="text.secondary">Loading…</Typography>;
+  }
+  if (!questionnaireQuery.data) {
+    return null;
+  }
+  const questionnaire = questionnaireQuery.data;
+  const rows = buildCrossOrgCommentCollectionRows(
+    commentsQuery.data?.comments ?? [],
+    questionnaire.questions,
+    questionnaire.subScenarios,
+  );
+
+  return (
+    <CommentCollectionTable
+      rows={rows}
+      domain={questionnaire.networkType}
+      hvs={questionnaire.hvsCategory}
+      title={`${questionnaire.name} — Comment Collection (all organizations)`}
+      showOrganizationColumn
+      exportFileNamePrefix={`admin-${questionnaireCode}`}
+    />
+  );
+}

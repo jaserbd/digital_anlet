@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { responsesApi } from '../api/responsesApi';
 
@@ -11,7 +12,13 @@ export function CoreDomainSummary() {
     return null;
   }
 
-  const { faultManagement, stability, combinedScore } = query.data;
+  const {
+    faultManagement,
+    faultManagementQuestionnaireCode,
+    stability,
+    stabilityQuestionnaireCode,
+    combinedScore,
+  } = query.data;
 
   return (
     <section style={{ marginTop: '2rem', padding: '1rem', border: '1px solid #ccc' }}>
@@ -30,7 +37,19 @@ export function CoreDomainSummary() {
         </p>
       ) : (
         <p style={{ color: '#666' }}>
-          Complete the other Core Domain assessment to see your combined score.
+          {faultManagement == null && (
+            <>
+              <Link to={`/questionnaire/${faultManagementQuestionnaireCode}`}>
+                Start the Core Fault Management assessment
+              </Link>{' '}
+            </>
+          )}
+          {stability == null && (
+            <Link to={`/questionnaire/${stabilityQuestionnaireCode}`}>
+              Start the Core Stability assessment
+            </Link>
+          )}{' '}
+          to see your combined score.
         </p>
       )}
     </section>

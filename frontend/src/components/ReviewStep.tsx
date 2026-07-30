@@ -1,3 +1,12 @@
+import type { QuestionDto, SubScenarioDto } from '@anlet/shared';
+import Alert from '@mui/material/Alert';
+import Typography from '@mui/material/Typography';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import Link from '@mui/material/Link';
+import { SectionCard } from './SectionCard';
+import { GroupedCommentsList, type CommentEntry } from './GroupedCommentsList';
+
 export interface UncoveredGap {
   questionId: string;
   questionLabel: string;
@@ -5,18 +14,13 @@ export interface UncoveredGap {
   subScenarioLabel: string;
 }
 
-export interface CommentSummaryEntry {
-  questionId: string;
-  questionLabel: string;
-  commentText: string;
-  subScenarioLabels: string[];
-  appliesToNone: boolean;
-}
-
 interface ReviewStepProps {
   uncovered: UncoveredGap[];
   skippedCoveredCount: number;
-  comments: CommentSummaryEntry[];
+  questions: QuestionDto[];
+  subScenarios: SubScenarioDto[];
+  comments: CommentEntry[];
+  onJumpTo: (questionId: string) => void;
 }
 
 // Shown as the final step before Submit: a warning summary of any unanswered questions that
@@ -26,61 +30,52 @@ interface ReviewStepProps {
 // Terminology: "unanswered" is any (question, subScenario) with no selected option. Once an
 // unanswered pair is covered by a comment it's a "skip" (submittable, scored via
 // re-normalization); until then it's just "unanswered" and blocks submission.
-export function ReviewStep({ uncovered, skippedCoveredCount, comments }: ReviewStepProps) {
+export function ReviewStep({
+  uncovered,
+  skippedCoveredCount,
+  questions,
+  subScenarios,
+  comments,
+  onJumpTo,
+}: ReviewStepProps) {
   return (
-    <section>
-      <h2>Review before submitting</h2>
+    <SectionCard title="Review before submitting">
       {uncovered.length > 0 ? (
-        <div style={{ background: '#fff4e5', border: '1px solid #f0ad4e', borderRadius: 4, padding: '1rem' }}>
-          <p>
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          <Typography sx={{ mb: 1 }}>
             <strong>
               You have {uncovered.length} unanswered question{uncovered.length === 1 ? '' : 's'} without a
               covering comment.
             </strong>{' '}
-            Go back and either answer them, or add a comment tagged to that sub-scenario (or "None of the
-            sub-scenarios"), before you can submit.
-          </p>
-          <ul>
+            Go back and either answer them, or add a comment explicitly tagged to that specific
+            sub-scenario, before you can submit. Click a question below to jump straight to it.
+          </Typography>
+          <List dense disablePadding>
             {uncovered.map((g) => (
-              <li key={`${g.questionId}:${g.subScenarioId}`}>
-                {g.questionLabel} — {g.subScenarioLabel}
-              </li>
+              <ListItem key={`${g.questionId}:${g.subScenarioId}`} disableGutters>
+                <Link component="button" type="button" onClick={() => onJumpTo(g.questionId)} underline="hover">
+                  {g.questionLabel} — {g.subScenarioLabel}
+                </Link>
+              </ListItem>
             ))}
-          </ul>
-        </div>
+          </List>
+        </Alert>
       ) : (
-        <p style={{ color: 'green' }}>
+        <Alert severity="success" sx={{ mb: 2 }}>
           Every question is answered or has a covering comment. You're ready to submit.
-        </p>
+        </Alert>
       )}
       {skippedCoveredCount > 0 && (
-        <p style={{ color: '#666' }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {skippedCoveredCount} question{skippedCoveredCount === 1 ? ' is' : 's are'} left unanswered but
           covered by a comment — these will be scored as skipped (excluded and re-normalized), not as 0.
-        </p>
+        </Typography>
       )}
 
-      <h3>Your comments</h3>
-      {comments.length === 0 ? (
-        <p style={{ color: '#666' }}>No comments were added.</p>
-      ) : (
-        <ul style={{ paddingLeft: '1.25rem' }}>
-          {comments.map((c) => (
-            <li key={c.questionId} style={{ marginBottom: '0.75rem' }}>
-              <strong>{c.questionLabel}</strong>
-              <div style={{ fontSize: '0.85em', color: '#666' }}>
-                Applies to:{' '}
-                {c.appliesToNone
-                  ? 'None of the sub-scenarios'
-                  : c.subScenarioLabels.length > 0
-                    ? c.subScenarioLabels.join(', ')
-                    : '—'}
-              </div>
-              <p style={{ whiteSpace: 'pre-wrap' }}>{c.commentText}</p>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+      <Typography variant="h6" sx={{ mb: 1 }}>
+        Your comments
+      </Typography>
+      <GroupedCommentsList questions={questions} subScenarios={subScenarios} comments={comments} />
+    </SectionCard>
   );
 }

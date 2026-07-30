@@ -6,4 +6,5 @@ export const opCoApi = {
     apiClient.get<OpCoDto[]>(`/opcos?organizationId=${encodeURIComponent(organizationId)}`),
   create: (input: { name: string; country: string; organizationId: string }) =>
     apiClient.post<OpCoDto>('/opcos', input),
+  delete: (id: string) => apiClient.delete<void>(`/opcos/${id}`),
 };

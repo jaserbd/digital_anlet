@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma';
 import { getBenchmarkingSummary, getOpCoBenchmarkingSummary } from '../src/modules/insights/insights.service';
-import { getOrCreateResponse, submitResponse, upsertAnswer } from '../src/modules/responses/responses.service';
+import {
+  getOrCreateResponse,
+  submitResponse,
+  upsertAnswer,
+  upsertComment,
+} from '../src/modules/responses/responses.service';
 
 // Integration test against the real local Postgres. Requires the seed to have already run
 // (`npm run db:seed -w backend`) so RAN_FM_GB1059A exists.
@@ -29,6 +34,7 @@ async function createUser(orgId: string, label: string) {
 // Same golden-master override pattern verified in scoring.test.ts / insights tests:
 // B for Intent-driven/Processing-Error, B for Data-collection/Communications, A
 // everywhere else -> final score 3.9145.
+// All callers in this file use orgAId — every submitter created here belongs to Org A.
 async function submitAllA(userId: string) {
   const response = await getOrCreateResponse(userId, 'RAN_FM_GB1059A');
   const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
@@ -37,14 +43,14 @@ async function submitAllA(userId: string) {
   });
   for (const question of questionnaire.questions) {
     for (const subScenario of questionnaire.subScenarios) {
-      await upsertAnswer(response.id, userId, {
+      await upsertAnswer(response.id, userId, orgAId, {
         questionId: question.id,
         subScenarioId: subScenario.id,
         selectedOption: 'A',
       });
     }
   }
-  return submitResponse(response.id, userId);
+  return submitResponse(response.id, userId, orgAId);
 }
 
 async function submitGoldenMasterPattern(userId: string) {
@@ -62,14 +68,14 @@ async function submitGoldenMasterPattern(userId: string) {
       if (question.serviceCapability === 'Data collection & Alarm filtering' && subScenario.code === 'COMMUNICATIONS') {
         option = 'B';
       }
-      await upsertAnswer(response.id, userId, {
+      await upsertAnswer(response.id, userId, orgAId, {
         questionId: question.id,
         subScenarioId: subScenario.id,
         selectedOption: option,
       });
     }
   }
-  return submitResponse(response.id, userId);
+  return submitResponse(response.id, userId, orgAId);
 }
 
 beforeAll(async () => {
@@ -93,6 +99,20 @@ describe('getBenchmarkingSummary (real DB)', () => {
     await submitAllA(submitter1); // final score 4
     await submitGoldenMasterPattern(submitter2); // final score 3.9145 (verified in scoring.test.ts)
 
+    // THIRD_REVIEW.md item 8: commentCount should reflect QuestionComment rows across this
+    // group's SUBMITTED responses — one comment from submitter1, none from submitter2.
+    const submitter1Response = await getOrCreateResponse(submitter1, 'RAN_FM_GB1059A');
+    const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
+      where: { code: 'RAN_FM_GB1059A' },
+      include: { questions: true },
+    });
+    await upsertComment(submitter1Response.id, submitter1, orgAId, {
+      questionId: questionnaire.questions[0]!.id,
+      commentText: 'Great automation coverage here.',
+      subScenarioIds: [],
+      appliesToNone: true,
+    });
+
     const summary = await getBenchmarkingSummary('RAN_FM_GB1059A');
     // Neither org has any OpCo yet at this point in the test, so each gets exactly one
     // synthetic row whose opCoName falls back to the organization's own name.
@@ -107,6 +127,7 @@ describe('getBenchmarkingSummary (real DB)', () => {
       submittedCount: 2,
       // (4 + 3.9145) / 2 = 3.95725, rounded to 4dp (matches insights.service.ts's `average`)
       averageFinalScore: 3.9573,
+      commentCount: 1,
     });
     const equipment = orgA?.subScenarioAverages.find((s) => s.subScenarioCode === 'EQUIPMENT');
     expect(equipment?.averageScore).toBe(4); // both submitters scored 4 on Equipment
@@ -121,6 +142,7 @@ describe('getBenchmarkingSummary (real DB)', () => {
       submittedCount: 0,
       averageFinalScore: null,
       averageE2eAutomationRate: null,
+      commentCount: 0,
     });
     expect(orgB?.subScenarioAverages.every((s) => s.averageScore === null)).toBe(true);
   });

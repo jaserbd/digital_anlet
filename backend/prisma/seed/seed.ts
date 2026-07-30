@@ -115,9 +115,29 @@ async function seedQuestionnaire(parsed: ParsedQuestionnaire) {
     });
   }
 
+  await backfillQuestionnaireOrgSettings(questionnaire.id);
+
   console.log(
     `Seeded questionnaire "${parsed.code}" with ${parsed.subScenarios.length} sub-scenarios and ${parsed.questions.length} questions`,
   );
+}
+
+// Mirrors organizations.service.ts's createOrganization backfill from the other direction:
+// a newly-seeded questionnaire starts accepting responses for every existing organization
+// (THIRD_REVIEW.md item 7). Idempotent (skipDuplicates) so re-running the seed is safe.
+async function backfillQuestionnaireOrgSettings(questionnaireId: string) {
+  const organizations = await prisma.organization.findMany({ select: { id: true } });
+  if (organizations.length === 0) {
+    return;
+  }
+  await prisma.questionnaireOrgSetting.createMany({
+    data: organizations.map((o) => ({
+      questionnaireId,
+      organizationId: o.id,
+      acceptingResponses: true,
+    })),
+    skipDuplicates: true,
+  });
 }
 
 async function main() {

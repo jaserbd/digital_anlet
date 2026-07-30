@@ -1,20 +1,34 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import Box from '@mui/material/Box';
+import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
+import TextField from '@mui/material/TextField';
+import MenuItem from '@mui/material/MenuItem';
+import Button from '@mui/material/Button';
+import Alert from '@mui/material/Alert';
 import { opCoApi } from '../api/opCoApi';
 import { authApi } from '../api/authApi';
 import { ApiError } from '../api/client';
 import { ME_QUERY_KEY, useAuth } from '../context/AuthContext';
-import { LogoutButton } from '../components/LogoutButton';
+import { PageShell } from '../components/PageShell';
+import { SectionCard } from '../components/SectionCard';
 
-// One-time profile completion for a NORMAL_USER before they can reach the domain picker
-// (see ProtectedRoute.tsx — a user with opCoId == null is routed here). Country + Company
-// are captured together by picking an admin-managed OpCo; Working Domain and Designation
-// are free text.
+// One-time profile completion for a NORMAL_USER or EXECUTIVE before they can reach the
+// domain picker (see ProtectedRoute.tsx — a user missing required profile fields is routed
+// here, but only from the participation routes, not from their dashboard/Home). Country +
+// Company are captured together by picking an admin-managed OpCo; Working Domain and
+// Designation are free text. OpCo is mandatory for a NORMAL_USER but optional for an
+// EXECUTIVE (MANAGEMENT_REVIEW2.md item 2) — an Executive can skip NatCo entirely.
+//
+// Now wrapped in PageShell (OVERVIEW.md item 5) — previously the only page with no shared
+// header/footer/nav at all.
 export function ProfilePage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const isExecutive = user!.role === 'EXECUTIVE';
 
   const opCosQuery = useQuery({
     queryKey: ['opcos', user!.organizationId],
@@ -27,7 +41,7 @@ export function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
 
   const updateProfile = useMutation({
-    mutationFn: () => authApi.updateProfile({ opCoId, workingDomain, designation }),
+    mutationFn: () => authApi.updateProfile({ opCoId: opCoId || undefined, workingDomain, designation }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY });
       navigate('/domains', { replace: true });
@@ -44,63 +58,65 @@ export function ProfilePage() {
   }
 
   return (
-    <main style={{ maxWidth: 480, margin: '2rem auto', fontFamily: 'sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>Complete your profile</h1>
-        <LogoutButton />
-      </div>
-      <p>Before starting an assessment, tell us a bit about yourself.</p>
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        <label>
-          Country / Company (OpCo)
-          <select
-            required
-            value={opCoId}
-            onChange={(e) => setOpCoId(e.target.value)}
-            style={{ display: 'block', width: '100%' }}
-          >
-            <option value="" disabled>
-              {opCosQuery.isLoading ? 'Loading…' : 'Select your OpCo'}
-            </option>
-            {opCosQuery.data?.map((opCo) => (
-              <option key={opCo.id} value={opCo.id}>
-                {opCo.name} ({opCo.country})
-              </option>
-            ))}
-          </select>
-          {opCosQuery.data?.length === 0 && (
-            <span style={{ fontSize: '0.85em', color: '#666' }}>
-              No OpCos exist for your organization yet — ask your Admin to create one.
-            </span>
-          )}
-        </label>
-        <label>
-          Working Domain
-          <input
-            type="text"
-            required
-            placeholder="e.g. RAN Operations"
-            value={workingDomain}
-            onChange={(e) => setWorkingDomain(e.target.value)}
-            style={{ display: 'block', width: '100%' }}
-          />
-        </label>
-        <label>
-          Designation
-          <input
-            type="text"
-            required
-            placeholder="e.g. Network Engineer"
-            value={designation}
-            onChange={(e) => setDesignation(e.target.value)}
-            style={{ display: 'block', width: '100%' }}
-          />
-        </label>
-        <button type="submit" disabled={updateProfile.isPending || !opCoId}>
-          {updateProfile.isPending ? 'Saving…' : 'Continue'}
-        </button>
-      </form>
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
-    </main>
+    <PageShell title="Complete your profile" maxWidth={560}>
+      <SectionCard>
+        <Typography color="text.secondary" sx={{ mb: 2 }}>
+          Before starting an assessment, tell us a bit about yourself.
+        </Typography>
+        <Box component="form" onSubmit={handleSubmit}>
+          <Stack spacing={2.5}>
+            <TextField
+              select
+              label={`Country / Company (OpCo)${isExecutive ? ' (optional)' : ''}`}
+              required={!isExecutive}
+              value={opCoId}
+              onChange={(e) => setOpCoId(e.target.value)}
+              fullWidth
+              helperText={
+                isExecutive
+                  ? "As an Executive, you can skip this if you're just answering for yourself."
+                  : opCosQuery.data?.length === 0
+                    ? 'No OpCos exist for your organization yet — ask your Admin to create one.'
+                    : undefined
+              }
+            >
+              <MenuItem value="">
+                <em>{opCosQuery.isLoading ? 'Loading…' : isExecutive ? 'Skip (no OpCo)' : 'Select your OpCo'}</em>
+              </MenuItem>
+              {opCosQuery.data?.map((opCo) => (
+                <MenuItem key={opCo.id} value={opCo.id}>
+                  {opCo.name} ({opCo.country})
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              label="Working Domain"
+              required
+              placeholder="e.g. RAN Operations"
+              value={workingDomain}
+              onChange={(e) => setWorkingDomain(e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Designation"
+              required
+              placeholder="e.g. Network Engineer"
+              value={designation}
+              onChange={(e) => setDesignation(e.target.value)}
+              fullWidth
+            />
+            {error && <Alert severity="error">{error}</Alert>}
+            <Button
+              type="submit"
+              variant="contained"
+              size="large"
+              disabled={updateProfile.isPending || (!isExecutive && !opCoId)}
+            >
+              {updateProfile.isPending ? 'Saving…' : 'Continue'}
+            </Button>
+          </Stack>
+        </Box>
+      </SectionCard>
+    </PageShell>
   );
 }
