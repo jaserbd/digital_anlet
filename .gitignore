@@ -1,7 +1,7 @@
 node_modules/
 dist/
 build/
-public/
+backend/public/
 *.log
 npm-debug.log*
 
