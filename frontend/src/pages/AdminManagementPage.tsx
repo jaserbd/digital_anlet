@@ -24,6 +24,9 @@ import { PageShell } from '../components/PageShell';
 import { SectionCard } from '../components/SectionCard';
 import { OrganizationAutocomplete } from '../components/OrganizationAutocomplete';
 import { BulkCreateUsersForm } from '../components/BulkCreateUsersForm';
+import { ReferenceListSelect } from '../components/ReferenceListSelect';
+import { ManageReferenceListSection } from '../components/ManageReferenceListSection';
+import { CollapsibleTable } from '../components/CollapsibleTable';
 
 // Management Console (ADMIN.md item 1) — create/delete for Organization, OpCo, and User, on
 // its own route separate from /admin's Benchmarking/Organizations views. Delete is blocked
@@ -39,6 +42,9 @@ export function AdminManagementPage() {
         ← Back to Admin
       </Button>
       <ManageOrganizationsSection />
+      <ManageReferenceListSection title="Countries" category="COUNTRY" />
+      <ManageReferenceListSection title="Working Domains" category="WORKING_DOMAIN" />
+      <ManageReferenceListSection title="Designations" category="DESIGNATION" />
       <ManageOpCosSection />
       <QuestionnaireSettingsSection />
       <CreateUserForm />
@@ -63,7 +69,10 @@ function ManageOrganizationsSection() {
       void queryClient.invalidateQueries({ queryKey: ['organizations'] });
     },
     onError: (err) => {
-      setMessage({ kind: 'error', text: err instanceof ApiError ? err.message : 'Failed to create organization' });
+      setMessage({
+        kind: 'error',
+        text: err instanceof ApiError ? err.message : 'Failed to create organization',
+      });
     },
   });
 
@@ -74,7 +83,10 @@ function ManageOrganizationsSection() {
       void queryClient.invalidateQueries({ queryKey: ['organizations'] });
     },
     onError: (err, id) => {
-      setRowMessage({ id, text: err instanceof ApiError ? err.message : 'Failed to delete organization' });
+      setRowMessage({
+        id,
+        text: err instanceof ApiError ? err.message : 'Failed to delete organization',
+      });
     },
   });
 
@@ -109,44 +121,46 @@ function ManageOrganizationsSection() {
           {message.text}
         </Alert>
       )}
-      <TableContainer component={Paper} variant="outlined">
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell />
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {orgsQuery.data?.map((org) => (
-              <TableRow key={org.id}>
-                <TableCell>{org.name}</TableCell>
-                <TableCell>
-                  <Button
-                    size="small"
-                    color="error"
-                    variant="outlined"
-                    disabled={deleteOrg.isPending}
-                    onClick={() => handleDelete(org)}
-                  >
-                    Delete
-                  </Button>
-                  {rowMessage?.id === org.id && (
-                    <Typography component="span" variant="caption" color="error" sx={{ ml: 1 }}>
-                      {rowMessage.text}
-                    </Typography>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-            {orgsQuery.data?.length === 0 && (
+      <CollapsibleTable label="Organizations" count={orgsQuery.data?.length ?? 0}>
+        <TableContainer component={Paper} variant="outlined">
+          <Table size="small">
+            <TableHead>
               <TableRow>
-                <TableCell colSpan={2}>No organizations yet.</TableCell>
+                <TableCell>Name</TableCell>
+                <TableCell />
               </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+            </TableHead>
+            <TableBody>
+              {orgsQuery.data?.map((org) => (
+                <TableRow key={org.id}>
+                  <TableCell>{org.name}</TableCell>
+                  <TableCell>
+                    <Button
+                      size="small"
+                      color="error"
+                      variant="outlined"
+                      disabled={deleteOrg.isPending}
+                      onClick={() => handleDelete(org)}
+                    >
+                      Delete
+                    </Button>
+                    {rowMessage?.id === org.id && (
+                      <Typography component="span" variant="caption" color="error" sx={{ ml: 1 }}>
+                        {rowMessage.text}
+                      </Typography>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {orgsQuery.data?.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={2}>No organizations yet.</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </CollapsibleTable>
     </SectionCard>
   );
 }
@@ -176,7 +190,10 @@ function ManageOpCosSection() {
       void queryClient.invalidateQueries({ queryKey: ['opcos', organizationId] });
     },
     onError: (err) => {
-      setMessage({ kind: 'error', text: err instanceof ApiError ? err.message : 'Failed to create OpCo' });
+      setMessage({
+        kind: 'error',
+        text: err instanceof ApiError ? err.message : 'Failed to create OpCo',
+      });
     },
   });
 
@@ -205,7 +222,7 @@ function ManageOpCosSection() {
 
   return (
     <SectionCard title="OpCos">
-      <Stack component="form" onSubmit={handleSubmit} spacing={2} sx={{ maxWidth: 360, mb: 2 }}>
+      <Stack spacing={2} sx={{ maxWidth: 360, mb: 2 }}>
         <TextField
           select
           label="Organization"
@@ -222,21 +239,29 @@ function ManageOpCosSection() {
             </MenuItem>
           ))}
         </TextField>
-        <TextField
+      </Stack>
+      {organizationId && (
+        <ManageReferenceListSection
+          title="NatCo Names for this organization"
+          category="NATCO_NAME"
+          organizationId={organizationId}
+        />
+      )}
+      <Stack component="form" onSubmit={handleSubmit} spacing={2} sx={{ maxWidth: 360, mb: 2 }}>
+        <ReferenceListSelect
+          category="NATCO_NAME"
           label="OpCo / NatCo name"
+          organizationId={organizationId}
           required
-          placeholder="e.g. Vodafone Kenya"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={setName}
         />
-        <TextField
-          label="Country"
-          required
-          placeholder="e.g. Kenya"
-          value={country}
-          onChange={(e) => setCountry(e.target.value)}
-        />
-        <Button type="submit" variant="contained" disabled={createOpCo.isPending || !organizationId}>
+        <ReferenceListSelect category="COUNTRY" required value={country} onChange={setCountry} />
+        <Button
+          type="submit"
+          variant="contained"
+          disabled={createOpCo.isPending || !organizationId}
+        >
           {createOpCo.isPending ? 'Creating…' : 'Create OpCo'}
         </Button>
       </Stack>
@@ -246,46 +271,48 @@ function ManageOpCosSection() {
         </Alert>
       )}
       {organizationId && (
-        <TableContainer component={Paper} variant="outlined">
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Country</TableCell>
-                <TableCell />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {opCosQuery.data?.map((opCo) => (
-                <TableRow key={opCo.id}>
-                  <TableCell>{opCo.name}</TableCell>
-                  <TableCell>{opCo.country}</TableCell>
-                  <TableCell>
-                    <Button
-                      size="small"
-                      color="error"
-                      variant="outlined"
-                      disabled={deleteOpCo.isPending}
-                      onClick={() => handleDelete(opCo)}
-                    >
-                      Delete
-                    </Button>
-                    {rowMessage?.id === opCo.id && (
-                      <Typography component="span" variant="caption" color="error" sx={{ ml: 1 }}>
-                        {rowMessage.text}
-                      </Typography>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {opCosQuery.data?.length === 0 && (
+        <CollapsibleTable label="OpCos" count={opCosQuery.data?.length ?? 0}>
+          <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
+              <TableHead>
                 <TableRow>
-                  <TableCell colSpan={3}>No OpCos for this organization yet.</TableCell>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Country</TableCell>
+                  <TableCell />
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableHead>
+              <TableBody>
+                {opCosQuery.data?.map((opCo) => (
+                  <TableRow key={opCo.id}>
+                    <TableCell>{opCo.name}</TableCell>
+                    <TableCell>{opCo.country}</TableCell>
+                    <TableCell>
+                      <Button
+                        size="small"
+                        color="error"
+                        variant="outlined"
+                        disabled={deleteOpCo.isPending}
+                        onClick={() => handleDelete(opCo)}
+                      >
+                        Delete
+                      </Button>
+                      {rowMessage?.id === opCo.id && (
+                        <Typography component="span" variant="caption" color="error" sx={{ ml: 1 }}>
+                          {rowMessage.text}
+                        </Typography>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {opCosQuery.data?.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={3}>No OpCos for this organization yet.</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CollapsibleTable>
       )}
     </SectionCard>
   );
@@ -299,7 +326,10 @@ function ManageOpCosSection() {
 // independently of every other organization.
 function QuestionnaireSettingsSection() {
   const queryClient = useQueryClient();
-  const questionnairesQuery = useQuery({ queryKey: ['questionnaires'], queryFn: questionnaireApi.list });
+  const questionnairesQuery = useQuery({
+    queryKey: ['questionnaires'],
+    queryFn: questionnaireApi.list,
+  });
   const orgsQuery = useQuery({ queryKey: ['organizations'], queryFn: organizationsApi.list });
   const [questionnaireCode, setQuestionnaireCode] = useState('');
   const [organization, setOrganization] = useState<OrganizationDto | null>(null);
@@ -315,7 +345,9 @@ function QuestionnaireSettingsSection() {
     mutationFn: (accepting: boolean) =>
       questionnaireApi.setAcceptingResponses(effectiveCode, organization!.id, accepting),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['accepting-status', effectiveCode, organization?.id] });
+      void queryClient.invalidateQueries({
+        queryKey: ['accepting-status', effectiveCode, organization?.id],
+      });
       void queryClient.invalidateQueries({ queryKey: ['questionnaire', effectiveCode] });
     },
   });
@@ -347,14 +379,19 @@ function QuestionnaireSettingsSection() {
           <Typography variant="body2" color="text.secondary">
             Organization
           </Typography>
-          <OrganizationAutocomplete organizations={orgsQuery.data ?? []} onSelect={setOrganization} />
+          <OrganizationAutocomplete
+            organizations={orgsQuery.data ?? []}
+            onSelect={setOrganization}
+          />
         </Stack>
       </Stack>
       {organization && statusQuery.data && (
         <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 2 }}>
           <Typography>
             Status for <strong>{organization.name}</strong>:{' '}
-            <strong>{statusQuery.data.acceptingResponses ? 'Accepting responses' : 'Closed'}</strong>
+            <strong>
+              {statusQuery.data.acceptingResponses ? 'Accepting responses' : 'Closed'}
+            </strong>
           </Typography>
           <Button
             variant="contained"
@@ -371,10 +408,9 @@ function QuestionnaireSettingsSection() {
         </Stack>
       )}
       <Typography variant="body2" color="text.secondary">
-        Select an organization above to view/toggle its status for this assessment. While
-        accepting, users in that organization can edit and re-submit their responses at any
-        time; once closed, every response for that organization locks permanently — other
-        organizations are unaffected.
+        Select an organization above to view/toggle its status for this assessment. While accepting,
+        users in that organization can edit and re-submit their responses at any time; once closed,
+        every response for that organization locks permanently — other organizations are unaffected.
       </Typography>
     </SectionCard>
   );
@@ -397,7 +433,10 @@ function CreateUserForm() {
       setPassword('');
     },
     onError: (err) => {
-      setMessage({ kind: 'error', text: err instanceof ApiError ? err.message : 'Failed to create user' });
+      setMessage({
+        kind: 'error',
+        text: err instanceof ApiError ? err.message : 'Failed to create user',
+      });
     },
   });
 
@@ -425,7 +464,12 @@ function CreateUserForm() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <TextField select label="Role" value={role} onChange={(e) => setRole(e.target.value as typeof role)}>
+        <TextField
+          select
+          label="Role"
+          value={role}
+          onChange={(e) => setRole(e.target.value as typeof role)}
+        >
           <MenuItem value="NORMAL_USER">Normal User</MenuItem>
           <MenuItem value="EXECUTIVE">Executive</MenuItem>
         </TextField>
@@ -445,7 +489,11 @@ function CreateUserForm() {
             </MenuItem>
           ))}
         </TextField>
-        <Button type="submit" variant="contained" disabled={createUser.isPending || !organizationId}>
+        <Button
+          type="submit"
+          variant="contained"
+          disabled={createUser.isPending || !organizationId}
+        >
           {createUser.isPending ? 'Creating…' : 'Create user'}
         </Button>
       </Stack>
@@ -475,34 +523,36 @@ function ManageUsersSection() {
       ) : !usersQuery.data || !orgsQuery.data ? (
         <Typography color="text.secondary">Something went wrong loading users.</Typography>
       ) : (
-        <TableContainer component={Paper} variant="outlined">
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Email</TableCell>
-                <TableCell>Role</TableCell>
-                <TableCell>Organization</TableCell>
-                <TableCell>OpCo</TableCell>
-                <TableCell />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {usersQuery.data.map((user) => (
-                <UserRow
-                  key={user.id}
-                  user={user}
-                  organizations={orgsQuery.data!}
-                  onSaved={() => void queryClient.invalidateQueries({ queryKey: ['users'] })}
-                />
-              ))}
-              {usersQuery.data.length === 0 && (
+        <CollapsibleTable label="Existing users" count={usersQuery.data.length}>
+          <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
+              <TableHead>
                 <TableRow>
-                  <TableCell colSpan={5}>No users yet.</TableCell>
+                  <TableCell>Email</TableCell>
+                  <TableCell>Role</TableCell>
+                  <TableCell>Organization</TableCell>
+                  <TableCell>OpCo</TableCell>
+                  <TableCell />
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableHead>
+              <TableBody>
+                {usersQuery.data.map((user) => (
+                  <UserRow
+                    key={user.id}
+                    user={user}
+                    organizations={orgsQuery.data!}
+                    onSaved={() => void queryClient.invalidateQueries({ queryKey: ['users'] })}
+                  />
+                ))}
+                {usersQuery.data.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5}>No users yet.</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CollapsibleTable>
       )}
     </SectionCard>
   );
@@ -539,7 +589,10 @@ function UserRow({
     mutationFn: () => usersApi.delete(user.id),
     onSuccess: onSaved,
     onError: (err) => {
-      setMessage({ kind: 'error', text: err instanceof ApiError ? err.message : 'Failed to delete user' });
+      setMessage({
+        kind: 'error',
+        text: err instanceof ApiError ? err.message : 'Failed to delete user',
+      });
     },
   });
 
@@ -588,11 +641,21 @@ function UserRow({
           >
             {updateUser.isPending ? 'Saving…' : 'Save'}
           </Button>
-          <Button size="small" color="error" variant="outlined" disabled={deleteUser.isPending} onClick={handleDelete}>
+          <Button
+            size="small"
+            color="error"
+            variant="outlined"
+            disabled={deleteUser.isPending}
+            onClick={handleDelete}
+          >
             {deleteUser.isPending ? 'Deleting…' : 'Delete'}
           </Button>
           {message && (
-            <Typography component="span" variant="caption" color={message.kind === 'error' ? 'error' : 'success.main'}>
+            <Typography
+              component="span"
+              variant="caption"
+              color={message.kind === 'error' ? 'error' : 'success.main'}
+            >
               {message.text}
             </Typography>
           )}

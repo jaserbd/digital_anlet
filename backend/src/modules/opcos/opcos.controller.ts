@@ -1,9 +1,11 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import {
+  CountryNotInCatalogError,
   createOpCo,
   deleteOpCo,
   listOpCos,
+  NatCoNameNotInCatalogError,
   OpCoHasDependentsError,
   OpCoNameTakenError,
   OpCoNotFoundError,
@@ -49,6 +51,14 @@ export async function createOpCoHandler(req: Request, res: Response) {
     }
     if (err instanceof OrganizationNotFoundError) {
       res.status(400).json({ error: 'Organization not found' });
+      return;
+    }
+    if (err instanceof NatCoNameNotInCatalogError) {
+      res.status(400).json({ error: 'NatCo name must be selected from this organization\'s NatCo Name list' });
+      return;
+    }
+    if (err instanceof CountryNotInCatalogError) {
+      res.status(400).json({ error: 'Country must be selected from the Country list' });
       return;
     }
     throw err;

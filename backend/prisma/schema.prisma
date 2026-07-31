@@ -34,6 +34,35 @@ model Organization {
   users User[]
   opCos OpCo[]
   questionnaireOrgSettings QuestionnaireOrgSetting[]
+  referenceListEntries     ReferenceListEntry[]
+}
+
+enum ReferenceListCategory {
+  COUNTRY
+  WORKING_DOMAIN
+  DESIGNATION
+  NATCO_NAME
+}
+
+// Admin-managed picklists backing the Country / Working Domain / Designation / NatCo Name
+// dropdowns, so those four fields can no longer drift in spelling (they used to be free
+// text on OpCo creation and profile completion). COUNTRY/WORKING_DOMAIN/DESIGNATION are
+// global (organizationId null); NATCO_NAME is scoped per Organization (each org has its own
+// valid subsidiary names). organizationId's non-uniqueness across NULLs means the
+// @@unique below only actually dedupes NATCO_NAME rows — global-category duplicates are
+// prevented at the service layer instead (see referenceLists.service.ts), not the DB.
+// OpCo.name/country and User.workingDomain/designation intentionally stay plain,
+// unconstrained strings (not FKs here) — only the write paths validate against this table.
+model ReferenceListEntry {
+  id        String                @id @default(cuid())
+  category  ReferenceListCategory
+  name      String
+  createdAt DateTime              @default(now())
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  @@unique([category, organizationId, name])
 }
 
 // A NatCo/OpCo within an Organization (e.g. "Vodafone Kenya" under "Vodafone Group").

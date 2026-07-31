@@ -143,6 +143,19 @@ export interface OpCoDto {
   organizationId: string;
 }
 
+// Backs the Country / Working Domain / Designation / NatCo Name dropdowns — Admin-managed
+// picklists that replaced free-text entry on OpCo creation and profile completion, so those
+// fields can no longer drift in spelling. COUNTRY/WORKING_DOMAIN/DESIGNATION are global
+// (organizationId null); NATCO_NAME is scoped per Organization.
+export type ReferenceListCategory = 'COUNTRY' | 'WORKING_DOMAIN' | 'DESIGNATION' | 'NATCO_NAME';
+
+export interface ReferenceListEntryDto {
+  id: string;
+  category: ReferenceListCategory;
+  name: string;
+  organizationId: string | null;
+}
+
 export interface UserDto {
   id: string;
   email: string;

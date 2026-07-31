@@ -4,9 +4,11 @@ import { env } from '../../config/env';
 import { parseDurationMs } from '../../lib/duration';
 import { AUTH_COOKIE_NAME } from '../../middleware/auth';
 import {
+  DesignationNotInCatalogError,
   OpCoNotInOrganizationError,
   OpCoRequiredError,
   UserNotFoundError,
+  WorkingDomainNotInCatalogError,
   updateOwnProfile,
 } from '../users/users.service';
 import {
@@ -167,6 +169,14 @@ export async function updateProfileHandler(req: Request, res: Response) {
     }
     if (err instanceof OpCoRequiredError) {
       res.status(400).json({ error: 'OpCo is required' });
+      return;
+    }
+    if (err instanceof WorkingDomainNotInCatalogError) {
+      res.status(400).json({ error: 'Working Domain must be selected from the list' });
+      return;
+    }
+    if (err instanceof DesignationNotInCatalogError) {
+      res.status(400).json({ error: 'Designation must be selected from the list' });
       return;
     }
     throw err;

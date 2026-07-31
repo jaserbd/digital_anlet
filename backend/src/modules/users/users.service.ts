@@ -2,6 +2,7 @@ import type { BulkCreateUsersResultDto, Role } from '@anlet/shared';
 import { prisma } from '../../lib/prisma';
 import { hashPassword } from '../../lib/password';
 import { generatePassword } from '../../lib/generatePassword';
+import { referenceListEntryExists } from '../referenceLists/referenceLists.service';
 
 export class EmailTakenError extends Error {}
 export class OrganizationNotFoundError extends Error {}
@@ -10,6 +11,8 @@ export class OpCoNotInOrganizationError extends Error {}
 export class CannotModifyAdminError extends Error {}
 export class OpCoRequiredError extends Error {}
 export class UserHasResponsesError extends Error {}
+export class WorkingDomainNotInCatalogError extends Error {}
+export class DesignationNotInCatalogError extends Error {}
 
 const USER_SELECT = {
   id: true,
@@ -232,6 +235,20 @@ export async function updateOwnProfile(
     }
   } else if (user.role === 'NORMAL_USER') {
     throw new OpCoRequiredError();
+  }
+
+  // Working Domain/Designation must come from the Admin-managed global reference lists —
+  // see referenceLists.service.ts. Checked here (not just in the frontend dropdown) so a
+  // direct API call can't bypass it.
+  const [workingDomainInCatalog, designationInCatalog] = await Promise.all([
+    referenceListEntryExists('WORKING_DOMAIN', input.workingDomain),
+    referenceListEntryExists('DESIGNATION', input.designation),
+  ]);
+  if (!workingDomainInCatalog) {
+    throw new WorkingDomainNotInCatalogError();
+  }
+  if (!designationInCatalog) {
+    throw new DesignationNotInCatalogError();
   }
 
   await prisma.user.update({

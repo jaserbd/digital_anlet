@@ -1,11 +1,38 @@
+import type { ReferenceListCategory } from '@prisma/client';
 import { env } from '../../src/config/env';
 import { prisma } from '../../src/lib/prisma';
 import { hashPassword } from '../../src/lib/password';
 import type { ParsedQuestionnaire } from './parsedQuestionnaire.types';
 import { parseRanFmXlsx } from './parseRanFmXlsx';
 import { parseCoreFaultManagementXlsx, parseCoreStabilityXlsx } from './parseCoreFmXlsx';
+import countries from './data/countries.json';
 
 const INTERNAL_ORG_NAME = 'Anlet (Internal)';
+
+// Non-exhaustive starting points for the two categories with no universal standard list
+// (unlike Country, which is seeded from countries.json) — Admin extends these further via
+// the Management Console's reference-list sections.
+const STARTER_WORKING_DOMAINS = [
+  'RAN',
+  'Core',
+  'IP',
+  'Transport',
+  'Fixed Access',
+  'NOC',
+  'Field Operations',
+  'Planning & Engineering',
+  'IT/OSS',
+];
+
+const STARTER_DESIGNATIONS = [
+  'Network Engineer',
+  'NOC Engineer',
+  'Team Lead',
+  'Solution Architect',
+  'Manager',
+  'Director',
+  'CTO',
+];
 
 async function seedInternalOrgAndAdmin() {
   const org = await prisma.organization.upsert({
@@ -140,11 +167,85 @@ async function backfillQuestionnaireOrgSettings(questionnaireId: string) {
   });
 }
 
+// Global-category (organizationId null) rows aren't deduped by the DB — Postgres treats two
+// NULLs as distinct, so the @@unique([category, organizationId, name]) constraint doesn't
+// fire across them (see schema.prisma's comment on ReferenceListEntry). Dedup explicitly here
+// instead of relying on createMany's skipDuplicates, so re-running the seed stays idempotent.
+async function seedGlobalReferenceList(category: ReferenceListCategory, values: string[]) {
+  const existing = await prisma.referenceListEntry.findMany({
+    where: { category, organizationId: null },
+    select: { name: true },
+  });
+  const existingLower = new Set(existing.map((e) => e.name.toLowerCase()));
+  const toCreate = [...new Set(values)].filter((v) => !existingLower.has(v.toLowerCase()));
+  if (toCreate.length === 0) {
+    return;
+  }
+  await prisma.referenceListEntry.createMany({
+    data: toCreate.map((name) => ({ category, name, organizationId: null })),
+  });
+}
+
+// So nothing already in use by an existing OpCo/User becomes unselectable once the dropdowns
+// go live — one ReferenceListEntry per distinct value already present in the DB, on top of
+// the standard seeded lists above. Idempotent, safe to rerun.
+async function backfillReferenceListsFromExistingData() {
+  const [opCos, users] = await Promise.all([
+    prisma.opCo.findMany({ select: { name: true, country: true, organizationId: true } }),
+    prisma.user.findMany({ select: { workingDomain: true, designation: true } }),
+  ]);
+
+  await seedGlobalReferenceList(
+    'COUNTRY',
+    opCos.map((o) => o.country),
+  );
+  await seedGlobalReferenceList(
+    'WORKING_DOMAIN',
+    users.map((u) => u.workingDomain).filter((v): v is string => !!v),
+  );
+  await seedGlobalReferenceList(
+    'DESIGNATION',
+    users.map((u) => u.designation).filter((v): v is string => !!v),
+  );
+
+  // NatCo Name is org-scoped, so group existing OpCo names by organization first.
+  const namesByOrg = new Map<string, Set<string>>();
+  for (const opCo of opCos) {
+    if (!namesByOrg.has(opCo.organizationId)) {
+      namesByOrg.set(opCo.organizationId, new Set());
+    }
+    namesByOrg.get(opCo.organizationId)!.add(opCo.name);
+  }
+  for (const [organizationId, names] of namesByOrg) {
+    const existing = await prisma.referenceListEntry.findMany({
+      where: { category: 'NATCO_NAME', organizationId },
+      select: { name: true },
+    });
+    const existingLower = new Set(existing.map((e) => e.name.toLowerCase()));
+    const toCreate = [...names].filter((n) => !existingLower.has(n.toLowerCase()));
+    if (toCreate.length === 0) {
+      continue;
+    }
+    await prisma.referenceListEntry.createMany({
+      data: toCreate.map((name) => ({ category: 'NATCO_NAME' as const, name, organizationId })),
+    });
+  }
+}
+
+async function seedReferenceLists() {
+  await seedGlobalReferenceList('COUNTRY', countries);
+  await seedGlobalReferenceList('WORKING_DOMAIN', STARTER_WORKING_DOMAINS);
+  await seedGlobalReferenceList('DESIGNATION', STARTER_DESIGNATIONS);
+  await backfillReferenceListsFromExistingData();
+  console.log('Seeded reference lists (Country/Working Domain/Designation/NatCo Name)');
+}
+
 async function main() {
   await seedInternalOrgAndAdmin();
   await seedQuestionnaire(parseRanFmXlsx());
   await seedQuestionnaire(parseCoreFaultManagementXlsx());
   await seedQuestionnaire(parseCoreStabilityXlsx());
+  await seedReferenceLists();
 }
 
 main()

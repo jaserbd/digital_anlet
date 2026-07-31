@@ -14,6 +14,7 @@ import { ApiError } from '../api/client';
 import { ME_QUERY_KEY, useAuth } from '../context/AuthContext';
 import { PageShell } from '../components/PageShell';
 import { SectionCard } from '../components/SectionCard';
+import { ReferenceListSelect } from '../components/ReferenceListSelect';
 
 // One-time profile completion for a NORMAL_USER or EXECUTIVE before they can reach the
 // domain picker (see ProtectedRoute.tsx — a user missing required profile fields is routed
@@ -89,20 +90,18 @@ export function ProfilePage() {
                 </MenuItem>
               ))}
             </TextField>
-            <TextField
-              label="Working Domain"
+            <ReferenceListSelect
+              category="WORKING_DOMAIN"
               required
-              placeholder="e.g. RAN Operations"
               value={workingDomain}
-              onChange={(e) => setWorkingDomain(e.target.value)}
+              onChange={setWorkingDomain}
               fullWidth
             />
-            <TextField
-              label="Designation"
+            <ReferenceListSelect
+              category="DESIGNATION"
               required
-              placeholder="e.g. Network Engineer"
               value={designation}
-              onChange={(e) => setDesignation(e.target.value)}
+              onChange={setDesignation}
               fullWidth
             />
             {error && <Alert severity="error">{error}</Alert>}
