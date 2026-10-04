@@ -281,7 +281,8 @@ database has no authorized networks.
 - **2026-10-04:** migrated to company project `anlet-504115` (Detecon folder), region `europe-west3`, as a **fresh
   start** — new empty database seeded with the questionnaires and the super admin; old data not carried over. Steps
   and decisions: [GCP_MIGRATION_PLAN.md](GCP_MIGRATION_PLAN.md).
-- **Old project shutdown:** pending — see GCP_MIGRATION_PLAN.md step 11.
+- **2026-10-04:** old project `anlet-504021` deleted (`gcloud projects delete`; state `DELETE_REQUESTED`, billing
+  stopped). Restorable with `gcloud projects undelete anlet-504021` until about 2026-11-03, permanently removed after.
 
 ---
 

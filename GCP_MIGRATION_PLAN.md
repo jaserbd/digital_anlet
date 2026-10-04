@@ -9,7 +9,7 @@ Source request: `admin_management.md` (last paragraph), clarified in discussion.
 |---|---|
 | Data | **Start fresh** — new empty database, loaded only by the seed (7 questionnaires + KEIs, reference lists, internal org, super admin). Existing users/responses are not carried over. |
 | Version | **Latest code**: Phase 1 committed, `feature/new_fm_domain` merged into `main`, `main` deployed. |
-| Old project | **Stopped right after** the new one is verified: delete the old Cloud Run service (no data) and stop the old Cloud SQL instance (data kept, restartable). Nothing deleted permanently. |
+| Old project | Originally "stop, keep data"; changed to **delete the whole project** (no important data) — done by Jaserbin after verification. |
 | Hardening | Enable **daily Cloud SQL backups + point-in-time recovery**. Otherwise same shape as today. |
 | Execution | Claude runs `gcloud` from your machine **step by step, asking before every step that creates, changes or stops anything**. Passwords you choose (super admin) you type yourself. |
 | Region | **europe-west3 (Frankfurt)** — allowed by the company location policy (today: europe-west1). |
@@ -27,7 +27,9 @@ Source request: `admin_management.md` (last paragraph), clarified in discussion.
 **Status (2026-10-04): steps 1–10 done.** New app live at <https://anlet-602185048647.europe-west3.run.app>; super
 admin login verified by Jaserbin. Deviations from the plan: secrets use user-managed replication in `europe-west3` and
 Cloud Build runs regionally with a regional source bucket — both required by the EU location policy. The super admin
-password was generated (not typed) and lives only in `anlet-admin-password`. Step 11 pending.
+password was generated (not typed) and lives only in `anlet-admin-password`. Step 11: instead of stopping the old
+project, Jaserbin deleted it entirely (`gcloud projects delete anlet-504021`, run by him) — billing stopped, restorable
+for 30 days. **Migration complete.**
 
 1. **Prepare code** — commit Phase 1, merge `feature/new_fm_domain` into `main`, run lint/typecheck/tests.
 2. **Enable APIs** on `anlet-504115`: `run`, `sqladmin`, `artifactregistry`, `cloudbuild`, `secretmanager`.
