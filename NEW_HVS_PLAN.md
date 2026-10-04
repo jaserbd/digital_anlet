@@ -59,6 +59,11 @@ A–C-only questions, so only its first 3 cached sub-scenario scores are reprodu
 
 ## Phase B — KEIs
 
+**Status (2026-10-04): done and verified** — schema + migration, parser KEIs (IP 3, Microwave 2, OTN 4),
+`computeKeiScore` (IP golden master 2.4), submit rule, API, answering step, results, Executive/Admin
+distribution, benchmark column, comment collection and Excel/PDF exports. 134 backend + 21 frontend tests
+pass; browser walkthrough as Normal User (incl. save race + unmount flush), Executive and Admin.
+
 1. **Schema**: `EffectivenessIndicator` (questionnaire, sortOrder, name, description, weight, option A–C text
    and criteria); `ResponseKei` (response, indicator, option?, indicatorValue?, comment?);
    `ScoreResult.keiScore Float?`.

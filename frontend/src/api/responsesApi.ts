@@ -1,4 +1,11 @@
-import type { CoreDomainSummaryDto, QuestionCommentDto, AnswerOption, ResponseDto, ScoreResultDto } from '@anlet/shared';
+import type {
+  CoreDomainSummaryDto,
+  KeiAnswerDto,
+  QuestionCommentDto,
+  AnswerOption,
+  ResponseDto,
+  ScoreResultDto,
+} from '@anlet/shared';
 import { apiClient } from './client';
 
 export const responsesApi = {
@@ -15,6 +22,9 @@ export const responsesApi = {
     responseId: string,
     comment: Omit<QuestionCommentDto, 'subScenarioIds'> & { subScenarioIds: string[] },
   ) => apiClient.put<void>(`/responses/${responseId}/comments`, comment),
+  // Saves one Key Effectiveness Indicator's full state; all-empty clears it back to unanswered.
+  upsertKei: (responseId: string, kei: KeiAnswerDto) =>
+    apiClient.put<void>(`/responses/${responseId}/kei`, kei),
   submit: (responseId: string) =>
     apiClient.post<ScoreResultDto>(`/responses/${responseId}/submit`),
   getResult: (responseId: string) =>

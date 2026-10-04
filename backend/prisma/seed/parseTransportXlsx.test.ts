@@ -68,6 +68,29 @@ describe('parseTransportMicrowaveXlsx', () => {
   });
 });
 
+describe('Transport KEIs', () => {
+  it("takes Microwave's KEI weights from its own sheet, not Scoring_Microwave's OTN references", () => {
+    const parsed = parseTransportMicrowaveXlsx();
+    expect(parsed.effectivenessIndicators.map((k) => [k.name, k.weight, k.optionCriteria])).toEqual(
+      [
+        ['Mean Time to Repair (MTTR)', 0.6, { A: 4, B: 3, C: 2 }],
+        ['Fault management automation rate', 0.4, { A: 4, B: 3, C: 2 }],
+      ],
+    );
+    expect(parsed.keiNote).toMatch(/pilot use/);
+  });
+
+  it('parses the 4 OTN KEIs', () => {
+    const parsed = parseTransportOtnXlsx();
+    expect(parsed.effectivenessIndicators.map((k) => [k.name, k.weight])).toEqual([
+      ['Automatic Fault Demarcation and locating Ratio', 0.3],
+      ['Fault management automation rate', 0.3],
+      ['Mean Time To Recovery(MTTR)', 0.2],
+      ['Mean Time to Repair(MTTR)', 0.2],
+    ]);
+  });
+});
+
 describe('parseTransportOtnXlsx', () => {
   const parsed = parseTransportOtnXlsx();
 

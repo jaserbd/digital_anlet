@@ -95,7 +95,12 @@ export function OrganizationDeepDivePage() {
       isGroup && combinedQuery.data
         ? { kind: 'combined', rows: combinedQuery.data.rows }
         : opCoBenchmarkQuery.data && questionnaireQuery.data
-          ? { kind: 'single', rows: opCoBenchmarkQuery.data.rows, subScenarios: questionnaireQuery.data.subScenarios }
+          ? {
+              kind: 'single',
+              rows: opCoBenchmarkQuery.data.rows,
+              subScenarios: questionnaireQuery.data.subScenarios,
+              showKeiColumn: questionnaireQuery.data.effectivenessIndicators.length > 0,
+            }
           : null;
     const reportDetails: OrganizationReportDetail[] = details.map((d) => ({
       questionnaire: d.questionnaireQuery.data!,
@@ -227,6 +232,7 @@ export function OrganizationDeepDivePage() {
               <BenchmarkTable
                 rows={opCoBenchmarkQuery.data.rows}
                 subScenarios={questionnaireQuery.data.subScenarios}
+                showKeiColumn={questionnaireQuery.data.effectivenessIndicators.length > 0}
                 hideOrganizationColumn
                 showCommentsColumn
                 onCommentsClick={(row) => setCommentsForOpCoId(row.opCoId)}

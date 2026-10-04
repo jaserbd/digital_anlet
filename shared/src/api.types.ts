@@ -67,6 +67,18 @@ export interface QuestionDto {
   answeringGuideline: string | null;
 }
 
+// Key Effectiveness Indicator (NEW_HVS_PLAN.md Phase B) — an outcome measure (MTTR,
+// automation ratio, ...) answered once per response on an A-C range scale, scored
+// separately from the IAADE questions (ScoreResultDto.keiScore).
+export interface EffectivenessIndicatorDto {
+  id: string;
+  sortOrder: number;
+  name: string;
+  description: string;
+  weight: number;
+  options: QuestionOptionDto[];
+}
+
 export interface QuestionnaireDto {
   id: string;
   code: string;
@@ -84,6 +96,10 @@ export interface QuestionnaireDto {
   acceptingResponses: boolean;
   subScenarios: SubScenarioDto[];
   questions: QuestionDto[];
+  // Empty for questionnaires without KEIs (RAN, Core, Fixed Access).
+  effectivenessIndicators: EffectivenessIndicatorDto[];
+  // The source's note under its KEI block (e.g. values are for pilot use); null without KEIs.
+  keiNote: string | null;
 }
 
 // Lightweight listing for the Domain -> questionnaire picker — no questions/sub-scenarios.
@@ -119,12 +135,24 @@ export interface QuestionCommentDto {
   subScenarioIds: string[];
 }
 
+// One respondent's state for one KEI — also the PUT /responses/:id/kei request body. A KEI
+// is answered with selectedOption, or skipped when unanswered but explained by a non-empty
+// comment (submit is blocked otherwise). indicatorValue is the free-text measured value
+// (e.g. "85%"), informational only — never scored.
+export interface KeiAnswerDto {
+  indicatorId: string;
+  selectedOption: AnswerOption | null;
+  indicatorValue: string | null;
+  comment: string | null;
+}
+
 export interface ResponseDto {
   id: string;
   status: ResponseStatus;
   questionnaireCode: string;
   answers: AnswerDto[];
   comments: QuestionCommentDto[];
+  keiAnswers: KeiAnswerDto[];
 }
 
 // A skipped (question, subScenario) pair with no comment covering it — returned when
@@ -132,6 +160,14 @@ export interface ResponseDto {
 export interface UncoveredSkipDto {
   questionId: string;
   subScenarioId: string;
+}
+
+// The 422 body returned when submission is blocked: uncovered (question, subScenario) pairs
+// plus the ids of KEIs that are neither answered nor explained by a comment.
+export interface UncoveredSkipErrorDto {
+  error: string;
+  missing: UncoveredSkipDto[];
+  missingKeis: string[];
 }
 
 export interface OrganizationDto {
@@ -276,10 +312,18 @@ export interface CommentDrilldownEntryDto {
   respondent: DrilldownRespondentIdentityDto;
 }
 
+// One respondent's KEI state (answer, measured value, comment) — the KEI analogue of both
+// AnswerDrilldownEntryDto and CommentDrilldownEntryDto, kept flat since KEIs have no
+// sub-scenarios; the frontend derives per-option counts and respondent lists from it.
+export interface KeiDrilldownEntryDto extends KeiAnswerDto {
+  respondent: DrilldownRespondentIdentityDto;
+}
+
 export interface AnswerDrilldownDto {
   questionnaireCode: string;
   entries: AnswerDrilldownEntryDto[];
   comments: CommentDrilldownEntryDto[];
+  keiResponses: KeiDrilldownEntryDto[];
 }
 
 // Cross-organization analogue of CommentDrilldownEntryDto (ADMIN.md item 3) — Admin's
@@ -291,9 +335,16 @@ export interface CrossOrgCommentEntryDto extends CommentDrilldownEntryDto {
   organizationName: string;
 }
 
+export interface CrossOrgKeiCommentEntryDto extends KeiDrilldownEntryDto {
+  organizationId: string;
+  organizationName: string;
+}
+
 export interface CrossOrgCommentCollectionDto {
   questionnaireCode: string;
   comments: CrossOrgCommentEntryDto[];
+  // KEI states that carry a comment (NEW_HVS_PLAN.md Phase B).
+  keiComments: CrossOrgKeiCommentEntryDto[];
 }
 
 export interface SubScenarioAverageDto {
@@ -318,6 +369,9 @@ export interface BenchmarkRowDto {
   averageFinalScore: number | null;
   averageE2eAutomationRate: number | null;
   subScenarioAverages: SubScenarioAverageDto[];
+  // Average Effective Indicator (KEI) score over this row's SUBMITTED responses that have
+  // one; null when there are none (or the questionnaire has no KEIs).
+  averageKeiScore: number | null;
   // Count of QuestionComment rows across this row's SUBMITTED responses (THIRD_REVIEW.md
   // item 8) — feeds the Organization Deep-Dive page's clickable Comments column.
   commentCount: number;

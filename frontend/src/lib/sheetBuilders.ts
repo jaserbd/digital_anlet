@@ -41,6 +41,8 @@ export function buildBenchmarkSheet(
   rows: BenchmarkRowDto[],
   subScenarios: SubScenarioDto[],
   hideOrganizationColumn?: boolean,
+  // True for questionnaires with Key Effectiveness Indicators (NEW_HVS_PLAN.md Phase B).
+  showKeiColumn?: boolean,
 ): XlsxSheet {
   return {
     name: 'Benchmarking',
@@ -52,6 +54,7 @@ export function buildBenchmarkSheet(
       { header: 'Submitted', key: 'submittedCount' },
       { header: 'Avg. final score', key: 'averageFinalScore' },
       { header: 'Avg. E2E rate', key: 'averageE2eAutomationRate' },
+      ...(showKeiColumn ? [{ header: 'Avg. KEI score', key: 'averageKeiScore' }] : []),
       ...subScenarios.map((s) => ({ header: formatSubScenarioLabel(s), key: `sub-${s.id}` })),
     ],
     rows: rows.map((r) => ({
@@ -62,6 +65,7 @@ export function buildBenchmarkSheet(
       submittedCount: r.submittedCount,
       averageFinalScore: r.averageFinalScore ?? '',
       averageE2eAutomationRate: r.averageE2eAutomationRate ?? '',
+      averageKeiScore: r.averageKeiScore ?? '',
       ...Object.fromEntries(
         subScenarios.map((s) => [
           `sub-${s.id}`,

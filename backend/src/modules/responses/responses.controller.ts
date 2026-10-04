@@ -5,6 +5,7 @@ import { QuestionnaireNotFoundError } from '../questionnaire/questionnaire.servi
 import {
   AcceptanceClosedError,
   ForbiddenError,
+  InvalidKeiError,
   ResponseNotFoundError,
   ResultNotAvailableError,
   UncoveredSkipError,
@@ -16,6 +17,7 @@ import {
   submitResponse,
   upsertAnswer,
   upsertComment,
+  upsertKei,
 } from './responses.service';
 
 const createResponseSchema = z.object({
@@ -35,6 +37,13 @@ const upsertCommentSchema = z.object({
   appliesToNone: z.boolean(),
 });
 
+const upsertKeiSchema = z.object({
+  indicatorId: z.string().min(1),
+  selectedOption: z.enum(['A', 'B', 'C', 'D']).nullable(),
+  indicatorValue: z.string().max(200).nullable(),
+  comment: z.string().max(5000).nullable(),
+});
+
 function handleKnownErrors(err: unknown, res: Response): boolean {
   if (err instanceof ResponseNotFoundError || err instanceof QuestionnaireNotFoundError) {
     res.status(404).json({ error: 'Not found' });
@@ -52,7 +61,12 @@ function handleKnownErrors(err: unknown, res: Response): boolean {
     res.status(422).json({
       error: 'Some unanswered questions are missing a covering comment',
       missing: err.missing,
+      missingKeis: err.missingKeis,
     });
+    return true;
+  }
+  if (err instanceof InvalidKeiError) {
+    res.status(400).json({ error: 'Invalid effectiveness indicator or option' });
     return true;
   }
   if (err instanceof ResultNotAvailableError) {
@@ -125,6 +139,21 @@ export async function upsertCommentHandler(req: Request, res: Response) {
 
   try {
     await upsertComment(requireParam(req, 'id'), req.user!.sub, req.user!.organizationId, parsed.data);
+    res.status(204).end();
+  } catch (err) {
+    if (!handleKnownErrors(err, res)) throw err;
+  }
+}
+
+export async function upsertKeiHandler(req: Request, res: Response) {
+  const parsed = upsertKeiSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request body' });
+    return;
+  }
+
+  try {
+    await upsertKei(requireParam(req, 'id'), req.user!.sub, req.user!.organizationId, parsed.data);
     res.status(204).end();
   } catch (err) {
     if (!handleKnownErrors(err, res)) throw err;

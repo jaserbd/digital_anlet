@@ -16,7 +16,7 @@
 // "Intent Fulfilment" question, so it skips that row and takes the rest in order.
 import XLSX from 'xlsx';
 import type { ParsedQuestionnaire } from './parsedQuestionnaire.types';
-import { readFmSheets } from './fmSheetParser';
+import { readFmSheets, readKeis } from './fmSheetParser';
 import { cellText, joinColumnText, readSheetRows, repoRootXlsxPath } from './xlsxParseUtils';
 
 const FILE_LABEL = 'Transport.xlsx';
@@ -123,6 +123,17 @@ export function parseTransportMicrowaveXlsx(xlsxPath?: string): ParsedQuestionna
         ),
       };
     }),
+    // Scoring_Microwave's KEI weights/answers reference the OTN sheet (and its final score is
+    // #REF!), so weights come from this questionnaire sheet; its criteria cells are clean.
+    ...readKeis(workbook, {
+      fileLabel: FILE_LABEL,
+      questionSheet: 'Questionnaire Microwave',
+      scoringSheet: 'Scoring_Microwave',
+      rows: [16, 17], // rows 17-18
+      scoringRowOffset: -1, // Scoring_Microwave KEI rows are one row higher (16-17)
+      scoringCriteriaColumn: 5, // Scoring_Microwave!F
+      noteRow: 19, // row 20
+    }),
   };
 }
 
@@ -166,6 +177,15 @@ export function parseTransportOtnXlsx(xlsxPath?: string): ParsedQuestionnaire {
           GUIDELINE_ROW_PHRASES[guidelineIndex]!,
         ),
       };
+    }),
+    ...readKeis(workbook, {
+      fileLabel: FILE_LABEL,
+      questionSheet: 'OTN Questionnaire',
+      scoringSheet: 'Scoring_OTN',
+      rows: [15, 18], // rows 16-19
+      scoringRowOffset: 0,
+      scoringCriteriaColumn: 5, // Scoring_OTN!F
+      noteRow: 20, // row 21
     }),
   };
 }

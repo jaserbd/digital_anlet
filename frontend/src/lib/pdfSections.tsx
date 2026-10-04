@@ -63,6 +63,8 @@ export function buildBenchmarkPdfSection(
   rows: BenchmarkRowDto[],
   subScenarios: SubScenarioDto[],
   hideOrganizationColumn?: boolean,
+  // True for questionnaires with Key Effectiveness Indicators (NEW_HVS_PLAN.md Phase B).
+  showKeiColumn?: boolean,
 ): PdfSection {
   return {
     kind: 'table',
@@ -76,6 +78,7 @@ export function buildBenchmarkPdfSection(
         'Submitted',
         'Avg. final score',
         'Avg. E2E rate',
+        ...(showKeiColumn ? ['Avg. KEI score'] : []),
         ...subScenarios.map(formatSubScenarioLabel),
       ],
     ],
@@ -87,6 +90,7 @@ export function buildBenchmarkPdfSection(
       r.submittedCount,
       r.averageFinalScore != null ? r.averageFinalScore.toFixed(2) : '—',
       r.averageE2eAutomationRate != null ? `${(r.averageE2eAutomationRate * 100).toFixed(0)}%` : '—',
+      ...(showKeiColumn ? [r.averageKeiScore != null ? r.averageKeiScore.toFixed(2) : '—'] : []),
       ...subScenarios.map((s) => {
         const avg = r.subScenarioAverages.find((a) => a.subScenarioCode === s.code)?.averageScore;
         return avg != null ? avg.toFixed(2) : '—';
@@ -99,8 +103,9 @@ export async function buildBenchmarkPdfSections(
   rows: BenchmarkRowDto[],
   subScenarios: SubScenarioDto[],
   hideOrganizationColumn?: boolean,
+  showKeiColumn?: boolean,
 ): Promise<PdfSection[]> {
-  const table = buildBenchmarkPdfSection(rows, subScenarios, hideOrganizationColumn);
+  const table = buildBenchmarkPdfSection(rows, subScenarios, hideOrganizationColumn, showKeiColumn);
   if (rows.length === 0) return [table];
   const chartData = rows.map((r) => ({
     label: hideOrganizationColumn ? r.opCoName : `${r.organizationName} — ${r.opCoName}`,

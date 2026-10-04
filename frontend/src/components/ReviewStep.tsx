@@ -14,8 +14,18 @@ export interface UncoveredGap {
   subScenarioLabel: string;
 }
 
+// A Key Effectiveness Indicator that's neither answered nor explained by a comment.
+export interface UncoveredKei {
+  indicatorId: string;
+  name: string;
+}
+
 interface ReviewStepProps {
   uncovered: UncoveredGap[];
+  uncoveredKeis?: UncoveredKei[];
+  // KEIs whose comment is non-empty, for the comments list below.
+  keiComments?: { indicatorId: string; name: string; comment: string }[];
+  onJumpToKeis?: () => void;
   skippedCoveredCount: number;
   questions: QuestionDto[];
   subScenarios: SubScenarioDto[];
@@ -37,9 +47,32 @@ export function ReviewStep({
   subScenarios,
   comments,
   onJumpTo,
+  uncoveredKeis = [],
+  keiComments = [],
+  onJumpToKeis,
 }: ReviewStepProps) {
   return (
     <SectionCard title="Review before submitting">
+      {uncoveredKeis.length > 0 && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          <Typography sx={{ mb: 1 }}>
+            <strong>
+              {uncoveredKeis.length} effectiveness indicator{uncoveredKeis.length === 1 ? ' is' : 's are'} neither
+              answered nor explained.
+            </strong>{' '}
+            Pick an option, or add a comment saying why it can&apos;t be answered.
+          </Typography>
+          <List dense disablePadding>
+            {uncoveredKeis.map((k) => (
+              <ListItem key={k.indicatorId} disableGutters>
+                <Link component="button" type="button" onClick={onJumpToKeis} underline="hover">
+                  {k.name}
+                </Link>
+              </ListItem>
+            ))}
+          </List>
+        </Alert>
+      )}
       {uncovered.length > 0 ? (
         <Alert severity="warning" sx={{ mb: 2 }}>
           <Typography sx={{ mb: 1 }}>
@@ -60,7 +93,7 @@ export function ReviewStep({
             ))}
           </List>
         </Alert>
-      ) : (
+      ) : uncoveredKeis.length > 0 ? null : (
         <Alert severity="success" sx={{ mb: 2 }}>
           Every question is answered or has a covering comment. You're ready to submit.
         </Alert>
@@ -75,7 +108,27 @@ export function ReviewStep({
       <Typography variant="h6" sx={{ mb: 1 }}>
         Your comments
       </Typography>
-      <GroupedCommentsList questions={questions} subScenarios={subScenarios} comments={comments} />
+      {/* Skip the question list's own "No comments were added." when KEI comments follow. */}
+      {(comments.length > 0 || keiComments.length === 0) && (
+        <GroupedCommentsList questions={questions} subScenarios={subScenarios} comments={comments} />
+      )}
+      {keiComments.length > 0 && (
+        <>
+          <Typography sx={{ fontWeight: 700, mt: 2, mb: 0.5 }}>Effectiveness indicators</Typography>
+          <List dense disablePadding>
+            {keiComments.map((k) => (
+              <ListItem key={k.indicatorId} disableGutters sx={{ display: 'block' }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {k.name}
+                </Typography>
+                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                  {k.comment}
+                </Typography>
+              </ListItem>
+            ))}
+          </List>
+        </>
+      )}
     </SectionCard>
   );
 }

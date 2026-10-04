@@ -1,4 +1,12 @@
-import type { AnswerOption, HvsListItemDto, QuestionDto, QuestionnaireDto, QuestionnaireSummaryDto } from '@anlet/shared';
+import type {
+  AnswerOption,
+  EffectivenessIndicatorDto,
+  HvsListItemDto,
+  QuestionDto,
+  QuestionOptionDto,
+  QuestionnaireDto,
+  QuestionnaireSummaryDto,
+} from '@anlet/shared';
 import { prisma } from '../../lib/prisma';
 import { HVS_GROUPS } from './hvsGroups';
 
@@ -6,6 +14,37 @@ export class QuestionnaireNotFoundError extends Error {}
 export class OrganizationNotFoundError extends Error {}
 
 const OPTION_LETTERS: AnswerOption[] = ['A', 'B', 'C', 'D'];
+
+// Prisma Decimal columns (or plain numbers) — Number() converts either.
+type NumberLike = number | { toString(): string };
+
+// The option A-D text/criteria column shape shared by Question and EffectivenessIndicator.
+interface OptionColumns {
+  optionAText: string;
+  optionBText: string | null;
+  optionCText: string | null;
+  optionDText: string | null;
+  optionACriteria: NumberLike | null;
+  optionBCriteria: NumberLike | null;
+  optionCCriteria: NumberLike | null;
+  optionDCriteria: NumberLike | null;
+}
+
+// Criteria numbers are intentionally exposed to the client (SECOND_REVIEW.md item 6) so
+// users can see each option's score while answering — a deliberate reversal of the prior
+// anti-gaming stance (criteria used to be stripped so users couldn't just pick the
+// highest-scoring option without reasoning about the question).
+function toOptionDtos(row: OptionColumns): QuestionOptionDto[] {
+  const optionText = [row.optionAText, row.optionBText, row.optionCText, row.optionDText];
+  const optionCriteria = [row.optionACriteria, row.optionBCriteria, row.optionCCriteria, row.optionDCriteria];
+  return OPTION_LETTERS.map((option, i) => ({
+    option,
+    text: optionText[i],
+    criteria: optionCriteria[i] != null ? Number(optionCriteria[i]) : null,
+  })).filter(
+    (o): o is { option: AnswerOption; text: string; criteria: number } => o.text != null && o.criteria != null,
+  );
+}
 
 export async function listQuestionnaires(): Promise<QuestionnaireSummaryDto[]> {
   const questionnaires = await prisma.questionnaire.findMany({
@@ -88,6 +127,7 @@ export async function getQuestionnaireByCode(code: string, organizationId: strin
     include: {
       subScenarios: { orderBy: { sortOrder: 'asc' } },
       questions: { orderBy: { sortOrder: 'asc' } },
+      effectivenessIndicators: { orderBy: { sortOrder: 'asc' } },
     },
   });
 
@@ -98,20 +138,7 @@ export async function getQuestionnaireByCode(code: string, organizationId: strin
   const acceptingResponses = await getAcceptingResponses(questionnaire.id, organizationId);
 
   const questions: QuestionDto[] = questionnaire.questions.map((q) => {
-    // Criteria numbers are intentionally exposed to the client (SECOND_REVIEW.md item 6) so
-    // users can see each option's score while answering — a deliberate reversal of the prior
-    // anti-gaming stance (criteria used to be stripped so users couldn't just pick the
-    // highest-scoring option without reasoning about the question).
-    const optionText = [q.optionAText, q.optionBText, q.optionCText, q.optionDText];
-    const optionCriteria = [q.optionACriteria, q.optionBCriteria, q.optionCCriteria, q.optionDCriteria];
-    const options = OPTION_LETTERS.map((option, i) => ({
-      option,
-      text: optionText[i],
-      criteria: optionCriteria[i] != null ? Number(optionCriteria[i]) : null,
-    })).filter(
-      (o): o is { option: AnswerOption; text: string; criteria: number } =>
-        o.text != null && o.criteria != null,
-    );
+    const options = toOptionDtos(q);
     return {
       id: q.id,
       sortOrder: q.sortOrder,
@@ -144,5 +171,16 @@ export async function getQuestionnaireByCode(code: string, organizationId: strin
       sortOrder: s.sortOrder,
     })),
     questions,
+    effectivenessIndicators: questionnaire.effectivenessIndicators.map(
+      (k): EffectivenessIndicatorDto => ({
+        id: k.id,
+        sortOrder: k.sortOrder,
+        name: k.name,
+        description: k.description,
+        weight: Number(k.weight),
+        options: toOptionDtos(k),
+      }),
+    ),
+    keiNote: questionnaire.keiNote,
   };
 }

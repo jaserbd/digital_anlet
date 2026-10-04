@@ -85,4 +85,20 @@ describe('parseIpFmXlsx', () => {
     expect(result.finalScore).toBeCloseTo(4, 4);
     expect(result.e2eAutomationRate).toBeCloseTo(1, 4);
   });
+
+  it('parses the 3 KEIs with weights from the questionnaire sheet and criteria from Scoring', () => {
+    expect(parsed.effectivenessIndicators.map((k) => [k.name, k.weight, k.optionCriteria])).toEqual(
+      [
+        ['Automatic fault diagnosis ratio', 0.4, { A: 4, B: 3, C: 2 }],
+        ['Automatic fault rectification ratio', 0.2, { A: 4, B: 3, C: 2 }],
+        ['MTTR (Mean time to repair)', 0.4, { A: 4, B: 3, C: 2 }],
+      ],
+    );
+    expect(parsed.effectivenessIndicators[2]!.optionText).toEqual({
+      A: '<1hour',
+      B: '>1hour, <=4hour',
+      C: '>4hour',
+    });
+    expect(parsed.keiNote).toMatch(/^Note:.*pilot use/s);
+  });
 });

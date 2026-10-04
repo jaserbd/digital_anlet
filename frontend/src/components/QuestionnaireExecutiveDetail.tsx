@@ -4,6 +4,8 @@ import { insightsApi } from '../api/insightsApi';
 import { AnswerDistributionDrilldown } from './AnswerDistributionDrilldown';
 import { RespondentsTable } from './RespondentsTable';
 import { buildCommentCollectionRows, CommentCollectionTable } from './CommentCollectionTable';
+import { buildKeiCommentRows } from '../lib/keiDistribution';
+import { KeiDistribution } from './KeiDistribution';
 import { AggregateCognitiveActivityRadar, type OrganizationSwitcher } from './AggregateCognitiveActivityRadar';
 
 // Fetches everything one member questionnaire's section of an organization overview needs.
@@ -87,9 +89,24 @@ export function QuestionnaireExecutiveDetail({
         exportFileNamePrefix={`org-${organizationId}-${questionnaireCode}`}
       />
 
+      {questionnaire.effectivenessIndicators.length > 0 && (
+        <>
+          <h3 style={{ marginTop: '1.5rem' }}>{questionnaire.name} — Key Effectiveness Indicators</h3>
+          <KeiDistribution
+            indicators={questionnaire.effectivenessIndicators}
+            responses={drilldownQuery.data?.keiResponses ?? []}
+            opCoScopeId={opCoScopeId}
+            exportFileNamePrefix={`org-${organizationId}-${questionnaireCode}`}
+          />
+        </>
+      )}
+
       <div style={{ marginTop: '1.5rem' }}>
         <CommentCollectionTable
-          rows={buildCommentCollectionRows(drilldownQuery.data?.comments ?? [], questionnaire.questions, questionnaire.subScenarios)}
+          rows={[
+            ...buildCommentCollectionRows(drilldownQuery.data?.comments ?? [], questionnaire.questions, questionnaire.subScenarios),
+            ...buildKeiCommentRows(drilldownQuery.data?.keiResponses ?? [], questionnaire.effectivenessIndicators),
+          ]}
           domain={questionnaire.networkType}
           hvs={questionnaire.hvsCategory}
           title={`${questionnaire.name} — Comment Collection`}

@@ -22,6 +22,9 @@ export interface QuestionScore {
 export interface ScoreResultDto {
   finalScore: number;
   e2eAutomationRate: number;
+  // Effective Indicator (KEI) score — separate from finalScore, never blended into it. Null
+  // when the questionnaire has no KEIs or every KEI was skipped.
+  keiScore: number | null;
   subScenarioScores: SubScenarioScore[];
   questionScores: QuestionScore[];
 }

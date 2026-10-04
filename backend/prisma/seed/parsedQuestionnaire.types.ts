@@ -28,6 +28,17 @@ export interface ParsedSubScenario {
   sortOrder: number;
 }
 
+// Key Effectiveness Indicator (NEW_HVS_PLAN.md Phase B) — only IP_FM.xlsx and
+// Transport.xlsx have them. Criteria come from the Scoring sheet like question criteria.
+export interface ParsedEffectivenessIndicator {
+  sortOrder: number;
+  name: string;
+  description: string;
+  weight: number;
+  optionText: Partial<Record<AnswerOption, string>>;
+  optionCriteria: Partial<Record<AnswerOption, number>>;
+}
+
 export interface ParsedQuestionnaire {
   code: string;
   name: string;
@@ -42,4 +53,7 @@ export interface ParsedQuestionnaire {
   guidelineText: string | null;
   subScenarios: ParsedSubScenario[];
   questions: ParsedQuestion[];
+  // Empty (and keiNote null) for questionnaires whose source has no KEI block.
+  effectivenessIndicators: ParsedEffectivenessIndicator[];
+  keiNote: string | null;
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import type { AnswerOption } from '@anlet/shared';
+import type { AnswerOption, KeiAnswerDto } from '@anlet/shared';
 import Button from '@mui/material/Button';
 import Alert from '@mui/material/Alert';
 import Typography from '@mui/material/Typography';
@@ -16,10 +16,12 @@ import { ApiError } from '../api/client';
 import { QuestionCard } from '../components/QuestionCard';
 import { QuestionStepper } from '../components/QuestionStepper';
 import { EMPTY_COMMENT, type CommentState } from '../components/QuestionCommentEditor';
-import { ReviewStep, type UncoveredGap } from '../components/ReviewStep';
+import { ReviewStep, type UncoveredGap, type UncoveredKei } from '../components/ReviewStep';
+import { KeiStep } from '../components/KeiStep';
 import type { CommentEntry } from '../components/GroupedCommentsList';
 import { PageShell } from '../components/PageShell';
 import { formatQuestionLabel } from '../lib/cognitiveActivity';
+import { isKeiCovered } from '../lib/kei';
 
 function answerKey(questionId: string, subScenarioId: string) {
   return `${questionId}:${subScenarioId}`;
@@ -32,6 +34,8 @@ export function QuestionnairePage() {
   const [stepIndex, setStepIndex] = useState(0);
   const [answers, setAnswers] = useState<Map<string, AnswerOption>>(new Map());
   const [comments, setComments] = useState<Map<string, CommentState>>(new Map());
+  // Key Effectiveness Indicator state, keyed by indicatorId (NEW_HVS_PLAN.md Phase B).
+  const [keis, setKeis] = useState<Map<string, KeiAnswerDto>>(new Map());
   const [hydrated, setHydrated] = useState(false);
 
   const questionnaireQuery = useQuery({
@@ -63,6 +67,7 @@ export function QuestionnairePage() {
           ]),
         ),
       );
+      setKeis(new Map(responseQuery.data.keiAnswers.map((k) => [k.indicatorId, k])));
       setHydrated(true);
     }
   }, [hydrated, responseQuery.data]);
@@ -106,6 +111,11 @@ export function QuestionnairePage() {
     onError: handleMutationError,
   });
 
+  const keiMutation = useMutation({
+    mutationFn: (kei: KeiAnswerDto) => responsesApi.upsertKei(responseQuery.data!.id, kei),
+    onError: handleMutationError,
+  });
+
   const [submitError, setSubmitError] = useState<string | null>(null);
   const submitMutation = useMutation({
     mutationFn: () => responsesApi.submit(responseQuery.data!.id),
@@ -113,7 +123,7 @@ export function QuestionnairePage() {
     onError: (err) => {
       setSubmitError(
         err instanceof ApiError && err.status === 422
-          ? 'Some unanswered questions are missing a covering comment. Please check the Review step.'
+          ? 'Some unanswered questions or effectiveness indicators are missing a covering comment. Please check the Review step.'
           : 'Failed to submit. Please try again.',
       );
     },
@@ -151,6 +161,14 @@ export function QuestionnairePage() {
     }
     return result;
   }, [questionnaireQuery.data, answers, comments]);
+
+  const uncoveredKeis = useMemo<UncoveredKei[]>(
+    () =>
+      (questionnaireQuery.data?.effectivenessIndicators ?? [])
+        .filter((k) => !isKeiCovered(keis.get(k.id)))
+        .map((k) => ({ indicatorId: k.id, name: k.name })),
+    [questionnaireQuery.data, keis],
+  );
 
   const coverageByQuestionId = useMemo(() => {
     const map = new Map<string, { answeredCount: number; total: number }>();
@@ -218,7 +236,13 @@ export function QuestionnairePage() {
     );
   }
   const isEditingSubmitted = responseQuery.data.status === 'SUBMITTED';
-  const isReviewStep = stepIndex === questionnaire.questions.length;
+  // Steps: one per question, then the KEI step (only when the questionnaire has KEIs), then Review.
+  const indicators = questionnaire.effectivenessIndicators;
+  const keiStepIndex = indicators.length > 0 ? questionnaire.questions.length : null;
+  const reviewStepIndex = questionnaire.questions.length + (keiStepIndex != null ? 1 : 0);
+  const isKeiStep = stepIndex === keiStepIndex;
+  const isReviewStep = stepIndex === reviewStepIndex;
+  const keiAnsweredCount = indicators.filter((k) => keis.get(k.id)?.selectedOption).length;
   const currentQuestion = questionnaire.questions[stepIndex];
 
   function handleSelect(questionId: string, subScenarioId: string, option: AnswerOption | null) {
@@ -258,6 +282,11 @@ export function QuestionnairePage() {
     }
   }
 
+  function handleKeiChange(kei: KeiAnswerDto) {
+    setKeis((prev) => new Map(prev).set(kei.indicatorId, kei));
+    keiMutation.mutate(kei);
+  }
+
   function isQuestionComplete(questionId: string) {
     return !uncovered.some((g) => g.questionId === questionId);
   }
@@ -295,6 +324,7 @@ export function QuestionnairePage() {
         {totalUnanswered - uncovered.length > 0 &&
           ` · ${totalUnanswered - uncovered.length} skipped (covered by a comment)`}
         {uncovered.length > 0 && ` · ${uncovered.length} unanswered, needs a covering comment`}
+        {indicators.length > 0 && ` · ${keiAnsweredCount} / ${indicators.length} effectiveness indicators answered`}
       </Typography>
       <QuestionStepper
         questions={questionnaire.questions}
@@ -302,7 +332,21 @@ export function QuestionnairePage() {
         isComplete={isQuestionComplete}
         onSelect={setStepIndex}
         coverageByQuestionId={coverageByQuestionId}
+        keiStep={
+          keiStepIndex != null
+            ? {
+                index: keiStepIndex,
+                answeredCount: keiAnsweredCount,
+                total: indicators.length,
+                complete: uncoveredKeis.length === 0,
+              }
+            : undefined
+        }
       />
+
+      {isKeiStep && (
+        <KeiStep indicators={indicators} note={questionnaire.keiNote} answers={keis} onChange={handleKeiChange} />
+      )}
 
       {!isReviewStep && currentQuestion && (
         <QuestionCard
@@ -325,6 +369,12 @@ export function QuestionnairePage() {
           subScenarios={questionnaire.subScenarios}
           comments={commentEntries}
           onJumpTo={jumpToQuestion}
+          uncoveredKeis={uncoveredKeis}
+          keiComments={indicators.flatMap((k) => {
+            const comment = keis.get(k.id)?.comment?.trim();
+            return comment ? [{ indicatorId: k.id, name: k.name, comment }] : [];
+          })}
+          onJumpToKeis={() => keiStepIndex != null && setStepIndex(keiStepIndex)}
         />
       )}
 
@@ -339,7 +389,7 @@ export function QuestionnairePage() {
         ) : (
           <Button
             variant="contained"
-            disabled={uncovered.length > 0 || submitMutation.isPending}
+            disabled={uncovered.length > 0 || uncoveredKeis.length > 0 || submitMutation.isPending}
             onClick={() => {
               setSubmitError(null);
               submitMutation.mutate();

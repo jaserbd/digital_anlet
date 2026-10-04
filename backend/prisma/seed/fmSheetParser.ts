@@ -10,7 +10,11 @@
 // are missing Solution Generation entirely and Awareness's option D) — see CLAUDE.md.
 import type XLSX from 'xlsx';
 import type { AnswerOption } from '@anlet/shared';
-import type { ParsedQuestion, ParsedSubScenario } from './parsedQuestionnaire.types';
+import type {
+  ParsedEffectivenessIndicator,
+  ParsedQuestion,
+  ParsedSubScenario,
+} from './parsedQuestionnaire.types';
 import {
   carryForward,
   cellText,
@@ -159,4 +163,81 @@ export function extractNumberedSubScenarioLines(texts: (string | null)[]): Map<n
     }
   }
   return result;
+}
+
+export interface KeiLayout {
+  fileLabel: string;
+  questionSheet: string;
+  scoringSheet: string;
+  /** Inclusive 0-based KEI row range on the questionnaire sheet (name in A, weight in D,
+   * description in E, option texts in F-I). */
+  rows: [number, number];
+  /** Scoring sheet row index = questionnaire row index + this offset. */
+  scoringRowOffset: number;
+  /** 0-based column of the Scoring sheet's Option A criterion (B-D follow). */
+  scoringCriteriaColumn: number;
+  /** 0-based questionnaire-sheet row holding the "Note: ..." under the KEI block. */
+  noteRow: number;
+}
+
+const KEI_NAME_COLUMN = 0; // A
+const KEI_WEIGHT_COLUMN = 3; // D
+const KEI_DESCRIPTION_COLUMN = 4; // E
+
+/**
+ * Reads a Key Effectiveness Indicator block (NEW_HVS_PLAN.md Phase B). Weights and texts come
+ * from the questionnaire sheet; criteria from the Scoring sheet, whose row must carry the
+ * same indicator name — a guard against row drift, and against Scoring_Microwave's KEI
+ * block, whose weight/answer cells point at the OTN sheet (only its criteria are usable).
+ */
+export function readKeis(
+  workbook: XLSX.WorkBook,
+  layout: KeiLayout,
+): { effectivenessIndicators: ParsedEffectivenessIndicator[]; keiNote: string | null } {
+  const rows = readSheetRows(workbook, layout.questionSheet, layout.fileLabel);
+  const scoringRows = readSheetRows(workbook, layout.scoringSheet, layout.fileLabel);
+
+  const effectivenessIndicators: ParsedEffectivenessIndicator[] = [];
+  const [first, last] = layout.rows;
+  for (let row = first; row <= last; row++) {
+    const name = cellText(rows[row]?.[KEI_NAME_COLUMN]);
+    const weight = rows[row]?.[KEI_WEIGHT_COLUMN];
+    const description = cellText(rows[row]?.[KEI_DESCRIPTION_COLUMN]);
+    if (!name || typeof weight !== 'number' || !description) {
+      throw new Error(
+        `${layout.fileLabel}: KEI row ${row + 1} is missing its name, weight or description`,
+      );
+    }
+    const sRow = scoringRows[row + layout.scoringRowOffset];
+    const scoringName = cellText(sRow?.[KEI_NAME_COLUMN]);
+    if (scoringName?.replace(/\s+/g, ' ') !== name.replace(/\s+/g, ' ')) {
+      throw new Error(
+        `${layout.fileLabel}: ${layout.scoringSheet} row ${row + layout.scoringRowOffset + 1} is "${scoringName}", expected KEI "${name}"`,
+      );
+    }
+    const optionText = optionMap(
+      OPTION_TEXT_COLUMNS.map((c) => cellText(rows[row]?.[c])) as [string, string, string, string],
+    );
+    const criteria = optionMap(
+      [0, 1, 2, 3].map((i) => sRow?.[layout.scoringCriteriaColumn + i] as number | null) as [
+        number,
+        number,
+        number,
+        number,
+      ],
+    );
+    effectivenessIndicators.push({
+      sortOrder: row - first,
+      name,
+      description,
+      weight,
+      optionText,
+      optionCriteria: criteriaForOfferedOptions(optionText, criteria),
+    });
+  }
+
+  return {
+    effectivenessIndicators,
+    keiNote: cellText(rows[layout.noteRow]?.[KEI_NAME_COLUMN]),
+  };
 }

@@ -94,5 +94,7 @@ export function parseFixedAccessXlsx(xlsxPath?: string): ParsedQuestionnaire {
       ...q,
       answeringGuideline: answeringGuidelineFor(guidelineRows, q.sortOrder),
     })),
+    effectivenessIndicators: [], // no Key Effectiveness Indicator block in this source
+    keiNote: null,
   };
 }

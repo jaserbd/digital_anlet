@@ -14,7 +14,9 @@ import type {
   CommentDrilldownEntryDto,
   CrossOrgCommentCollectionDto,
   CrossOrgCommentEntryDto,
+  CrossOrgKeiCommentEntryDto,
   DrilldownRespondentIdentityDto,
+  KeiDrilldownEntryDto,
   OpCoBenchmarkingSummaryDto,
   OrganizationQuestionnaireSummaryDto,
   RespondentSummaryDto,
@@ -52,6 +54,7 @@ interface ScoreAccumulator {
   finalScores: number[];
   e2eRates: number[];
   subScenarioScores: Map<SubScenarioCode, number[]>;
+  keiScores: number[];
   commentCount: number;
 }
 
@@ -59,6 +62,7 @@ interface ScoredResponseLike {
   result: {
     finalScore: unknown;
     e2eAutomationRate: unknown;
+    keiScore: unknown;
     subScenarioScores: { overallScore: unknown; subScenario: { code: SubScenarioCode } }[];
   } | null;
   _count: { comments: number };
@@ -77,10 +81,13 @@ function groupScores<T extends ScoredResponseLike, K extends string>(
       finalScores: [],
       e2eRates: [],
       subScenarioScores: new Map<SubScenarioCode, number[]>(),
+      keiScores: [],
       commentCount: 0,
     };
     acc.finalScores.push(Number(response.result.finalScore));
     acc.e2eRates.push(Number(response.result.e2eAutomationRate));
+    // Null when the questionnaire has no KEIs or every KEI was skipped — excluded, not 0.
+    if (response.result.keiScore != null) acc.keiScores.push(Number(response.result.keiScore));
     acc.commentCount += response._count.comments;
     for (const s of response.result.subScenarioScores) {
       if (s.overallScore == null) continue; // fully-skipped sub-scenario — excluded, not 0
@@ -207,6 +214,14 @@ function toIdentity(user: IdentitySourceUser): DrilldownRespondentIdentityDto {
   };
 }
 
+// One respondent's KEI state, as selected for the drill-down and comment-collection views.
+const KEI_STATE_SELECT = {
+  indicatorId: true,
+  selectedOption: true,
+  indicatorValue: true,
+  comment: true,
+} as const;
+
 const IDENTITY_SELECT = {
   id: true,
   email: true,
@@ -237,7 +252,7 @@ export async function getAnswerDrilldown(
 
   const responseScope = { questionnaireId: questionnaire.id, status: 'SUBMITTED' as const, user: { organizationId } };
 
-  const [answers, comments] = await Promise.all([
+  const [answers, comments, keis] = await Promise.all([
     prisma.answer.findMany({
       where: { response: responseScope },
       select: {
@@ -254,6 +269,14 @@ export async function getAnswerDrilldown(
         commentText: true,
         appliesToNone: true,
         subScenarios: { select: { subScenarioId: true } },
+        response: { select: { user: { select: IDENTITY_SELECT } } },
+      },
+    }),
+    prisma.responseKei.findMany({
+      where: { response: responseScope },
+      orderBy: { indicator: { sortOrder: 'asc' } },
+      select: {
+        ...KEI_STATE_SELECT,
         response: { select: { user: { select: IDENTITY_SELECT } } },
       },
     }),
@@ -290,7 +313,20 @@ export async function getAnswerDrilldown(
     });
   }
 
-  return { questionnaireCode: questionnaire.code, entries: [...byKey.values()], comments: commentEntries };
+  const keiResponses: KeiDrilldownEntryDto[] = keis.map((k) => ({
+    indicatorId: k.indicatorId,
+    selectedOption: k.selectedOption,
+    indicatorValue: k.indicatorValue,
+    comment: k.comment,
+    respondent: toIdentity(k.response.user),
+  }));
+
+  return {
+    questionnaireCode: questionnaire.code,
+    entries: [...byKey.values()],
+    comments: commentEntries,
+    keiResponses,
+  };
 }
 
 /**
@@ -380,22 +416,30 @@ export async function getCrossOrgCommentCollection(questionnaireCode: string): P
     throw new QuestionnaireNotFoundError();
   }
 
-  const comments = await prisma.questionComment.findMany({
-    where: { response: { questionnaireId: questionnaire.id, status: 'SUBMITTED' } },
-    select: {
-      questionId: true,
-      commentText: true,
-      appliesToNone: true,
-      subScenarios: { select: { subScenarioId: true } },
-      response: {
-        select: {
-          user: {
-            select: { ...IDENTITY_SELECT, organization: { select: { id: true, name: true } } },
-          },
-        },
+  const userWithOrg = {
+    select: { ...IDENTITY_SELECT, organization: { select: { id: true, name: true } } },
+  };
+  const [comments, keiComments] = await Promise.all([
+    prisma.questionComment.findMany({
+      where: { response: { questionnaireId: questionnaire.id, status: 'SUBMITTED' } },
+      select: {
+        questionId: true,
+        commentText: true,
+        appliesToNone: true,
+        subScenarios: { select: { subScenarioId: true } },
+        response: { select: { user: userWithOrg } },
       },
-    },
-  });
+    }),
+    // KEI comments (NEW_HVS_PLAN.md Phase B) join the same collection.
+    prisma.responseKei.findMany({
+      where: {
+        response: { questionnaireId: questionnaire.id, status: 'SUBMITTED' },
+        comment: { not: null },
+      },
+      orderBy: { indicator: { sortOrder: 'asc' } },
+      select: { ...KEI_STATE_SELECT, response: { select: { user: userWithOrg } } },
+    }),
+  ]);
 
   const commentEntries: CrossOrgCommentEntryDto[] = comments.map((c) => ({
     questionId: c.questionId,
@@ -407,7 +451,17 @@ export async function getCrossOrgCommentCollection(questionnaireCode: string): P
     organizationName: c.response.user.organization.name,
   }));
 
-  return { questionnaireCode: questionnaire.code, comments: commentEntries };
+  const keiCommentEntries: CrossOrgKeiCommentEntryDto[] = keiComments.map((k) => ({
+    indicatorId: k.indicatorId,
+    selectedOption: k.selectedOption,
+    indicatorValue: k.indicatorValue,
+    comment: k.comment,
+    respondent: toIdentity(k.response.user),
+    organizationId: k.response.user.organization.id,
+    organizationName: k.response.user.organization.name,
+  }));
+
+  return { questionnaireCode: questionnaire.code, comments: commentEntries, keiComments: keiCommentEntries };
 }
 
 interface BenchmarkRowLabel {
@@ -516,6 +570,7 @@ async function computeBenchmarkRows(
       averageFinalScore: average(acc?.finalScores ?? []),
       averageE2eAutomationRate: average(acc?.e2eRates ?? []),
       subScenarioAverages: subScenarioAverages(acc, questionnaire.subScenarios),
+      averageKeiScore: average(acc?.keiScores ?? []),
       commentCount: acc?.commentCount ?? 0,
     };
   });

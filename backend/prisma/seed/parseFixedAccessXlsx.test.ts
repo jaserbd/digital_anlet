@@ -65,4 +65,9 @@ describe('parseFixedAccessXlsx', () => {
     expect(result.finalScore).toBeCloseTo(4, 4);
     expect(result.e2eAutomationRate).toBeCloseTo(1, 4);
   });
+
+  it('has no KEI block', () => {
+    expect(parsed.effectivenessIndicators).toEqual([]);
+    expect(parsed.keiNote).toBeNull();
+  });
 });

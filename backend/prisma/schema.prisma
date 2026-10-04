@@ -31,8 +31,8 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users User[]
-  opCos OpCo[]
+  users                    User[]
+  opCos                    OpCo[]
   questionnaireOrgSettings QuestionnaireOrgSetting[]
   referenceListEntries     ReferenceListEntry[]
 }
@@ -113,7 +113,7 @@ model User {
   workingDomain String?
   designation   String?
 
-  responses QuestionnaireResponse[]
+  responses           QuestionnaireResponse[]
   passwordResetTokens PasswordResetToken[]
 }
 
@@ -134,27 +134,31 @@ model PasswordResetToken {
 // Generic questionnaire model: RAN Fault Management (GB1059A), Core Network Fault
 // Management + Core Network Stability (GB1059B) — see CLAUDE.md "Domain model".
 model Questionnaire {
-  id                 String   @id @default(cuid())
-  code               String   @unique // e.g. "RAN_FM_GB1059A", "CORE_FM_GB1059B"
-  name               String
-  networkType        String // "RAN" | "Core" | ... — also the top-level "Domain" in the UI picker
-  hvsCategory        String // "Fault Management" | "Stability" | ... — the HVS within that domain
+  id            String   @id @default(cuid())
+  code          String   @unique // e.g. "RAN_FM_GB1059A", "CORE_FM_GB1059B"
+  name          String
+  networkType   String // "RAN" | "Core" | ... — also the top-level "Domain" in the UI picker
+  hvsCategory   String // "Fault Management" | "Stability" | ... — the HVS within that domain
   // false only for Core Network Stability: it has no sub-scenarios, so there's no
   // per-sub-scenario S/P grid to show (see CLAUDE.md "Domain model").
-  hasE2ECheck        Boolean  @default(true)
+  hasE2ECheck   Boolean  @default(true)
   // Questionnaire-level context extracted from the xlsx's Guideline sheet (Introduction +
   // Sub-scenarios for RAN; the numbered Introduction for Core FM/Stability). Shown as a
   // collapsible section above the question flow (SECOND_REVIEW.md item 4).
-  guidelineText      String?  @db.Text
-  version            Int      @default(1)
-  isActive           Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  guidelineText String?  @db.Text
+  // The source's note under its Key Effectiveness Indicator block (e.g. "proposed values are
+  // intended for pilot use"). Null when the questionnaire has no KEIs.
+  keiNote       String?  @db.Text
+  version       Int      @default(1)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  subScenarios SubScenario[]
-  questions    Question[]
-  responses    QuestionnaireResponse[]
-  orgSettings  QuestionnaireOrgSetting[]
+  subScenarios            SubScenario[]
+  questions               Question[]
+  responses               QuestionnaireResponse[]
+  orgSettings             QuestionnaireOrgSetting[]
+  effectivenessIndicators EffectivenessIndicator[]
 }
 
 // Admin-controlled per-(questionnaire, organization) open/close toggle (THIRD_REVIEW.md item
@@ -267,6 +271,7 @@ model QuestionnaireResponse {
 
   answers  Answer[]
   comments QuestionComment[]
+  keis     ResponseKei[]
   result   ScoreResult?
 }
 
@@ -329,6 +334,10 @@ model ScoreResult {
   id                String   @id @default(cuid())
   finalScore        Decimal  @db.Decimal(6, 4)
   e2eAutomationRate Decimal  @db.Decimal(6, 4)
+  // Weighted average of the answered Key Effectiveness Indicators (NEW_HVS_PLAN.md Phase B)
+  // — a separate score shown beside finalScore, never blended into it. Null when the
+  // questionnaire has no KEIs or every KEI was skipped.
+  keiScore          Decimal? @db.Decimal(6, 4)
   computedAt        DateTime @default(now())
 
   responseId String                @unique
@@ -374,4 +383,55 @@ model QuestionScoreResult {
   subScenario   SubScenario @relation(fields: [subScenarioId], references: [id])
 
   @@unique([scoreResultId, questionId, subScenarioId])
+}
+
+// Key Effectiveness Indicators (NEW_HVS_PLAN.md Phase B): outcome measures (MTTR, automation
+// ratios, ...) answered once per response — not per sub-scenario — on an A-C range scale.
+// Present in IP_FM.xlsx, Transport.xlsx (Microwave + OTN); RAN/Core/Fixed Access have none.
+// Criteria come from the Scoring sheets like question criteria; scored separately from the
+// IAADE capability score (see scoring.ts's computeKeiScore).
+model EffectivenessIndicator {
+  id          String  @id @default(cuid())
+  sortOrder   Int
+  name        String
+  description String  @db.Text
+  weight      Decimal @db.Decimal(5, 4)
+
+  optionAText String  @db.Text
+  optionBText String? @db.Text
+  optionCText String? @db.Text
+  optionDText String? @db.Text
+
+  optionACriteria Decimal? @db.Decimal(4, 2)
+  optionBCriteria Decimal? @db.Decimal(4, 2)
+  optionCCriteria Decimal? @db.Decimal(4, 2)
+  optionDCriteria Decimal? @db.Decimal(4, 2)
+
+  questionnaireId String
+  questionnaire   Questionnaire @relation(fields: [questionnaireId], references: [id])
+
+  responses ResponseKei[]
+
+  @@unique([questionnaireId, sortOrder])
+}
+
+// One respondent's state for one KEI. Every field is optional on its own: a KEI is
+// "answered" with a selectedOption, and "skipped" when unanswered but explained by a
+// non-empty comment (submit is blocked otherwise — same rule as questions). indicatorValue is
+// the free-text measured value (e.g. "85%", "3.2 hours") — informational, never scored.
+model ResponseKei {
+  id             String        @id @default(cuid())
+  selectedOption AnswerOption?
+  indicatorValue String?
+  comment        String?       @db.Text
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  responseId String
+  response   QuestionnaireResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  indicatorId String
+  indicator   EffectivenessIndicator @relation(fields: [indicatorId], references: [id])
+
+  @@unique([responseId, indicatorId])
 }

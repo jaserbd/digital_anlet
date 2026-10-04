@@ -8,7 +8,7 @@
 // under 3 categories (Equipment / Communication / Quality of service) by a merged header row.
 import XLSX from 'xlsx';
 import type { ParsedQuestionnaire } from './parsedQuestionnaire.types';
-import { extractNumberedSubScenarioLines, readFmSheets } from './fmSheetParser';
+import { extractNumberedSubScenarioLines, readFmSheets, readKeis } from './fmSheetParser';
 import { joinColumnText, readSheetRows, repoRootXlsxPath } from './xlsxParseUtils';
 
 const FILE_LABEL = 'IP_FM.xlsx';
@@ -54,5 +54,14 @@ export function parseIpFmXlsx(xlsxPath?: string): ParsedQuestionnaire {
       description: subScenarioLines.get(s.sortOrder + 1) ?? s.description,
     })),
     questions: questions.map((q) => ({ ...q, answeringGuideline: null })),
+    ...readKeis(workbook, {
+      fileLabel: FILE_LABEL,
+      questionSheet: 'IP Network - Fault Management',
+      scoringSheet: 'Scoring',
+      rows: [17, 19], // rows 18-20
+      scoringRowOffset: 1, // Scoring sheet KEI rows are one row lower (19-21)
+      scoringCriteriaColumn: 4, // Scoring!E
+      noteRow: 21, // row 22
+    }),
   };
 }

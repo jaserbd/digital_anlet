@@ -1,6 +1,7 @@
 import type {
   AnswerOption,
   CoreDomainSummaryDto,
+  KeiAnswerDto,
   QuestionCommentDto,
   ResponseDto,
   ScoreResultDto,
@@ -11,6 +12,7 @@ import { round4 } from '../../lib/rounding';
 import {
   computeScoreResult,
   type ScoringAnswerInput,
+  type ScoringIndicatorInput,
   type ScoringQuestionInput,
   type ScoringSubScenarioInput,
 } from '../scoring/scoring';
@@ -35,11 +37,22 @@ export class AcceptanceClosedError extends Error {}
 // missing (mirrors the client-side warning computed from the same data). An unanswered pair
 // that *does* have a covering comment is a "skip" and submits fine — see schema.prisma's
 // QuestionComment doc comment for the terminology distinction.
+// Also carries the ids of Key Effectiveness Indicators that are neither answered nor
+// explained by a comment (NEW_HVS_PLAN.md Phase B — same rule as questions).
 export class UncoveredSkipError extends Error {
-  constructor(public readonly missing: UncoveredSkipDto[]) {
-    super(`${missing.length} unanswered question(s) are missing a covering comment`);
+  constructor(
+    public readonly missing: UncoveredSkipDto[],
+    public readonly missingKeis: string[] = [],
+  ) {
+    super(
+      `${missing.length} unanswered question(s) and ${missingKeis.length} unanswered KEI(s) are missing a covering comment`,
+    );
   }
 }
+
+// A KEI write naming an indicator outside this response's questionnaire, or an option that
+// indicator doesn't offer.
+export class InvalidKeiError extends Error {}
 
 type CommentWithTags = {
   questionId: string;
@@ -57,12 +70,29 @@ function toCommentDto(comment: CommentWithTags): QuestionCommentDto {
   };
 }
 
+type KeiRow = {
+  indicatorId: string;
+  selectedOption: AnswerOption | null;
+  indicatorValue: string | null;
+  comment: string | null;
+};
+
+function toKeiAnswerDto(k: KeiRow): KeiAnswerDto {
+  return {
+    indicatorId: k.indicatorId,
+    selectedOption: k.selectedOption,
+    indicatorValue: k.indicatorValue,
+    comment: k.comment,
+  };
+}
+
 function toResponseDto(response: {
   id: string;
   status: 'IN_PROGRESS' | 'SUBMITTED';
   questionnaire: { code: string };
   answers: { questionId: string; subScenarioId: string; selectedOption: AnswerOption }[];
   comments: CommentWithTags[];
+  keis: KeiRow[];
 }): ResponseDto {
   return {
     id: response.id,
@@ -74,6 +104,7 @@ function toResponseDto(response: {
       selectedOption: a.selectedOption,
     })),
     comments: response.comments.map(toCommentDto),
+    keiAnswers: response.keis.map(toKeiAnswerDto),
   };
 }
 
@@ -81,6 +112,7 @@ const RESPONSE_INCLUDE = {
   questionnaire: true,
   answers: true,
   comments: { include: { subScenarios: true } },
+  keis: true,
 } as const;
 
 async function loadOwnedResponse(responseId: string, userId: string) {
@@ -218,6 +250,58 @@ export async function upsertComment(
   });
 }
 
+function blankToNull(value: string | null): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+/**
+ * Saves one KEI's full state (answer, measured value, comment) in a single write — the
+ * frontend keeps all three in one local state object with a single debounced save path, so
+ * there's never more than one in-flight save per indicator (the same lesson as
+ * QuestionCommentEditor's tag/text race, see CLAUDE.md). A state with all three fields empty
+ * deletes the row, returning the KEI to "unanswered".
+ */
+export async function upsertKei(
+  responseId: string,
+  userId: string,
+  organizationId: string,
+  input: KeiAnswerDto,
+): Promise<void> {
+  const response = await loadOwnedResponse(responseId, userId);
+  await assertAccepting(response.questionnaireId, organizationId);
+
+  const indicator = await prisma.effectivenessIndicator.findUnique({ where: { id: input.indicatorId } });
+  if (!indicator || indicator.questionnaireId !== response.questionnaireId) {
+    throw new InvalidKeiError();
+  }
+  const criteriaByOption: Record<AnswerOption, unknown> = {
+    A: indicator.optionACriteria,
+    B: indicator.optionBCriteria,
+    C: indicator.optionCCriteria,
+    D: indicator.optionDCriteria,
+  };
+  if (input.selectedOption && criteriaByOption[input.selectedOption] == null) {
+    throw new InvalidKeiError();
+  }
+
+  const data = {
+    selectedOption: input.selectedOption,
+    indicatorValue: blankToNull(input.indicatorValue),
+    comment: blankToNull(input.comment),
+  };
+  const where = { responseId_indicatorId: { responseId, indicatorId: input.indicatorId } };
+  if (!data.selectedOption && !data.indicatorValue && !data.comment) {
+    await prisma.responseKei.deleteMany({ where: { responseId, indicatorId: input.indicatorId } });
+    return;
+  }
+  await prisma.responseKei.upsert({
+    where,
+    update: data,
+    create: { responseId, indicatorId: input.indicatorId, ...data },
+  });
+}
+
 // A response's status stays SUBMITTED (never reverts to IN_PROGRESS) while its
 // questionnaire keeps accepting responses — calling this again on an already-SUBMITTED
 // response is a legal "re-submit" (SECOND_REVIEW.md item 1): recomputes the score from
@@ -237,6 +321,7 @@ export async function submitResponse(
     include: {
       questions: { orderBy: { sortOrder: 'asc' } },
       subScenarios: { orderBy: { sortOrder: 'asc' } },
+      effectivenessIndicators: { orderBy: { sortOrder: 'asc' } },
     },
   });
 
@@ -264,8 +349,17 @@ export async function submitResponse(
       }
     }
   }
-  if (uncovered.length > 0) {
-    throw new UncoveredSkipError(uncovered);
+  // A KEI is covered by an answer or by a non-empty comment explaining why it isn't known.
+  const keiById = new Map(response.keis.map((k) => [k.indicatorId, k]));
+  const uncoveredKeis = questionnaire.effectivenessIndicators
+    .filter((indicator) => {
+      const kei = keiById.get(indicator.id);
+      return !kei?.selectedOption && !kei?.comment?.trim();
+    })
+    .map((indicator) => indicator.id);
+
+  if (uncovered.length > 0 || uncoveredKeis.length > 0) {
+    throw new UncoveredSkipError(uncovered, uncoveredKeis);
   }
 
   const questions: ScoringQuestionInput[] = questionnaire.questions.map((q) => ({
@@ -292,7 +386,21 @@ export async function submitResponse(
     selectedOption: a.selectedOption,
   }));
 
-  const result = computeScoreResult({ questions, subScenarios, answers });
+  const indicators: ScoringIndicatorInput[] = questionnaire.effectivenessIndicators.map((k) => ({
+    id: k.id,
+    weight: Number(k.weight),
+    optionCriteria: {
+      ...(k.optionACriteria != null && { A: Number(k.optionACriteria) }),
+      ...(k.optionBCriteria != null && { B: Number(k.optionBCriteria) }),
+      ...(k.optionCCriteria != null && { C: Number(k.optionCCriteria) }),
+      ...(k.optionDCriteria != null && { D: Number(k.optionDCriteria) }),
+    },
+  }));
+  const keiAnswers = response.keis.flatMap((k) =>
+    k.selectedOption ? [{ indicatorId: k.indicatorId, selectedOption: k.selectedOption }] : [],
+  );
+
+  const result = computeScoreResult({ questions, subScenarios, answers, indicators, keiAnswers });
 
   const subScenarioIdByCode = new Map(questionnaire.subScenarios.map((s) => [s.code, s.id]));
 
@@ -312,6 +420,7 @@ export async function submitResponse(
         responseId,
         finalScore: result.finalScore,
         e2eAutomationRate: result.e2eAutomationRate,
+        keiScore: result.keiScore,
         subScenarioScores: {
           create: result.subScenarioScores.map((s) => ({
             subScenarioId: subScenarioIdByCode.get(s.subScenarioCode)!,
@@ -364,6 +473,7 @@ export async function getResult(responseId: string, userId: string): Promise<Sco
   return {
     finalScore: Number(result.finalScore),
     e2eAutomationRate: Number(result.e2eAutomationRate),
+    keiScore: result.keiScore != null ? Number(result.keiScore) : null,
     subScenarioScores: result.subScenarioScores.map((s) => ({
       subScenarioCode: s.subScenario.code,
       overallScore: s.overallScore != null ? Number(s.overallScore) : null,
@@ -394,6 +504,7 @@ async function getLatestSubmittedResultByCode(
   return {
     finalScore: Number(response.result.finalScore),
     e2eAutomationRate: Number(response.result.e2eAutomationRate),
+    keiScore: response.result.keiScore != null ? Number(response.result.keiScore) : null,
     subScenarioScores: response.result.subScenarioScores.map((s) => ({
       subScenarioCode: s.subScenario.code,
       overallScore: s.overallScore != null ? Number(s.overallScore) : null,

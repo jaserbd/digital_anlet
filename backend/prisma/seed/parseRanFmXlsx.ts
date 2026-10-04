@@ -166,5 +166,7 @@ export function parseRanFmXlsx(xlsxPath?: string): ParsedQuestionnaire {
     guidelineText,
     subScenarios,
     questions,
+    effectivenessIndicators: [], // no Key Effectiveness Indicator block in this source
+    keiNote: null,
   };
 }

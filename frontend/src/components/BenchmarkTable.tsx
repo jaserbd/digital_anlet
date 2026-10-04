@@ -25,6 +25,7 @@ export function BenchmarkTable({
   showCommentsColumn,
   onCommentsClick,
   exportFileNamePrefix,
+  showKeiColumn,
 }: {
   rows: BenchmarkRowDto[];
   subScenarios: SubScenarioDto[];
@@ -42,6 +43,9 @@ export function BenchmarkTable({
   // Shows an "Export to Excel" button exporting exactly the currently filtered/sorted rows
   // (MANAGEMENT_VIEW.md item 1) — omitted (no button) when not supplied.
   exportFileNamePrefix?: string;
+  // Adds an "Avg. KEI score" column — for questionnaires with Key Effectiveness Indicators
+  // (NEW_HVS_PLAN.md Phase B), whose separate score is never blended into the final score.
+  showKeiColumn?: boolean;
 }) {
   const [visibleRows, setVisibleRows] = useState<BenchmarkRowDto[]>(rows);
   const columns: SortableTableColumn<BenchmarkRowDto>[] = [
@@ -109,6 +113,17 @@ export function BenchmarkTable({
       render: (r) =>
         r.averageE2eAutomationRate != null ? `${(r.averageE2eAutomationRate * 100).toFixed(0)}%` : '—',
     },
+    ...(showKeiColumn
+      ? [
+          {
+            key: 'keiScore',
+            header: 'Avg. KEI score',
+            align: 'center' as const,
+            getValue: (r: BenchmarkRowDto) => r.averageKeiScore,
+            render: (r: BenchmarkRowDto) => (r.averageKeiScore != null ? r.averageKeiScore.toFixed(2) : '—'),
+          },
+        ]
+      : []),
     ...(showCommentsColumn
       ? [
           {
@@ -149,7 +164,7 @@ export function BenchmarkTable({
   function handleExport() {
     if (!exportFileNamePrefix) return;
     exportRowsToXlsx(`${exportFileNamePrefix}-benchmarking`, [
-      buildBenchmarkSheet(visibleRows, subScenarios, hideOrganizationColumn),
+      buildBenchmarkSheet(visibleRows, subScenarios, hideOrganizationColumn, showKeiColumn),
     ]);
   }
 

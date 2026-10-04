@@ -7,6 +7,7 @@ import type {
   SubScenarioDto,
 } from '@anlet/shared';
 import { buildCommentCollectionRows, buildCommentCollectionSheet } from '../components/CommentCollectionTable';
+import { buildKeiCommentRows, buildKeiDistributionPdfSections, buildKeiResponsesSheet } from './keiDistribution';
 import { buildAnswerMatrix } from './answerMatrix';
 import { buildBenchmarkSheet, buildCombinedBenchmarkSheet, buildRespondentsSheet } from './sheetBuilders';
 import type { XlsxSheet } from './exportXlsx';
@@ -29,7 +30,7 @@ export interface OrganizationReportDetail {
 }
 
 export type OrganizationReportBenchmarkPart =
-  | { kind: 'single'; rows: BenchmarkRowDto[]; subScenarios: SubScenarioDto[] }
+  | { kind: 'single'; rows: BenchmarkRowDto[]; subScenarios: SubScenarioDto[]; showKeiColumn?: boolean }
   | { kind: 'combined'; rows: CombinedBenchmarkRowDto[] }
   | null;
 
@@ -39,6 +40,14 @@ export type OrganizationReportBenchmarkPart =
 // questionnaire (1 for a plain HVS, 2 for the Core FM+Stability group). Only
 // `hideOrganizationColumn` differs between the two callers (Executive's own-org view shows
 // it, Deep-Dive's single-org view hides it, matching each page's on-screen table).
+// Question comments followed by Key Effectiveness Indicator comments (NEW_HVS_PLAN.md Phase B).
+function reportCommentRows(questionnaire: QuestionnaireDto, drilldown: AnswerDrilldownDto | undefined) {
+  return [
+    ...buildCommentCollectionRows(drilldown?.comments ?? [], questionnaire.questions, questionnaire.subScenarios),
+    ...buildKeiCommentRows(drilldown?.keiResponses ?? [], questionnaire.effectivenessIndicators),
+  ];
+}
+
 export function buildOrganizationReportSheets(
   benchmark: OrganizationReportBenchmarkPart,
   details: OrganizationReportDetail[],
@@ -48,16 +57,17 @@ export function buildOrganizationReportSheets(
   if (benchmark?.kind === 'combined') {
     sheets.push(buildCombinedBenchmarkSheet(benchmark.rows, options?.hideOrganizationColumn));
   } else if (benchmark?.kind === 'single') {
-    sheets.push(buildBenchmarkSheet(benchmark.rows, benchmark.subScenarios, options?.hideOrganizationColumn));
+    sheets.push(
+      buildBenchmarkSheet(benchmark.rows, benchmark.subScenarios, options?.hideOrganizationColumn, benchmark.showKeiColumn),
+    );
   }
   for (const { questionnaire, summary, drilldown } of details) {
     sheets.push(buildRespondentsSheet(summary.respondents));
-    sheets.push(
-      buildCommentCollectionSheet(
-        buildCommentCollectionRows(drilldown?.comments ?? [], questionnaire.questions, questionnaire.subScenarios),
-      ),
-    );
+    sheets.push(buildCommentCollectionSheet(reportCommentRows(questionnaire, drilldown)));
     sheets.push(...buildAnswerMatrix(questionnaire.questions, questionnaire.subScenarios, drilldown?.entries ?? []));
+    if (questionnaire.effectivenessIndicators.length > 0) {
+      sheets.push(buildKeiResponsesSheet(questionnaire.effectivenessIndicators, drilldown?.keiResponses ?? []));
+    }
   }
   return sheets;
 }
@@ -72,19 +82,21 @@ export async function buildOrganizationReportPdfSections(
     sections.push(...(await buildCombinedBenchmarkPdfSections(benchmark.rows, options?.hideOrganizationColumn)));
   } else if (benchmark?.kind === 'single') {
     sections.push(
-      ...(await buildBenchmarkPdfSections(benchmark.rows, benchmark.subScenarios, options?.hideOrganizationColumn)),
+      ...(await buildBenchmarkPdfSections(
+        benchmark.rows,
+        benchmark.subScenarios,
+        options?.hideOrganizationColumn,
+        benchmark.showKeiColumn,
+      )),
     );
   }
   for (const { questionnaire, summary, drilldown } of details) {
     sections.push(...(await buildRespondentsPdfSections(summary.respondents)));
-    sections.push(
-      buildCommentCollectionPdfSection(
-        buildCommentCollectionRows(drilldown?.comments ?? [], questionnaire.questions, questionnaire.subScenarios),
-      ),
-    );
+    sections.push(buildCommentCollectionPdfSection(reportCommentRows(questionnaire, drilldown)));
     sections.push(
       ...(await buildAnswerDistributionPdfSections(questionnaire.questions, questionnaire.subScenarios, drilldown?.entries ?? [])),
     );
+    sections.push(...buildKeiDistributionPdfSections(questionnaire.effectivenessIndicators, drilldown?.keiResponses ?? []));
   }
   return sections;
 }

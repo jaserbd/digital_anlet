@@ -10,6 +10,8 @@ import { PersonalCognitiveActivityRadar } from './PersonalCognitiveActivityRadar
 import { formatQuestionLabel, groupByCognitiveActivity } from '../lib/cognitiveActivity';
 import { exportSectionsToPdf, type PdfSection } from '../lib/exportPdf';
 import { formatSubScenarioLabel } from '../lib/subScenarioCategories';
+import { KeiResultsTable } from './KeiResultsTable';
+import { buildKeiResultsPdfSection } from '../lib/kei';
 
 // Builds the PDF export's content (MANAGEMENT_VIEW.md item 1) purely from data already on
 // this page — headline score, guideline text, per-question options/criteria, score
@@ -23,7 +25,15 @@ function buildPdfSections(
   result: ScoreResultDto,
 ): PdfSection[] {
   const sections: PdfSection[] = [
-    { kind: 'text', lines: [`Final score: ${result.finalScore.toFixed(2)} / 4`] },
+    {
+      kind: 'text',
+      lines: [
+        `Final score: ${result.finalScore.toFixed(2)} / 4`,
+        ...(questionnaire.effectivenessIndicators.length > 0
+          ? [`Effective Indicator score: ${result.keiScore != null ? result.keiScore.toFixed(2) : '—'} / 4`]
+          : []),
+      ],
+    },
   ];
 
   if (questionnaire.guidelineText) {
@@ -73,6 +83,12 @@ function buildPdfSections(
       scoreByCode.get(s.code)?.overallScore?.toFixed(2) ?? '—',
     ]),
   });
+
+  if (questionnaire.effectivenessIndicators.length > 0) {
+    sections.push(
+      buildKeiResultsPdfSection(questionnaire.effectivenessIndicators, response.keiAnswers, result.keiScore),
+    );
+  }
 
   if (questionnaire.hasE2ECheck) {
     const answerByKey = new Map(response.answers.map((a) => [`${a.questionId}:${a.subScenarioId}`, a.selectedOption]));
@@ -132,6 +148,7 @@ export function QuestionnaireResultDetail({
   response: ResponseDto;
   result: ScoreResultDto;
 }) {
+  const hasKeis = questionnaire.effectivenessIndicators.length > 0;
   return (
     <>
       <PersonalCognitiveActivityRadar
@@ -141,12 +158,24 @@ export function QuestionnaireResultDetail({
       />
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 2 }}>
-        <Typography sx={{ fontSize: '2.5rem', my: 1, fontWeight: 700, color: 'primary.main' }}>
-          {result.finalScore.toFixed(2)}{' '}
-          <Typography component="span" sx={{ fontSize: '1rem' }} color="text.secondary">
-            / 4
+        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 4, flexWrap: 'wrap' }}>
+          <Typography sx={{ fontSize: '2.5rem', my: 1, fontWeight: 700, color: 'primary.main' }}>
+            {result.finalScore.toFixed(2)}{' '}
+            <Typography component="span" sx={{ fontSize: '1rem' }} color="text.secondary">
+              / 4{hasKeis && ' capability score'}
+            </Typography>
           </Typography>
-        </Typography>
+          {/* The Effective Indicator (KEI) score is a separate measure, never blended into
+              the capability score above (NEW_HVS_PLAN.md Phase B). */}
+          {hasKeis && (
+            <Typography sx={{ fontSize: '1.75rem', my: 1, fontWeight: 700 }}>
+              {result.keiScore != null ? result.keiScore.toFixed(2) : '—'}{' '}
+              <Typography component="span" sx={{ fontSize: '1rem' }} color="text.secondary">
+                / 4 effective indicator score
+              </Typography>
+            </Typography>
+          )}
+        </Box>
         <Button
           variant="outlined"
           onClick={() =>
@@ -179,6 +208,15 @@ export function QuestionnaireResultDetail({
         subScenarioScores={result.subScenarioScores}
         hideFinalScore
       />
+
+      {hasKeis && (
+        <>
+          <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>
+            Key Effectiveness Indicators
+          </Typography>
+          <KeiResultsTable indicators={questionnaire.effectivenessIndicators} answers={response.keiAnswers} />
+        </>
+      )}
 
       {questionnaire.hasE2ECheck && (
         <>

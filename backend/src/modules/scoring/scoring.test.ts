@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  computeKeiScore,
   computeScoreResult,
   type ScoringAnswerInput,
   type ScoringQuestionInput,
@@ -437,5 +438,50 @@ describe('computeScoreResult — skipped answers (re-normalization)', () => {
     expect(result.subScenarioScores[0]?.overallScore).toBeNull();
     expect(result.finalScore).toBe(0);
     expect(result.e2eAutomationRate).toBe(0);
+  });
+});
+
+// IP_FM.xlsx's KEI block (Scoring!A19:G21): weights 0.4/0.2/0.4, every option A/B/C = 4/3/2.
+const IP_KEIS = [
+  { id: 'diagnosis', weight: 0.4, optionCriteria: { A: 4, B: 3, C: 2 } },
+  { id: 'rectification', weight: 0.2, optionCriteria: { A: 4, B: 3, C: 2 } },
+  { id: 'mttr', weight: 0.4, optionCriteria: { A: 4, B: 3, C: 2 } },
+];
+
+describe('computeKeiScore — Key Effectiveness Indicators', () => {
+  it("reproduces IP_FM.xlsx's cached Effective Indicator score (B, C, C → 2.4)", () => {
+    const score = computeKeiScore(IP_KEIS, [
+      { indicatorId: 'diagnosis', selectedOption: 'B' },
+      { indicatorId: 'rectification', selectedOption: 'C' },
+      { indicatorId: 'mttr', selectedOption: 'C' },
+    ]);
+    expect(score).toBe(2.4);
+  });
+
+  it('excludes a skipped KEI and re-normalizes over the answered weights', () => {
+    // (0.4*3 + 0.4*2) / 0.8 = 2.5
+    const score = computeKeiScore(IP_KEIS, [
+      { indicatorId: 'diagnosis', selectedOption: 'B' },
+      { indicatorId: 'mttr', selectedOption: 'C' },
+    ]);
+    expect(score).toBe(2.5);
+  });
+
+  it('is null when nothing is answered or the questionnaire has no KEIs', () => {
+    expect(computeKeiScore(IP_KEIS, [])).toBeNull();
+    expect(computeKeiScore([], [])).toBeNull();
+  });
+
+  it('is carried on ScoreResultDto, separate from (and not blended into) finalScore', () => {
+    const result = computeScoreResult({
+      questions: [{ id: 'q', weight: 1, optionCriteria: { A: 4, B: 3 }, includeInE2ECheck: true }],
+      subScenarios: [{ id: 's', code: 'S', faultDistributionWeight: 1 }],
+      answers: [{ questionId: 'q', subScenarioId: 's', selectedOption: 'A' }],
+      indicators: IP_KEIS,
+      keiAnswers: [{ indicatorId: 'diagnosis', selectedOption: 'C' }],
+    });
+    expect(result.finalScore).toBe(4);
+    expect(result.keiScore).toBe(2);
+    expect(computeScoreResult({ questions: [], subScenarios: [], answers: [] }).keiScore).toBeNull();
   });
 });

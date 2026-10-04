@@ -68,6 +68,7 @@ async function seedQuestionnaire(parsed: ParsedQuestionnaire) {
       hvsCategory: parsed.hvsCategory,
       hasE2ECheck: parsed.hasE2ECheck,
       guidelineText: parsed.guidelineText,
+      keiNote: parsed.keiNote,
     },
     create: {
       code: parsed.code,
@@ -76,6 +77,7 @@ async function seedQuestionnaire(parsed: ParsedQuestionnaire) {
       hvsCategory: parsed.hvsCategory,
       hasE2ECheck: parsed.hasE2ECheck,
       guidelineText: parsed.guidelineText,
+      keiNote: parsed.keiNote,
     },
   });
 
@@ -147,10 +149,33 @@ async function seedQuestionnaire(parsed: ParsedQuestionnaire) {
     });
   }
 
+  for (const k of parsed.effectivenessIndicators) {
+    const data = {
+      name: k.name,
+      description: k.description,
+      weight: k.weight,
+      optionAText: k.optionText.A ?? '',
+      optionBText: k.optionText.B ?? null,
+      optionCText: k.optionText.C ?? null,
+      optionDText: k.optionText.D ?? null,
+      optionACriteria: k.optionCriteria.A ?? null,
+      optionBCriteria: k.optionCriteria.B ?? null,
+      optionCCriteria: k.optionCriteria.C ?? null,
+      optionDCriteria: k.optionCriteria.D ?? null,
+    };
+    await prisma.effectivenessIndicator.upsert({
+      where: {
+        questionnaireId_sortOrder: { questionnaireId: questionnaire.id, sortOrder: k.sortOrder },
+      },
+      update: data,
+      create: { questionnaireId: questionnaire.id, sortOrder: k.sortOrder, ...data },
+    });
+  }
+
   await backfillQuestionnaireOrgSettings(questionnaire.id);
 
   console.log(
-    `Seeded questionnaire "${parsed.code}" with ${parsed.subScenarios.length} sub-scenarios and ${parsed.questions.length} questions`,
+    `Seeded questionnaire "${parsed.code}" with ${parsed.subScenarios.length} sub-scenarios, ${parsed.questions.length} questions and ${parsed.effectivenessIndicators.length} KEIs`,
   );
 }
 

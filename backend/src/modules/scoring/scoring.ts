@@ -28,10 +28,51 @@ export interface ScoringAnswerInput {
   selectedOption: AnswerOption;
 }
 
+export interface ScoringIndicatorInput {
+  id: string;
+  weight: number;
+  optionCriteria: Partial<Record<AnswerOption, number>>;
+}
+
+export interface ScoringKeiAnswerInput {
+  indicatorId: string;
+  selectedOption: AnswerOption;
+}
+
 export interface ComputeScoreParams {
   questions: ScoringQuestionInput[];
   subScenarios: ScoringSubScenarioInput[];
   answers: ScoringAnswerInput[];
+  /** Key Effectiveness Indicators — omitted (or empty) for questionnaires without any. */
+  indicators?: ScoringIndicatorInput[];
+  keiAnswers?: ScoringKeiAnswerInput[];
+}
+
+/**
+ * Effective Indicator score (NEW_HVS_PLAN.md Phase B): the weighted average of the answered
+ * KEIs' criteria — `SUMPRODUCT(weight, score) / SUM(weight)` in the source Scoring sheets.
+ * Kept separate from the IAADE capability score (never blended into finalScore). Unanswered
+ * KEIs (skipped with a covering comment) are excluded and the remaining weights
+ * re-normalized, same as skipped questions; null when nothing is answered.
+ */
+export function computeKeiScore(
+  indicators: ScoringIndicatorInput[],
+  keiAnswers: ScoringKeiAnswerInput[],
+): number | null {
+  const answerById = new Map(keiAnswers.map((a) => [a.indicatorId, a.selectedOption]));
+  let weightedSum = 0;
+  let weightSum = 0;
+  for (const indicator of indicators) {
+    const selected = answerById.get(indicator.id);
+    if (!selected) continue;
+    const score = indicator.optionCriteria[selected];
+    if (score == null) {
+      throw new Error(`Indicator ${indicator.id} has no criteria for option ${selected}`);
+    }
+    weightedSum += score * indicator.weight;
+    weightSum += indicator.weight;
+  }
+  return weightSum > 0 ? round4(weightedSum / weightSum) : null;
 }
 
 function topScoreOf(question: ScoringQuestionInput): number {
@@ -59,7 +100,7 @@ function topScoreOf(question: ScoringQuestionInput): number {
  * apply for that sub-scenario.
  */
 export function computeScoreResult(params: ComputeScoreParams): ScoreResultDto {
-  const { questions, subScenarios, answers } = params;
+  const { questions, subScenarios, answers, indicators = [], keiAnswers = [] } = params;
 
   const ceiling = Math.max(...questions.map(topScoreOf));
   const answerByKey = new Map(
@@ -155,6 +196,7 @@ export function computeScoreResult(params: ComputeScoreParams): ScoreResultDto {
   return {
     finalScore: round4(finalScore),
     e2eAutomationRate: round4(e2eAutomationRate),
+    keiScore: computeKeiScore(indicators, keiAnswers),
     subScenarioScores,
     questionScores,
   };

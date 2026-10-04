@@ -128,6 +128,8 @@ export function parseCoreFaultManagementXlsx(xlsxPath?: string): ParsedQuestionn
     guidelineText: extractCoreGuidelineText(workbook),
     subScenarios,
     questions,
+    effectivenessIndicators: [], // no Key Effectiveness Indicator block in this source
+    keiNote: null,
   };
 }
 
@@ -192,5 +194,7 @@ export function parseCoreStabilityXlsx(xlsxPath?: string): ParsedQuestionnaire {
     guidelineText: extractCoreGuidelineText(workbook),
     subScenarios,
     questions,
+    effectivenessIndicators: [], // no Key Effectiveness Indicator block in this source
+    keiNote: null,
   };
 }

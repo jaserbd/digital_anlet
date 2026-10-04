@@ -17,6 +17,7 @@ import { SectionCard } from '../components/SectionCard';
 import { BenchmarkTable } from '../components/BenchmarkTable';
 import { CombinedBenchmarkTable } from '../components/CombinedBenchmarkTable';
 import { buildCrossOrgCommentCollectionRows, CommentCollectionTable } from '../components/CommentCollectionTable';
+import { buildCrossOrgKeiCommentRows } from '../lib/keiDistribution';
 
 export function AdminPage() {
   const navigate = useNavigate();
@@ -135,6 +136,7 @@ function BenchmarkingSection() {
           <BenchmarkTable
             rows={benchmarkQuery.data.rows}
             subScenarios={questionnaireQuery.data.subScenarios}
+            showKeiColumn={questionnaireQuery.data.effectivenessIndicators.length > 0}
             organizations={orgsQuery.data ?? []}
             onOrganizationSelect={(org) => navigate(`/admin/organizations/${org.id}`)}
             exportFileNamePrefix={`admin-${questionnaireQuery.data.code}`}
@@ -187,11 +189,14 @@ function CrossOrgCommentCollectionSection({ questionnaireCode }: { questionnaire
     return null;
   }
   const questionnaire = questionnaireQuery.data;
-  const rows = buildCrossOrgCommentCollectionRows(
-    commentsQuery.data?.comments ?? [],
-    questionnaire.questions,
-    questionnaire.subScenarios,
-  );
+  const rows = [
+    ...buildCrossOrgCommentCollectionRows(
+      commentsQuery.data?.comments ?? [],
+      questionnaire.questions,
+      questionnaire.subScenarios,
+    ),
+    ...buildCrossOrgKeiCommentRows(commentsQuery.data?.keiComments ?? [], questionnaire.effectivenessIndicators),
+  ];
 
   return (
     <CommentCollectionTable

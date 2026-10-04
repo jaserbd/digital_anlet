@@ -74,7 +74,12 @@ export function ExecutivePage() {
       isGroup && combinedQuery.data
         ? { kind: 'combined', rows: combinedQuery.data.rows }
         : opCoBenchmarkQuery.data && questionnaireQuery.data
-          ? { kind: 'single', rows: opCoBenchmarkQuery.data.rows, subScenarios: questionnaireQuery.data.subScenarios }
+          ? {
+              kind: 'single',
+              rows: opCoBenchmarkQuery.data.rows,
+              subScenarios: questionnaireQuery.data.subScenarios,
+              showKeiColumn: questionnaireQuery.data.effectivenessIndicators.length > 0,
+            }
           : null;
     const reportDetails: OrganizationReportDetail[] = details.map((d) => ({
       questionnaire: d.questionnaireQuery.data!,
@@ -168,6 +173,7 @@ export function ExecutivePage() {
               <BenchmarkTable
                 rows={opCoBenchmarkQuery.data.rows}
                 subScenarios={questionnaireQuery.data.subScenarios}
+                showKeiColumn={questionnaireQuery.data.effectivenessIndicators.length > 0}
                 exportFileNamePrefix={`executive-${questionnaireQuery.data.code}`}
               />
             )}

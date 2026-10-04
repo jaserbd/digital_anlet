@@ -19,6 +19,9 @@ interface QuestionStepperProps {
   // covered by a comment) and gates Submit. This one is purely "how much did you actually
   // answer," never affected by comments.
   coverageByQuestionId: Map<string, { answeredCount: number; total: number }>;
+  // The Key Effectiveness Indicator step (NEW_HVS_PLAN.md Phase B), shown after the IAADE
+  // groups when the questionnaire has KEIs. `complete` = every KEI answered or explained.
+  keiStep?: { index: number; answeredCount: number; total: number; complete: boolean };
 }
 
 // Steps over questions (question-major layout) instead of sub-scenarios — see
@@ -38,6 +41,7 @@ export function QuestionStepper({
   isComplete,
   onSelect,
   coverageByQuestionId,
+  keiStep,
 }: QuestionStepperProps) {
   const groups = groupByCognitiveActivity(questions);
 
@@ -98,6 +102,52 @@ export function QuestionStepper({
           </Box>
         );
       })}
+      {keiStep && <KeiStepButton {...keiStep} isCurrent={keiStep.index === currentIndex} onSelect={onSelect} />}
+    </Box>
+  );
+}
+
+function KeiStepButton({
+  index,
+  answeredCount,
+  total,
+  complete,
+  isCurrent,
+  onSelect,
+}: NonNullable<QuestionStepperProps['keiStep']> & { isCurrent: boolean; onSelect: (index: number) => void }) {
+  const colors = COVERAGE_COLORS[questionCoverageStatus(answeredCount, total)];
+  return (
+    <Box sx={{ mb: 1.5 }}>
+      <Typography
+        sx={{
+          fontSize: '1.05em',
+          fontWeight: 700,
+          color: colors.fg,
+          background: colors.bg,
+          borderLeft: `4px solid ${colors.border}`,
+          borderRadius: 1,
+          px: 1,
+          py: 0.5,
+          mb: 0.75,
+        }}
+      >
+        Key Effectiveness Indicators — {total} indicator{total === 1 ? '' : 's'}, separate score
+      </Typography>
+      <Button
+        onClick={() => onSelect(index)}
+        variant={isCurrent ? 'outlined' : 'text'}
+        size="small"
+        sx={{
+          fontWeight: isCurrent ? 700 : 400,
+          textDecoration: complete ? 'underline' : 'none',
+          borderLeft: `3px solid ${colors.border}`,
+          borderRadius: 1,
+          color: colors.fg,
+          ...(isCurrent ? { borderColor: colors.border } : {}),
+        }}
+      >
+        Effectiveness indicators ({answeredCount}/{total} answered) {complete ? '✓' : ''}
+      </Button>
     </Box>
   );
 }
