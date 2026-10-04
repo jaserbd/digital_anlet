@@ -88,7 +88,8 @@ Outcome measures (MTTR, automation/diagnosis ratios) listed under each source's 
 - **Role rules** (`users.service.ts`, re-reading the caller from the DB rather than trusting the JWT): any admin may switch a user between Normal User and Executive; granting/removing Admin, creating an Admin, and editing or deleting another admin account are super-admin-only (`SuperAdminRequiredError` → 403); the super admin account is never modifiable (`CannotModifyAdminError`); nobody changes their own role (`CannotChangeOwnRoleError`). `listUsers` now includes admins (with `isSuperAdmin`) so the Manage users table can show them read-only or editable per those rules. Demoting an Admin to Normal User re-triggers the normal profile-completion redirect.
 - **Bulk CSV template**: `BulkCreateUsersForm`'s "Download CSV template" writes the exact `email,role,organization,password` header plus two example rows (using a real organization name). Bulk roles stay Normal User / Executive.
 - **Support contact**: `components/SupportContact.tsx` (single `SUPPORT_EMAIL` constant) on the login page (and referenced from the login error), forgot-password and reset-password pages.
-- Not built yet: internal/external admins and projects (Phase 2), production SMTP (Phase 3 — the forgot-password flow itself exists but production still points at a placeholder SMTP host).
+- **External people** (e.g. a contractor working for one client) are **Executives of that client's organization**, not admins — Executives already see only their own organization. Projects / external admins (plan Phase 2) were cancelled; Admin is Detecon-internal only.
+- Not built yet: production SMTP (plan Phase 3 — the forgot-password flow exists but production still points at a placeholder SMTP host).
 
 ### Org hierarchy and profile completion (from `FIRST_REVIEW.md`)
 

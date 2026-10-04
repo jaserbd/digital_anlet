@@ -7,20 +7,13 @@ Source request: `admin_management.md` (5 items), clarified in discussion.
 | Topic | Decision |
 |---|---|
 | Super admin | An `isSuperAdmin` flag on an ADMIN account (implemented as a flag rather than a separate role value, so every existing Admin check keeps admitting the super admin): every Admin right plus admin management. `jaserbin.rahman@detecon.com` becomes super admin — the seed sets the flag on the bootstrap `ADMIN_EMAIL` account, so production's `ADMIN_EMAIL` must be that address. |
-| Who grants Admin | **Super admin only** — creates internal/external admins, promotes/demotes admins, assigns external admins to projects. |
+| Who grants Admin | **Super admin only** — creates admins, promotes/demotes admins. |
 | Role changes | Admins (internal) can switch any non-admin user between Normal User and Executive. |
-| Admin kinds | `INTERNAL` admin: all clients, as today. `EXTERNAL` admin (e.g. a contractor hired for one engagement): only their projects. |
-| Project | **Detecon-internal access scope only**: `Project = { name, Organization (client), chosen HVSs }`. No client users are assigned to projects; client Executives/Normal Users are unaffected. Each existing organization gets a default project covering all HVSs. |
-| External admin | Organization **and** at least one project in it are mandatory. May **view results** (benchmarking, deep-dive, answer distribution, comments, KEIs, Excel/PDF exports) for their projects' organization, limited to those projects' HVSs, and **open/close** those questionnaires for that organization. No user/NatCo/organization/reference-list management, no other clients. |
-| Open/close | Stays per organization (an external admin closing IP for Client A closes it for all of Client A). |
-| Executives | Unchanged — see their whole organization. |
+| External people | **Revised 2026-10-05: no external admins and no projects.** An external person hired for one client (e.g. Max for Client A) is created as an **Executive of that client's organization** — Executives already see only their own organization's results. One account per client; they count as a normal respondent of that client. Admin stays Detecon-internal only. |
 | Bulk CSV | Existing upload kept; add a **Download template** (CSV header `email,role,organization,password` + example row). Bulk roles stay Normal User / Executive — admins are created individually by the super admin. |
 | Forgot password | Already built (link on login → emailed 1-hour reset link). Production SMTP is still a placeholder — **decide provider later**; document the exact env vars/secret to set. |
 | Contact message | Login page, login error and forgot-password page show "Having trouble logging in? Contact jaserbin.rahman@detecon.com" (one shared constant). |
 
-Assumption to confirm: earlier we discussed projects limiting which HVSs *client users* can answer. Since projects
-are Detecon-internal only, a project's HVS list limits only what its **external admins** can see — client users keep
-answering whatever their organization has open. Say if users should be restricted too.
 
 ## Phase 1 — roles, super admin, role changes, template, contact message
 
@@ -36,7 +29,10 @@ role-rule integration tests) and 21 frontend tests pass; browser-checked as supe
    super admin. Tests.
 3. Frontend: role column/select in Manage Users; super-admin-only Admin options; CSV template download; contact message.
 
-## Phase 2 — projects and external admins
+## Phase 2 — projects and external admins (cancelled)
+
+**Cancelled 2026-10-05**: replaced by assigning external people the Executive role in their client's organization
+(existing functionality — nothing to build). The original design is kept below for reference only.
 
 1. Schema: `Project { name, organizationId }`, `ProjectQuestionnaire` (HVSs), `ProjectAdmin` (external admin ↔ project);
    migration creates a default project per organization with all HVSs.
