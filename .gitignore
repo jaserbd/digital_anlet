@@ -14,3 +14,7 @@ npm-debug.log*
 *.tsbuildinfo
 
 coverage/
+
+# Local-only instruction notes (kept out of git; a copy lives on the local feature/new_fm_domain branch)
+new_ip_fm.md
+admin_management.md
