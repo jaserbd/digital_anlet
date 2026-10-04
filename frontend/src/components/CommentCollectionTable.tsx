@@ -5,6 +5,7 @@ import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import { SortableTable, type SortableTableColumn } from './SortableTable';
 import { exportRowsToXlsx, type XlsxSheet } from '../lib/exportXlsx';
+import { formatSubScenarioLabel } from '../lib/subScenarioCategories';
 
 export interface CommentCollectionRow {
   key: string;
@@ -31,7 +32,7 @@ function flattenCommentRows<T extends CommentDrilldownEntryDto>(
   extra: (comment: T) => Partial<CommentCollectionRow>,
 ): CommentCollectionRow[] {
   const questionById = new Map(questions.map((q) => [q.id, q]));
-  const subScenarioById = new Map(subScenarios.map((s) => [s.id, s.name]));
+  const subScenarioById = new Map(subScenarios.map((s) => [s.id, formatSubScenarioLabel(s)]));
   const rows: CommentCollectionRow[] = [];
 
   comments.forEach((c, i) => {

@@ -1,5 +1,7 @@
+import { Fragment } from 'react';
 import type { AnswerOption, QuestionDto, SubScenarioDto } from '@anlet/shared';
 import { formatQuestionLabel } from '../lib/cognitiveActivity';
+import { categoryRowSpans, hasSubScenarioCategories } from '../lib/subScenarioCategories';
 import { QuestionCommentEditor, type CommentState } from './QuestionCommentEditor';
 
 interface QuestionCardProps {
@@ -25,6 +27,9 @@ export function QuestionCard({
   onCommentChange,
 }: QuestionCardProps) {
   const unansweredSubScenarioIds = subScenarios.filter((s) => !answers.has(s.id)).map((s) => s.id);
+  // Categories render as a full-width heading row above each group rather than a column: the
+  // answer cell's radios don't wrap, so an extra column would squeeze the sub-scenario names.
+  const groupStarts = hasSubScenarioCategories(subScenarios) ? categoryRowSpans(subScenarios) : null;
 
   return (
     <fieldset style={{ marginBottom: '1.5rem', padding: '1rem' }}>
@@ -62,34 +67,43 @@ export function QuestionCard({
         </thead>
         <tbody>
           {subScenarios.map((s) => (
-            <tr key={s.id} style={unansweredSubScenarioIds.includes(s.id) ? { background: '#fff4e5' } : undefined}>
-              <td style={cellStyle}>{s.name}</td>
-              <td style={cellStyle}>{(s.faultDistributionWeight * 100).toFixed(0)}%</td>
-              <td style={cellStyle}>
-                <div role="radiogroup" aria-label={`Answer for ${s.name}`} style={radioGroupStyle}>
-                  <label style={radioLabelStyle}>
-                    <input
-                      type="radio"
-                      name={`answer-${question.id}-${s.id}`}
-                      checked={!answers.has(s.id)}
-                      onChange={() => onSelect(s.id, null)}
-                    />
-                    <span style={{ fontSize: '0.85em', color: '#666' }}>No answer</span>
-                  </label>
-                  {question.options.map((opt) => (
-                    <label key={opt.option} style={radioLabelStyle}>
+            <Fragment key={s.id}>
+              {groupStarts?.has(s.id) && (
+                <tr>
+                  <td colSpan={3} style={{ ...cellStyle, fontWeight: 'bold', background: '#f3f3f3' }}>
+                    {s.category}
+                  </td>
+                </tr>
+              )}
+              <tr style={unansweredSubScenarioIds.includes(s.id) ? { background: '#fff4e5' } : undefined}>
+                <td style={cellStyle}>{s.name}</td>
+                <td style={cellStyle}>{(s.faultDistributionWeight * 100).toFixed(0)}%</td>
+                <td style={cellStyle}>
+                  <div role="radiogroup" aria-label={`Answer for ${s.name}`} style={radioGroupStyle}>
+                    <label style={radioLabelStyle}>
                       <input
                         type="radio"
                         name={`answer-${question.id}-${s.id}`}
-                        checked={answers.get(s.id) === opt.option}
-                        onChange={() => onSelect(s.id, opt.option)}
+                        checked={!answers.has(s.id)}
+                        onChange={() => onSelect(s.id, null)}
                       />
-                      {opt.option} ({opt.criteria})
+                      <span style={{ fontSize: '0.85em', color: '#666' }}>No answer</span>
                     </label>
-                  ))}
-                </div>
-              </td>
-            </tr>
+                    {question.options.map((opt) => (
+                      <label key={opt.option} style={radioLabelStyle}>
+                        <input
+                          type="radio"
+                          name={`answer-${question.id}-${s.id}`}
+                          checked={answers.get(s.id) === opt.option}
+                          onChange={() => onSelect(s.id, opt.option)}
+                        />
+                        {opt.option} ({opt.criteria})
+                      </label>
+                    ))}
+                  </div>
+                </td>
+              </tr>
+            </Fragment>
           ))}
         </tbody>
       </table>

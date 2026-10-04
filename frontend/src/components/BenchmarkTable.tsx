@@ -9,6 +9,7 @@ import { OrganizationAutocomplete } from './OrganizationAutocomplete';
 import { ScoreBarChart } from './charts/ScoreBarChart';
 import { exportRowsToXlsx } from '../lib/exportXlsx';
 import { buildBenchmarkSheet } from '../lib/sheetBuilders';
+import { formatSubScenarioLabel } from '../lib/subScenarioCategories';
 
 // Shared by AdminPage's cross-org benchmarking table and ExecutivePage's own-org OpCo
 // table (SECOND_REVIEW.md item 9) — both consume the same flat BenchmarkRowDto shape, one
@@ -134,7 +135,7 @@ export function BenchmarkTable({
       : []),
     ...subScenarios.map((s) => ({
       key: `sub-${s.id}`,
-      header: s.name,
+      header: formatSubScenarioLabel(s),
       align: 'center' as const,
       getValue: (r: BenchmarkRowDto) =>
         r.subScenarioAverages.find((a) => a.subScenarioCode === s.code)?.averageScore ?? null,

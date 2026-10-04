@@ -1,5 +1,6 @@
 import type { BenchmarkRowDto, CombinedBenchmarkRowDto, RespondentSummaryDto, SubScenarioDto } from '@anlet/shared';
 import type { XlsxSheet } from './exportXlsx';
+import { formatSubScenarioLabel } from './subScenarioCategories';
 
 const STATUS_LABEL: Record<string, string> = {
   NOT_STARTED: 'Not started',
@@ -51,7 +52,7 @@ export function buildBenchmarkSheet(
       { header: 'Submitted', key: 'submittedCount' },
       { header: 'Avg. final score', key: 'averageFinalScore' },
       { header: 'Avg. E2E rate', key: 'averageE2eAutomationRate' },
-      ...subScenarios.map((s) => ({ header: s.name, key: `sub-${s.id}` })),
+      ...subScenarios.map((s) => ({ header: formatSubScenarioLabel(s), key: `sub-${s.id}` })),
     ],
     rows: rows.map((r) => ({
       organizationName: r.organizationName,

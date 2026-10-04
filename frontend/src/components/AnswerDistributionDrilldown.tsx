@@ -27,6 +27,7 @@ import { buildAnswerMatrix } from '../lib/answerMatrix';
 import { exportRowsToXlsx } from '../lib/exportXlsx';
 import { ANSWER_OPTIONS, buildOptionCountsChartData, indexAnswerDistribution } from '../lib/answerDistribution';
 import { OptionCountsChart, OPTION_COLORS } from './charts/OptionCountsChart';
+import { formatSubScenarioLabel, groupSubScenariosByCategory } from '../lib/subScenarioCategories';
 import { buildCommentCollectionRows, buildCommentCollectionSheet } from './CommentCollectionTable';
 
 interface AnswerDistributionDrilldownProps {
@@ -125,7 +126,8 @@ export function AnswerDistributionDrilldown({
             const rowHasExpanded = expandedKey?.startsWith(`${q.id}:`);
             const expandedRespondents = expandedKey ? respondentsByKey.get(expandedKey) : undefined;
             const [expandedSubScenarioId, expandedOption] = expandedKey?.split(':').slice(1) ?? [];
-            const expandedSubScenarioName = subScenarios.find((s) => s.id === expandedSubScenarioId)?.name;
+            const expandedSubScenario = subScenarios.find((s) => s.id === expandedSubScenarioId);
+            const expandedSubScenarioName = expandedSubScenario ? formatSubScenarioLabel(expandedSubScenario) : undefined;
             const availableOptionsOrdered = ANSWER_OPTIONS.filter((o) => availableOptions.has(o));
             const chartData = buildOptionCountsChartData(q, subScenarios, countsByKey, availableOptionsOrdered);
 
@@ -144,43 +146,54 @@ export function AnswerDistributionDrilldown({
                     ))}
                   </Stack>
 
-                  <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1.5, mb: 2 }}>
-                    {subScenarios.map((s) => {
-                      const counts = countsByKey.get(`${q.id}:${s.id}`);
-                      return (
-                        <Paper key={s.id} variant="outlined" sx={{ p: 1.25, minWidth: 160 }}>
-                          <Typography variant="subtitle2" sx={{ mb: 0.75, fontWeight: 700 }}>
-                            {s.name}
+                  <Stack spacing={1} sx={{ mb: 2 }}>
+                    {groupSubScenariosByCategory(subScenarios).map((group, groupIndex) => (
+                      <Box key={`${group.category}-${groupIndex}`}>
+                        {group.category && (
+                          <Typography variant="overline" color="text.secondary" sx={{ display: 'block', lineHeight: 1.6 }}>
+                            {group.category}
                           </Typography>
-                          <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                            {ANSWER_OPTIONS.map((option) => {
-                              if (!availableOptions.has(option)) return null;
-                              const count = counts?.[option] ?? 0;
-                              const key = `${q.id}:${s.id}:${option}`;
-                              const isExpanded = expandedKey === key;
-                              return (
-                                <Chip
-                                  key={option}
-                                  size="small"
-                                  label={`${option}: ${count}`}
-                                  clickable={count > 0}
-                                  variant={isExpanded ? 'filled' : 'outlined'}
-                                  onClick={() => count > 0 && setExpandedKey(isExpanded ? null : key)}
-                                  title={count > 0 ? 'Click to see who chose this option' : undefined}
-                                  sx={{
-                                    borderColor: OPTION_COLORS[option],
-                                    color: isExpanded ? '#fff' : OPTION_COLORS[option],
-                                    bgcolor: isExpanded ? OPTION_COLORS[option] : 'transparent',
-                                    opacity: count > 0 ? 1 : 0.4,
-                                    fontWeight: 600,
-                                  }}
-                                />
-                              );
-                            })}
-                          </Stack>
-                        </Paper>
-                      );
-                    })}
+                        )}
+                        <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1.5 }}>
+                          {group.subScenarios.map((s) => {
+                            const counts = countsByKey.get(`${q.id}:${s.id}`);
+                            return (
+                              <Paper key={s.id} variant="outlined" sx={{ p: 1.25, minWidth: 160 }}>
+                                <Typography variant="subtitle2" sx={{ mb: 0.75, fontWeight: 700 }}>
+                                  {s.name}
+                                </Typography>
+                                <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                                  {ANSWER_OPTIONS.map((option) => {
+                                    if (!availableOptions.has(option)) return null;
+                                    const count = counts?.[option] ?? 0;
+                                    const key = `${q.id}:${s.id}:${option}`;
+                                    const isExpanded = expandedKey === key;
+                                    return (
+                                      <Chip
+                                        key={option}
+                                        size="small"
+                                        label={`${option}: ${count}`}
+                                        clickable={count > 0}
+                                        variant={isExpanded ? 'filled' : 'outlined'}
+                                        onClick={() => count > 0 && setExpandedKey(isExpanded ? null : key)}
+                                        title={count > 0 ? 'Click to see who chose this option' : undefined}
+                                        sx={{
+                                          borderColor: OPTION_COLORS[option],
+                                          color: isExpanded ? '#fff' : OPTION_COLORS[option],
+                                          bgcolor: isExpanded ? OPTION_COLORS[option] : 'transparent',
+                                          opacity: count > 0 ? 1 : 0.4,
+                                          fontWeight: 600,
+                                        }}
+                                      />
+                                    );
+                                  })}
+                                </Stack>
+                              </Paper>
+                            );
+                          })}
+                        </Stack>
+                      </Box>
+                    ))}
                   </Stack>
 
                   <Box sx={{ maxWidth: 700 }}>

@@ -9,6 +9,7 @@ import { GroupedCommentsList } from './GroupedCommentsList';
 import { PersonalCognitiveActivityRadar } from './PersonalCognitiveActivityRadar';
 import { formatQuestionLabel, groupByCognitiveActivity } from '../lib/cognitiveActivity';
 import { exportSectionsToPdf, type PdfSection } from '../lib/exportPdf';
+import { formatSubScenarioLabel } from '../lib/subScenarioCategories';
 
 // Builds the PDF export's content (MANAGEMENT_VIEW.md item 1) purely from data already on
 // this page — headline score, guideline text, per-question options/criteria, score
@@ -49,7 +50,7 @@ function buildPdfSections(
   sections.push({
     kind: 'table',
     heading: 'Score breakdown',
-    head: [['Cognitive Activity', 'Service Capability', 'Weight', ...questionnaire.subScenarios.map((s) => s.name)]],
+    head: [['Cognitive Activity', 'Service Capability', 'Weight', ...questionnaire.subScenarios.map(formatSubScenarioLabel)]],
     body: questionnaire.questions.map((q) => [
       q.cognitiveActivity,
       q.serviceCapability,
@@ -67,7 +68,7 @@ function buildPdfSections(
     heading: 'Sub-scenario summary',
     head: [['Sub-scenario', 'Weight', 'Score']],
     body: questionnaire.subScenarios.map((s) => [
-      s.name,
+      formatSubScenarioLabel(s),
       `${(s.faultDistributionWeight * 100).toFixed(0)}%`,
       scoreByCode.get(s.code)?.overallScore?.toFixed(2) ?? '—',
     ]),
@@ -78,7 +79,7 @@ function buildPdfSections(
     sections.push({
       kind: 'table',
       heading: `E2E automation checklist (rate: ${(result.e2eAutomationRate * 100).toFixed(1)}%)`,
-      head: [['Cognitive Activity', 'Service Capability', ...questionnaire.subScenarios.map((s) => s.name)]],
+      head: [['Cognitive Activity', 'Service Capability', ...questionnaire.subScenarios.map(formatSubScenarioLabel)]],
       body: questionnaire.questions.map((q) => [
         q.cognitiveActivity,
         q.serviceCapability,

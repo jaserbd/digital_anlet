@@ -80,6 +80,7 @@ export function parseCoreFaultManagementXlsx(xlsxPath?: string): ParsedQuestionn
     code: subScenarioCodes[i]!,
     name,
     description: (subScenarioDescriptions[i] ?? '').trim(),
+    category: null,
     faultDistributionWeight: subScenarioWeights[i]!,
     sortOrder: i,
   }));
@@ -179,7 +180,7 @@ export function parseCoreStabilityXlsx(xlsxPath?: string): ParsedQuestionnaire {
   }
 
   const subScenarios: ParsedSubScenario[] = [
-    { code: 'OVERALL', name: 'Overall', description: '', faultDistributionWeight: 1, sortOrder: 0 },
+    { code: 'OVERALL', name: 'Overall', description: '', category: null, faultDistributionWeight: 1, sortOrder: 0 },
   ];
 
   return {

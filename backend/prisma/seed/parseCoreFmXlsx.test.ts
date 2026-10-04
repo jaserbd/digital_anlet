@@ -66,7 +66,7 @@ describe('parseCoreStabilityXlsx', () => {
 
   it('has a single synthetic "OVERALL" sub-scenario with weight 1 (no real sub-scenarios)', () => {
     expect(parsed.subScenarios).toEqual([
-      { code: 'OVERALL', name: 'Overall', description: '', faultDistributionWeight: 1, sortOrder: 0 },
+      { code: 'OVERALL', name: 'Overall', description: '', category: null, faultDistributionWeight: 1, sortOrder: 0 },
     ]);
   });
 

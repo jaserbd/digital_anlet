@@ -110,6 +110,7 @@ export function parseRanFmXlsx(xlsxPath?: string): ParsedQuestionnaire {
     code: codeFor(description),
     name: description.split('\n')[0]!.trim(),
     description: description.trim(),
+    category: null, // RAN_FM.xlsx has no grouping above its sub-scenario columns
     faultDistributionWeight: subScenarioWeights[i]!,
     sortOrder: i,
   }));

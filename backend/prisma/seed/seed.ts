@@ -5,6 +5,9 @@ import { hashPassword } from '../../src/lib/password';
 import type { ParsedQuestionnaire } from './parsedQuestionnaire.types';
 import { parseRanFmXlsx } from './parseRanFmXlsx';
 import { parseCoreFaultManagementXlsx, parseCoreStabilityXlsx } from './parseCoreFmXlsx';
+import { parseIpFmXlsx } from './parseIpFmXlsx';
+import { parseTransportMicrowaveXlsx, parseTransportOtnXlsx } from './parseTransportXlsx';
+import { parseFixedAccessXlsx } from './parseFixedAccessXlsx';
 import countries from './data/countries.json';
 
 const INTERNAL_ORG_NAME = 'Anlet (Internal)';
@@ -82,6 +85,7 @@ async function seedQuestionnaire(parsed: ParsedQuestionnaire) {
       update: {
         name: s.name,
         description: s.description,
+        category: s.category,
         faultDistributionWeight: s.faultDistributionWeight,
         sortOrder: s.sortOrder,
       },
@@ -90,6 +94,7 @@ async function seedQuestionnaire(parsed: ParsedQuestionnaire) {
         code: s.code,
         name: s.name,
         description: s.description,
+        category: s.category,
         faultDistributionWeight: s.faultDistributionWeight,
         sortOrder: s.sortOrder,
       },
@@ -245,6 +250,10 @@ async function main() {
   await seedQuestionnaire(parseRanFmXlsx());
   await seedQuestionnaire(parseCoreFaultManagementXlsx());
   await seedQuestionnaire(parseCoreStabilityXlsx());
+  await seedQuestionnaire(parseIpFmXlsx());
+  await seedQuestionnaire(parseTransportMicrowaveXlsx());
+  await seedQuestionnaire(parseTransportOtnXlsx());
+  await seedQuestionnaire(parseFixedAccessXlsx());
   await seedReferenceLists();
 }
 

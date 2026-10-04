@@ -7,6 +7,7 @@ const subScenario: SubScenarioDto = {
   code: 'EQUIPMENT',
   name: 'Equipment',
   description: '',
+  category: null,
   faultDistributionWeight: 1,
   sortOrder: 0,
 };

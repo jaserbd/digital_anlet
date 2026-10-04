@@ -12,6 +12,7 @@ import { ANSWER_OPTIONS, buildOptionCountsChartData, indexAnswerDistribution } f
 import { captureChartImage } from './chartCapture';
 import { ScoreBarChart, computeScoreBarChartHeight } from '../components/charts/ScoreBarChart';
 import { OptionCountsChart, OPTION_COUNTS_CHART_HEIGHT } from '../components/charts/OptionCountsChart';
+import { formatSubScenarioLabel } from './subScenarioCategories';
 
 const STATUS_LABEL: Record<string, string> = {
   NOT_STARTED: 'Not started',
@@ -75,7 +76,7 @@ export function buildBenchmarkPdfSection(
         'Submitted',
         'Avg. final score',
         'Avg. E2E rate',
-        ...subScenarios.map((s) => s.name),
+        ...subScenarios.map(formatSubScenarioLabel),
       ],
     ],
     body: rows.map((r) => [
@@ -206,7 +207,7 @@ export async function buildAnswerDistributionPdfSections(
       head: [['Sub-scenario', ...ANSWER_OPTIONS.map((o) => `Option ${o}`)]],
       body: subScenarios.map((s) => {
         const counts = countsByKey.get(`${q.id}:${s.id}`);
-        return [s.name, ...ANSWER_OPTIONS.map((o) => (availableOptions.has(o) ? String(counts?.[o] ?? 0) : '—'))];
+        return [formatSubScenarioLabel(s), ...ANSWER_OPTIONS.map((o) => (availableOptions.has(o) ? String(counts?.[o] ?? 0) : '—'))];
       }),
     });
 
@@ -227,7 +228,7 @@ export async function buildAnswerDistributionPdfSections(
         if (respondents.length === 0) continue;
         sections.push({
           kind: 'table',
-          heading: `${s.name} — Option ${o} respondents`,
+          heading: `${formatSubScenarioLabel(s)} — Option ${o} respondents`,
           head: [['Email', 'NatCo', 'Country', 'Working Domain', 'Designation', 'Comment']],
           body: respondents.map((r) => [
             r.email,

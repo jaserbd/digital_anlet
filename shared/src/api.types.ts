@@ -38,6 +38,9 @@ export interface SubScenarioDto {
   code: SubScenarioCode;
   name: string;
   description: string;
+  // Grouping header from the source xlsx (e.g. "Communication"); null when the
+  // questionnaire has no sub-scenario categories.
+  category: string | null;
   faultDistributionWeight: number;
   sortOrder: number;
 }

@@ -184,6 +184,11 @@ model SubScenario {
   code        String
   name        String
   description String? @db.Text
+  // Optional grouping from the xlsx's own header row above the sub-scenario columns (e.g.
+  // IP FM's "Equipment" / "Communication" / "Quality of service"). Null for questionnaires
+  // whose source has no such grouping (RAN, Core, Fixed Access) — the UI only renders
+  // category headers when at least one sub-scenario has one.
+  category    String?
 
   // Share of real-world fault distribution; used both to weight the final score and to
   // compute the E2E automation rate. Not required to sum to 1 across a questionnaire's

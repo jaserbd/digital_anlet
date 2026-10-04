@@ -22,6 +22,8 @@ export interface ParsedSubScenario {
   code: SubScenarioCode;
   name: string;
   description: string;
+  // Header grouping above the sub-scenario columns in the source xlsx, if it has one.
+  category: string | null;
   faultDistributionWeight: number;
   sortOrder: number;
 }

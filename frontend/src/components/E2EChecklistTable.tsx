@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { AnswerDto, QuestionDto, SubScenarioDto, SubScenarioScore } from '@anlet/shared';
+import { groupSubScenariosByCategory, hasSubScenarioCategories } from '../lib/subScenarioCategories';
 
 interface E2EChecklistTableProps {
   questions: QuestionDto[];
@@ -21,20 +22,41 @@ export function E2EChecklistTable({
   );
   const scoreByCode = new Map(subScenarioScores.map((s) => [s.subScenarioCode, s]));
   const hasExcludedQuestion = questions.some((q) => !q.includeInE2ECheck);
+  const showCategories = hasSubScenarioCategories(subScenarios);
+  const headerRowSpan = showCategories ? 2 : 1;
 
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ borderCollapse: 'collapse', width: '100%' }}>
         <thead>
           <tr>
-            <th style={cellStyle}>Cognitive Activity</th>
-            <th style={cellStyle}>Service Capability</th>
-            {subScenarios.map((s) => (
-              <th key={s.id} style={cellStyle}>
-                {s.name}
-              </th>
-            ))}
+            <th style={cellStyle} rowSpan={headerRowSpan}>
+              Cognitive Activity
+            </th>
+            <th style={cellStyle} rowSpan={headerRowSpan}>
+              Service Capability
+            </th>
+            {showCategories
+              ? groupSubScenariosByCategory(subScenarios).map((g, i) => (
+                  <th key={`${g.category}-${i}`} style={cellStyle} colSpan={g.subScenarios.length}>
+                    {g.category ?? ''}
+                  </th>
+                ))
+              : subScenarios.map((s) => (
+                  <th key={s.id} style={cellStyle}>
+                    {s.name}
+                  </th>
+                ))}
           </tr>
+          {showCategories && (
+            <tr>
+              {subScenarios.map((s) => (
+                <th key={s.id} style={cellStyle}>
+                  {s.name}
+                </th>
+              ))}
+            </tr>
+          )}
         </thead>
         <tbody>
           {questions.map((q) => (

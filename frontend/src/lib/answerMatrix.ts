@@ -1,6 +1,7 @@
 import type { AnswerDrilldownEntryDto, DrilldownRespondentDto, QuestionDto, SubScenarioDto } from '@anlet/shared';
 import { formatQuestionLabel, groupByCognitiveActivity } from './cognitiveActivity';
 import type { XlsxColumn, XlsxSheet } from './exportXlsx';
+import { formatSubScenarioLabel } from './subScenarioCategories';
 
 interface RespondentRow {
   identity: DrilldownRespondentDto;
@@ -56,7 +57,7 @@ export function buildAnswerMatrix(
     const columns: XlsxColumn[] = [...identityColumns];
     for (const q of group.questions) {
       for (const s of subScenarios) {
-        columns.push({ header: `${formatQuestionLabel(q)} — ${s.name}`, key: `answer:${q.id}:${s.id}` });
+        columns.push({ header: `${formatQuestionLabel(q)} — ${formatSubScenarioLabel(s)}`, key: `answer:${q.id}:${s.id}` });
       }
     }
 

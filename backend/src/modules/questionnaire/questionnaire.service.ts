@@ -139,6 +139,7 @@ export async function getQuestionnaireByCode(code: string, organizationId: strin
       code: s.code,
       name: s.name,
       description: s.description ?? '',
+      category: s.category,
       faultDistributionWeight: Number(s.faultDistributionWeight),
       sortOrder: s.sortOrder,
     })),
