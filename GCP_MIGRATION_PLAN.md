@@ -24,6 +24,11 @@ Source request: `admin_management.md` (last paragraph), clarified in discussion.
 
 ## Steps (each confirmed before it runs)
 
+**Status (2026-10-04): steps 1–10 done.** New app live at <https://anlet-602185048647.europe-west3.run.app>; super
+admin login verified by Jaserbin. Deviations from the plan: secrets use user-managed replication in `europe-west3` and
+Cloud Build runs regionally with a regional source bucket — both required by the EU location policy. The super admin
+password was generated (not typed) and lives only in `anlet-admin-password`. Step 11 pending.
+
 1. **Prepare code** — commit Phase 1, merge `feature/new_fm_domain` into `main`, run lint/typecheck/tests.
 2. **Enable APIs** on `anlet-504115`: `run`, `sqladmin`, `artifactregistry`, `cloudbuild`, `secretmanager`.
 3. **Cloud SQL** — instance `anlet-db` (Postgres 16, `db-f1-micro`, europe-west3, 10GB SSD) with **daily backups +
