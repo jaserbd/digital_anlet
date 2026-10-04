@@ -12,6 +12,8 @@ import Checkbox from '@mui/material/Checkbox';
 import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
+import ButtonBase from '@mui/material/ButtonBase';
+import Popover from '@mui/material/Popover';
 
 export interface SortableTableColumn<T> {
   key: string;
@@ -191,11 +193,11 @@ export function SortableTable<T>({
   );
 }
 
-// Excel AutoFilter-style column filter: a search box to narrow a checkbox list of every
-// distinct value the column takes across all rows (not just the currently-filtered rows,
-// matching Excel's own behavior of always listing the full value set). Built on <details>/
-// <summary> for a dependency-free popover, consistent with this codebase's existing use of
-// <details> for collapsible sections (see CLAUDE.md's Guideline sections).
+// Excel AutoFilter-style column filter: a select-style trigger ("All" / "2 selected") that
+// opens a searchable checkbox list of every distinct value the column takes across all rows
+// (not just the currently-filtered rows, matching Excel's own behavior of always listing the
+// full value set). The list is an MUI Popover — portaled to the document body — because the
+// table's scrolling container would otherwise clip it; it closes on an outside click or Esc.
 function MultiSelectFilter<T>({
   rows,
   getValue,
@@ -208,6 +210,8 @@ function MultiSelectFilter<T>({
   onChange: (next: Set<string>) => void;
 }) {
   const [search, setSearch] = useState('');
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const uniqueValues = useMemo(() => {
     const values = new Set<string>();
@@ -230,20 +234,47 @@ function MultiSelectFilter<T>({
     onChange(next);
   }
 
+  const label = selected.size === 0 ? 'All' : selected.size === 1 ? [...selected][0] : `${selected.size} selected`;
+
   return (
-    <Box component="details" sx={{ position: 'relative' }}>
-      <Box component="summary" sx={{ cursor: 'pointer', fontSize: '0.85em', listStyle: 'none' }}>
-        Filter{selected.size > 0 ? ` (${selected.size})` : ''} ▾
-      </Box>
-      <Paper
-        elevation={4}
+    <>
+      <ButtonBase
+        onClick={(e) => setAnchorEl(e.currentTarget)}
+        aria-haspopup="listbox"
+        title={selected.size > 0 ? [...selected].join(', ') : 'Click to choose values'}
         sx={{
-          position: 'absolute',
-          zIndex: 10,
-          p: 1,
-          minWidth: 180,
-          maxHeight: 220,
-          overflowY: 'auto',
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: 0.5,
+          minWidth: 90,
+          maxWidth: 220,
+          px: 1,
+          py: 0.25,
+          fontSize: '0.85em',
+          border: '1px solid',
+          borderColor: selected.size > 0 ? 'primary.main' : 'divider',
+          borderRadius: 1,
+          bgcolor: 'background.paper',
+          color: selected.size > 0 ? 'primary.main' : 'text.secondary',
+          fontWeight: selected.size > 0 ? 600 : 400,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {label}
+        </Box>
+        <span aria-hidden>▾</span>
+      </ButtonBase>
+      <Popover
+        open={!!anchorEl}
+        anchorEl={anchorEl}
+        onClose={() => setAnchorEl(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        slotProps={{
+          paper: { sx: { p: 1, minWidth: 240, maxHeight: 360 } },
+          // The Popover focuses its own paper on open, which would beat a plain autoFocus —
+          // focus the search box once the open transition finishes so typing filters at once.
+          transition: { onEntered: () => searchRef.current?.focus() },
         }}
       >
         <TextField
@@ -251,22 +282,22 @@ function MultiSelectFilter<T>({
           placeholder="Search…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          inputRef={searchRef}
           fullWidth
           sx={{ mb: 0.5 }}
         />
         {selected.size > 0 && (
           <Button size="small" onClick={() => onChange(new Set())} sx={{ mb: 0.5 }}>
-            Clear
+            Clear ({selected.size})
           </Button>
         )}
         {visibleValues.map((value) => (
-          <Box key={value} sx={{ display: 'flex', alignItems: 'center' }}>
-            <Checkbox
-              size="small"
-              checked={selected.has(value)}
-              onChange={() => toggle(value)}
-              sx={{ p: 0.5 }}
-            />
+          <Box
+            key={value}
+            component="label"
+            sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', borderRadius: 1, '&:hover': { bgcolor: 'action.hover' } }}
+          >
+            <Checkbox size="small" checked={selected.has(value)} onChange={() => toggle(value)} sx={{ p: 0.5 }} />
             <Typography variant="body2">{value}</Typography>
           </Box>
         ))}
@@ -275,7 +306,7 @@ function MultiSelectFilter<T>({
             No matches.
           </Typography>
         )}
-      </Paper>
-    </Box>
+      </Popover>
+    </>
   );
 }

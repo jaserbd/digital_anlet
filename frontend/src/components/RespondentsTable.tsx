@@ -43,7 +43,7 @@ export function RespondentsTable({
     : null;
 
   const columns: SortableTableColumn<RespondentSummaryDto>[] = [
-    { key: 'email', header: 'Email', getValue: (r) => r.email, filterable: true },
+    { key: 'email', header: 'Email', getValue: (r) => r.email, filterType: 'multiselect' },
     { key: 'opCo', header: 'NatCo', getValue: (r) => r.opCoName, filterType: 'multiselect' },
     { key: 'country', header: 'Country', getValue: (r) => r.country, filterType: 'multiselect' },
     { key: 'workingDomain', header: 'Working Domain', getValue: (r) => r.workingDomain, filterType: 'multiselect' },

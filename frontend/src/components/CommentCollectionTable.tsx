@@ -136,7 +136,7 @@ export function CommentCollectionTable({
           },
         ]
       : []),
-    { key: 'email', header: 'Email', getValue: (r) => r.email, filterable: true },
+    { key: 'email', header: 'Email', getValue: (r) => r.email, filterType: 'multiselect' },
     { key: 'opCo', header: 'NatCo', getValue: (r) => r.opCoName, filterType: 'multiselect' },
     { key: 'country', header: 'Country', getValue: (r) => r.country, filterType: 'multiselect' },
     { key: 'designation', header: 'Designation', getValue: (r) => r.designation, filterType: 'multiselect' },

@@ -33,7 +33,7 @@ export function CombinedBenchmarkTable({
             key: 'organization',
             header: 'Organization',
             getValue: (r: CombinedBenchmarkRowDto) => r.organizationName,
-            filterable: true,
+            filterType: 'multiselect' as const,
           },
         ]),
     { key: 'opCo', header: 'NatCo', getValue: (r) => r.opCoName, filterType: 'multiselect' as const },

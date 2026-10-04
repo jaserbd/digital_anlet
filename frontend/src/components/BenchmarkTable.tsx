@@ -56,7 +56,9 @@ export function BenchmarkTable({
             key: 'organization',
             header: 'Organization',
             getValue: (r: BenchmarkRowDto) => r.organizationName,
-            filterable: true,
+            // A checkbox dropdown of the organizations in the table, unless Admin's
+            // navigate-to-Deep-Dive autocomplete (filterRenderer below) replaces it.
+            filterType: 'multiselect' as const,
             filterRenderer:
               organizations && onOrganizationSelect
                 ? () => (
