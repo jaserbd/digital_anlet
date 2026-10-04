@@ -10,6 +10,7 @@ import Button from '@mui/material/Button';
 import Alert from '@mui/material/Alert';
 import { authApi } from '../api/authApi';
 import { ApiError } from '../api/client';
+import { SupportContact } from '../components/SupportContact';
 
 // Forgot-password, step 2 (OVERVIEW.md item 12) — reached via the link emailed from
 // ForgotPasswordPage, token carried as a URL query param. Public page (no auth) since the
@@ -94,6 +95,9 @@ export function ResetPasswordPage() {
             </Box>
           </>
         )}
+        <Box sx={{ mt: 2 }}>
+          <SupportContact prefix="Link not working?" />
+        </Box>
       </Paper>
     </Box>
   );

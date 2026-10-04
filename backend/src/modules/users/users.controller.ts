@@ -1,8 +1,10 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import {
+  CannotChangeOwnRoleError,
   CannotModifyAdminError,
   EmailTakenError,
+  SuperAdminRequiredError,
   OpCoNotInOrganizationError,
   OrganizationNotFoundError,
   UserHasResponsesError,
@@ -14,12 +16,12 @@ import {
   updateUser,
 } from './users.service';
 
-// Admin can only assign Executive/Normal-User roles here — Admin accounts are
-// seed-time bootstrap only (see prisma/seed/seed.ts), not created via this API.
+// Any admin may create Executive/Normal-User accounts; only the super admin may create an
+// ADMIN (enforced by createUser — ADMIN_MANAGEMENT_PLAN.md).
 const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
-  role: z.enum(['NORMAL_USER', 'EXECUTIVE']),
+  role: z.enum(['NORMAL_USER', 'EXECUTIVE', 'ADMIN']),
   organizationId: z.string().min(1),
   firstName: z.string().trim().min(1).optional(),
   lastName: z.string().trim().min(1).optional(),
@@ -33,9 +35,13 @@ export async function createUserHandler(req: Request, res: Response) {
   }
 
   try {
-    const user = await createUser(parsed.data);
+    const user = await createUser(parsed.data, req.user!.sub);
     res.status(201).json(user);
   } catch (err) {
+    if (err instanceof SuperAdminRequiredError) {
+      res.status(403).json({ error: 'Only the super admin can create admin accounts' });
+      return;
+    }
     if (err instanceof EmailTakenError) {
       res.status(409).json({ error: 'A user with this email already exists' });
       return;
@@ -81,6 +87,7 @@ export async function listUsersHandler(req: Request, res: Response) {
 const updateUserSchema = z.object({
   organizationId: z.string().min(1).optional(),
   opCoId: z.string().min(1).nullable().optional(),
+  role: z.enum(['NORMAL_USER', 'EXECUTIVE', 'ADMIN']).optional(),
 });
 
 export async function updateUserHandler(req: Request, res: Response) {
@@ -97,7 +104,7 @@ export async function updateUserHandler(req: Request, res: Response) {
   }
 
   try {
-    const user = await updateUser(userId, parsed.data);
+    const user = await updateUser(req.user!.sub, userId, parsed.data);
     res.json(user);
   } catch (err) {
     if (err instanceof UserNotFoundError) {
@@ -105,7 +112,15 @@ export async function updateUserHandler(req: Request, res: Response) {
       return;
     }
     if (err instanceof CannotModifyAdminError) {
-      res.status(403).json({ error: 'Admin accounts cannot be reassigned' });
+      res.status(403).json({ error: 'The super admin account cannot be changed' });
+      return;
+    }
+    if (err instanceof SuperAdminRequiredError) {
+      res.status(403).json({ error: 'Only the super admin can grant, remove or change admin accounts' });
+      return;
+    }
+    if (err instanceof CannotChangeOwnRoleError) {
+      res.status(400).json({ error: 'You cannot change your own role' });
       return;
     }
     if (err instanceof OrganizationNotFoundError) {
@@ -128,7 +143,7 @@ export async function deleteUserHandler(req: Request, res: Response) {
   }
 
   try {
-    await deleteUser(userId);
+    await deleteUser(req.user!.sub, userId);
     res.status(204).end();
   } catch (err) {
     if (err instanceof UserNotFoundError) {
@@ -136,7 +151,11 @@ export async function deleteUserHandler(req: Request, res: Response) {
       return;
     }
     if (err instanceof CannotModifyAdminError) {
-      res.status(403).json({ error: 'Admin accounts cannot be deleted' });
+      res.status(403).json({ error: 'This account cannot be deleted' });
+      return;
+    }
+    if (err instanceof SuperAdminRequiredError) {
+      res.status(403).json({ error: 'Only the super admin can delete admin accounts' });
       return;
     }
     if (err instanceof UserHasResponsesError) {

@@ -11,6 +11,7 @@ import Alert from '@mui/material/Alert';
 import Link from '@mui/material/Link';
 import { authApi } from '../api/authApi';
 import { ApiError } from '../api/client';
+import { SupportContact } from '../components/SupportContact';
 
 // Forgot-password, step 1 (OVERVIEW.md item 12) — public page, reachable from LoginPage's
 // "Forgot password?" link. The success message is deliberately generic regardless of whether
@@ -59,6 +60,9 @@ export function ForgotPasswordPage() {
             <Link component={RouterLink} to="/login">
               ← Back to sign in
             </Link>
+            <Box sx={{ mt: 2 }}>
+              <SupportContact prefix="No email after a few minutes?" />
+            </Box>
           </>
         ) : (
           <>
@@ -82,6 +86,7 @@ export function ForgotPasswordPage() {
                 <Link component={RouterLink} to="/login" sx={{ textAlign: 'center' }}>
                   ← Back to sign in
                 </Link>
+                <SupportContact />
               </Stack>
             </Box>
           </>

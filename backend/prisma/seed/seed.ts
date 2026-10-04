@@ -47,16 +47,19 @@ async function seedInternalOrgAndAdmin() {
   const passwordHash = await hashPassword(env.ADMIN_PASSWORD);
   await prisma.user.upsert({
     where: { email: env.ADMIN_EMAIL },
-    update: { passwordHash, role: 'ADMIN', organizationId: org.id },
+    // The bootstrap admin is the super admin (ADMIN_MANAGEMENT_PLAN.md) — in production
+    // ADMIN_EMAIL is jaserbin.rahman@detecon.com.
+    update: { passwordHash, role: 'ADMIN', isSuperAdmin: true, organizationId: org.id },
     create: {
       email: env.ADMIN_EMAIL,
       passwordHash,
       role: 'ADMIN',
+      isSuperAdmin: true,
       organizationId: org.id,
     },
   });
 
-  console.log(`Seeded internal org "${INTERNAL_ORG_NAME}" and admin user "${env.ADMIN_EMAIL}"`);
+  console.log(`Seeded internal org "${INTERNAL_ORG_NAME}" and super admin "${env.ADMIN_EMAIL}"`);
 }
 
 async function seedQuestionnaire(parsed: ParsedQuestionnaire) {

@@ -47,6 +47,7 @@ export async function getAuthenticatedUser(userId: string): Promise<Authenticate
       workingDomain: true,
       designation: true,
       mustChangePassword: true,
+      isSuperAdmin: true,
     },
   });
   return user;

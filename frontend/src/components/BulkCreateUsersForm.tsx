@@ -66,6 +66,20 @@ function parseCsv(text: string): ParsedRow[] {
   });
 }
 
+// A ready-to-fill CSV with the exact header parseCsv expects plus two example rows
+// (admin_management.md item 2). Uses a real organization name when one exists so the example
+// rows would upload as-is; password is left blank (one-time password generated).
+function downloadCsvTemplate(exampleOrganization: string) {
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ['email', 'role', 'organization', 'password'],
+    ['jane.doe@example.com', 'NORMAL_USER', exampleOrganization, ''],
+    ['cto@example.com', 'EXECUTIVE', exampleOrganization, ''],
+  ]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Users');
+  XLSX.writeFile(workbook, 'anlet-user-upload-template.csv', { bookType: 'csv' });
+}
+
 // CSV bulk user creation (OVERVIEW.md item 4) — parsed entirely client-side with the
 // already-installed `xlsx` package (this is the first file upload in the app; parsing in the
 // browser and posting a plain JSON array avoids adding multer/multipart middleware for it).
@@ -162,6 +176,13 @@ export function BulkCreateUsersForm() {
         )}
       </Typography>
 
+      <Button
+        variant="text"
+        onClick={() => downloadCsvTemplate(orgsQuery.data?.[0]?.name ?? 'Your Organization')}
+        sx={{ mb: 2, mr: 1 }}
+      >
+        Download CSV template
+      </Button>
       <Button variant="outlined" component="label" sx={{ mb: 2 }}>
         {fileName ?? 'Choose CSV file'}
         <input ref={fileInputRef} type="file" accept=".csv,text/csv" hidden onChange={handleFileChange} />

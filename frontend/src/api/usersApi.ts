@@ -1,10 +1,11 @@
-import type { BulkCreateUsersResultDto, BulkCreateUsersRowDto, UpdateUserRequestDto, UserDto } from '@anlet/shared';
+import type { BulkCreateUsersResultDto, BulkCreateUsersRowDto, Role, UpdateUserRequestDto, UserDto } from '@anlet/shared';
 import { apiClient } from './client';
 
 export interface CreateUserInput {
   email: string;
   password: string;
-  role: 'NORMAL_USER' | 'EXECUTIVE';
+  // ADMIN is accepted only from the super admin (enforced server-side).
+  role: Role;
   organizationId: string;
   firstName?: string;
   lastName?: string;

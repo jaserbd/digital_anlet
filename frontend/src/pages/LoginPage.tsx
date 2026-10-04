@@ -10,6 +10,7 @@ import Alert from '@mui/material/Alert';
 import Link from '@mui/material/Link';
 import { useAuth } from '../context/AuthContext';
 import { ApiError } from '../api/client';
+import { SupportContact } from '../components/SupportContact';
 
 // Detecon-style split layout (OVERVIEW.md items 2/5) — a branded panel (generated on-brand
 // background, no external photo — see hero-background.svg's comment) alongside the login
@@ -116,13 +117,19 @@ export function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
-              {error && <Alert severity="error">{error}</Alert>}
+              {error && (
+                <Alert severity="error">
+                  {/\.\s*$/.test(error) ? error : `${error}.`} If you keep having problems, use &quot;Forgot password?&quot; below or contact
+                  support.
+                </Alert>
+              )}
               <Button type="submit" variant="contained" size="large" disabled={isSubmitting} fullWidth>
                 {isSubmitting ? 'Logging in…' : 'Log in'}
               </Button>
               <Link component={RouterLink} to="/forgot-password" sx={{ textAlign: 'center' }}>
                 Forgot password?
               </Link>
+              <SupportContact />
             </Stack>
           </Box>
         </Paper>

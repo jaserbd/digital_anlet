@@ -15,6 +15,8 @@ export interface AuthenticatedUserDto {
   // True for every admin-created account until they set their own password (OVERVIEW.md
   // item 4) — ProtectedRoute redirects to /change-password before anything else while true.
   mustChangePassword: boolean;
+  // An ADMIN who may also create/promote/demote admins (ADMIN_MANAGEMENT_PLAN.md).
+  isSuperAdmin: boolean;
 }
 
 export interface ChangePasswordRequestDto {
@@ -205,13 +207,16 @@ export interface UserDto {
   opCoId: string | null;
   workingDomain: string | null;
   designation: string | null;
+  isSuperAdmin: boolean;
 }
 
 // Admin-only reassignment (SECOND_REVIEW.md item 8) — changing organizationId always clears
-// opCoId server-side unless a new opCoId (validated against the new org) is given too.
+// opCoId server-side unless a new opCoId (validated against the new org) is given too. `role`
+// switches Normal User <-> Executive (any admin) or to/from Admin (super admin only).
 export interface UpdateUserRequestDto {
   organizationId?: string;
   opCoId?: string | null;
+  role?: Role;
 }
 
 // Bulk user creation from an uploaded CSV (OVERVIEW.md item 4) — one row per user, parsed

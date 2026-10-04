@@ -100,6 +100,12 @@ model User {
   // accounts (notably the bootstrap Admin, created outside createUser) are unaffected.
   mustChangePassword Boolean @default(false)
 
+  // Super admin (admin_management.md / ADMIN_MANAGEMENT_PLAN.md): an ADMIN who may also create,
+  // promote and demote admins. A flag on an ADMIN account rather than a separate Role value,
+  // so every existing ADMIN check keeps admitting the super admin. Set only by the seed for
+  // the bootstrap ADMIN_EMAIL account — never through the API.
+  isSuperAdmin Boolean @default(false)
+
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
 

@@ -27,6 +27,9 @@ import { BulkCreateUsersForm } from '../components/BulkCreateUsersForm';
 import { ReferenceListSelect } from '../components/ReferenceListSelect';
 import { ManageReferenceListSection } from '../components/ManageReferenceListSection';
 import { CollapsibleTable } from '../components/CollapsibleTable';
+import Chip from '@mui/material/Chip';
+import { useAuth } from '../context/AuthContext';
+import { ROLE_LABELS, assignableRoles } from '../lib/roles';
 
 // Management Console (ADMIN.md item 1) — create/delete for Organization, OpCo, and User, on
 // its own route separate from /admin's Benchmarking/Organizations views. Delete is blocked
@@ -421,7 +424,8 @@ function CreateUserForm() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<Extract<Role, 'NORMAL_USER' | 'EXECUTIVE'>>('NORMAL_USER');
+  const { user: currentUser } = useAuth();
+  const [role, setRole] = useState<Role>('NORMAL_USER');
   const [organizationId, setOrganizationId] = useState('');
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
@@ -470,8 +474,11 @@ function CreateUserForm() {
           value={role}
           onChange={(e) => setRole(e.target.value as typeof role)}
         >
-          <MenuItem value="NORMAL_USER">Normal User</MenuItem>
-          <MenuItem value="EXECUTIVE">Executive</MenuItem>
+          {assignableRoles(!!currentUser?.isSuperAdmin).map((r) => (
+            <MenuItem key={r} value={r}>
+              {ROLE_LABELS[r]}
+            </MenuItem>
+          ))}
         </TextField>
         <TextField
           select
@@ -507,10 +514,12 @@ function CreateUserForm() {
 }
 
 // Admin can only create brand-new users elsewhere (CreateUserForm) — this lets Admin
-// reassign an *existing* Executive/Normal-User account's Organization (and OpCo) without
-// recreating it (SECOND_REVIEW.md item 8), and now also delete one (ADMIN.md item 1).
-// Reassigning org clears OpCo server-side (an OpCo belongs to a specific org), which
-// naturally re-triggers profile completion for a NORMAL_USER on their next visit.
+// reassign an *existing* account's Organization (and OpCo) without recreating it
+// (SECOND_REVIEW.md item 8), change its role, and delete it (ADMIN.md item 1). Reassigning
+// org clears OpCo server-side (an OpCo belongs to a specific org), which naturally re-triggers
+// profile completion for a NORMAL_USER on their next visit. Role changes follow
+// ADMIN_MANAGEMENT_PLAN.md: Normal User <-> Executive for any admin; admin accounts (and
+// granting Admin) for the super admin only; the super admin's own account is read-only.
 function ManageUsersSection() {
   const queryClient = useQueryClient();
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: () => usersApi.list() });
@@ -567,7 +576,13 @@ function UserRow({
   organizations: OrganizationDto[];
   onSaved: () => void;
 }) {
+  const { user: currentUser } = useAuth();
+  const isSuperAdmin = !!currentUser?.isSuperAdmin;
+  // Read-only rows: the super admin account, the caller's own account, and — for a regular
+  // admin — any other admin account. Mirrors users.service.ts's rules.
+  const readOnly = user.isSuperAdmin || user.id === currentUser?.id || (user.role === 'ADMIN' && !isSuperAdmin);
   const [organizationId, setOrganizationId] = useState(user.organizationId);
+  const [role, setRole] = useState<Role>(user.role);
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const opCosQuery = useQuery({
     queryKey: ['opcos', organizationId],
@@ -602,17 +617,40 @@ function UserRow({
     deleteUser.mutate();
   }
 
-  const dirty = organizationId !== user.organizationId;
+  const orgChanged = organizationId !== user.organizationId;
+  const dirty = orgChanged || role !== user.role;
 
   return (
     <TableRow>
       <TableCell>{user.email}</TableCell>
-      <TableCell>{user.role}</TableCell>
+      <TableCell>
+        {readOnly ? (
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <span>{ROLE_LABELS[user.role]}</span>
+            {user.isSuperAdmin && <Chip size="small" color="primary" label="Super admin" />}
+          </Stack>
+        ) : (
+          <TextField
+            select
+            size="small"
+            value={role}
+            onChange={(e) => setRole(e.target.value as Role)}
+            sx={{ minWidth: 140 }}
+          >
+            {assignableRoles(isSuperAdmin).map((r) => (
+              <MenuItem key={r} value={r}>
+                {ROLE_LABELS[r]}
+              </MenuItem>
+            ))}
+          </TextField>
+        )}
+      </TableCell>
       <TableCell>
         <TextField
           select
           size="small"
           value={organizationId}
+          disabled={readOnly}
           onChange={(e) => setOrganizationId(e.target.value)}
           sx={{ minWidth: 160 }}
         >
@@ -624,7 +662,7 @@ function UserRow({
         </TextField>
       </TableCell>
       <TableCell>
-        {dirty
+        {orgChanged
           ? '— will be cleared —'
           : (opCosQuery.data?.find((o) => o.id === user.opCoId)?.name ?? '—')}
       </TableCell>
@@ -633,10 +671,13 @@ function UserRow({
           <Button
             size="small"
             variant="contained"
-            disabled={!dirty || updateUser.isPending}
+            disabled={readOnly || !dirty || updateUser.isPending}
             onClick={() => {
               setMessage(null);
-              updateUser.mutate({ organizationId });
+              updateUser.mutate({
+                ...(orgChanged ? { organizationId } : {}),
+                ...(role !== user.role ? { role } : {}),
+              });
             }}
           >
             {updateUser.isPending ? 'Saving…' : 'Save'}
@@ -645,7 +686,7 @@ function UserRow({
             size="small"
             color="error"
             variant="outlined"
-            disabled={deleteUser.isPending}
+            disabled={readOnly || deleteUser.isPending}
             onClick={handleDelete}
           >
             {deleteUser.isPending ? 'Deleting…' : 'Delete'}

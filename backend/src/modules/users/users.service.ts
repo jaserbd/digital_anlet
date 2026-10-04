@@ -13,6 +13,17 @@ export class OpCoRequiredError extends Error {}
 export class UserHasResponsesError extends Error {}
 export class WorkingDomainNotInCatalogError extends Error {}
 export class DesignationNotInCatalogError extends Error {}
+// Granting/removing the Admin role, creating an admin, or modifying/deleting an existing admin
+// account is reserved for the super admin (ADMIN_MANAGEMENT_PLAN.md).
+export class SuperAdminRequiredError extends Error {}
+export class CannotChangeOwnRoleError extends Error {}
+
+// Re-read from the DB on every privileged call rather than trusting the JWT payload, so a
+// token issued before a role change can't be used to claim super admin rights.
+async function isCallerSuperAdmin(callerId: string): Promise<boolean> {
+  const caller = await prisma.user.findUnique({ where: { id: callerId }, select: { role: true, isSuperAdmin: true } });
+  return caller?.role === 'ADMIN' && caller.isSuperAdmin;
+}
 
 const USER_SELECT = {
   id: true,
@@ -24,18 +35,23 @@ const USER_SELECT = {
   opCoId: true,
   workingDomain: true,
   designation: true,
+  isSuperAdmin: true,
 } as const;
 
 export interface CreateUserInput {
   email: string;
   password: string;
-  role: Extract<Role, 'NORMAL_USER' | 'EXECUTIVE'>;
+  // ADMIN only when the caller is the super admin (checked by createUser).
+  role: Role;
   organizationId: string;
   firstName?: string;
   lastName?: string;
 }
 
-export async function createUser(input: CreateUserInput) {
+export async function createUser(input: CreateUserInput, callerId?: string) {
+  if (input.role === 'ADMIN' && !(callerId && (await isCallerSuperAdmin(callerId)))) {
+    throw new SuperAdminRequiredError();
+  }
   const [existingUser, organization] = await Promise.all([
     prisma.user.findUnique({ where: { email: input.email } }),
     prisma.organization.findUnique({ where: { id: input.organizationId } }),
@@ -67,13 +83,13 @@ export async function createUser(input: CreateUserInput) {
 
 /**
  * Admin-only: list existing users, optionally scoped to one organization (used by
- * AdminPage's "reassign existing user" table — SECOND_REVIEW.md item 8). Never returns
- * ADMIN-role accounts — those are seed-time bootstrap only, not admin-manageable.
+ * AdminPage's "Manage users" table — SECOND_REVIEW.md item 8). Includes ADMIN accounts (with
+ * isSuperAdmin) so the super admin can promote/demote them; updateUser/deleteUser enforce who
+ * may change what.
  */
 export async function listUsers(filter?: { organizationId?: string }) {
   return prisma.user.findMany({
     where: {
-      role: { not: 'ADMIN' },
       ...(filter?.organizationId ? { organizationId: filter.organizationId } : {}),
     },
     orderBy: { email: 'asc' },
@@ -86,6 +102,8 @@ export interface UpdateUserInput {
   // Explicit null clears the OpCo; undefined leaves it untouched (unless organizationId
   // changes, which always clears it — an OpCo belongs to a specific organization).
   opCoId?: string | null;
+  // Normal User <-> Executive: any admin. To or from ADMIN: super admin only.
+  role?: Role;
 }
 
 /**
@@ -95,13 +113,22 @@ export interface UpdateUserInput {
  * a new opCoId — already validated against the new org — is given in the same call; this
  * naturally re-triggers ProtectedRoute's profile-completion redirect for a NORMAL_USER.
  */
-export async function updateUser(userId: string, input: UpdateUserInput) {
+export async function updateUser(callerId: string, userId: string, input: UpdateUserInput) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) {
     throw new UserNotFoundError();
   }
-  if (user.role === 'ADMIN') {
+  // The super admin account itself is seed-managed only — never modifiable through the API.
+  if (user.isSuperAdmin) {
     throw new CannotModifyAdminError();
+  }
+  const roleChanging = input.role !== undefined && input.role !== user.role;
+  if (roleChanging && userId === callerId) {
+    throw new CannotChangeOwnRoleError();
+  }
+  const touchesAdmin = user.role === 'ADMIN' || (roleChanging && input.role === 'ADMIN');
+  if (touchesAdmin && !(await isCallerSuperAdmin(callerId))) {
+    throw new SuperAdminRequiredError();
   }
 
   const targetOrganizationId = input.organizationId ?? user.organizationId;
@@ -130,24 +157,28 @@ export async function updateUser(userId: string, input: UpdateUserInput) {
     data: {
       ...(input.organizationId ? { organizationId: input.organizationId } : {}),
       ...(opCoId !== undefined ? { opCoId } : {}),
+      ...(roleChanging ? { role: input.role } : {}),
     },
     select: USER_SELECT,
   });
 }
 
 /**
- * Admin-only delete (ADMIN.md item 1). Refuses ADMIN-role targets (same restriction as
- * updateUser — those are seed-time bootstrap only) and blocks deletion of anyone with any
- * questionnaire response history (User.responses has no onDelete: Cascade, and their
- * assessment history has real value even after they leave).
+ * Admin-only delete (ADMIN.md item 1). An ADMIN target may be deleted only by the super
+ * admin, and the super admin account never (same rules as updateUser). Blocks deletion of
+ * anyone with any questionnaire response history (User.responses has no onDelete: Cascade,
+ * and their assessment history has real value even after they leave).
  */
-export async function deleteUser(userId: string): Promise<void> {
+export async function deleteUser(callerId: string, userId: string): Promise<void> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) {
     throw new UserNotFoundError();
   }
-  if (user.role === 'ADMIN') {
+  if (user.isSuperAdmin || userId === callerId) {
     throw new CannotModifyAdminError();
+  }
+  if (user.role === 'ADMIN' && !(await isCallerSuperAdmin(callerId))) {
+    throw new SuperAdminRequiredError();
   }
 
   const responseCount = await prisma.questionnaireResponse.count({ where: { userId } });
