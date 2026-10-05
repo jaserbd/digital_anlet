@@ -5,6 +5,7 @@ import { parseDurationMs } from '../../lib/duration';
 import { AUTH_COOKIE_NAME } from '../../middleware/auth';
 import {
   DesignationNotInCatalogError,
+  NoActiveMembershipError,
   OpCoNotInOrganizationError,
   OpCoRequiredError,
   UserNotFoundError,
@@ -12,9 +13,11 @@ import {
   updateOwnProfile,
 } from '../users/users.service';
 import {
+  InvalidContextError,
   InvalidCredentialsError,
   InvalidResetTokenError,
   changeOwnPassword,
+  switchContext,
   getAuthenticatedUser,
   login,
   requestPasswordReset,
@@ -85,12 +88,33 @@ export async function meHandler(req: Request, res: Response) {
     res.status(401).json({ error: 'Not authenticated' });
     return;
   }
-  const user = await getAuthenticatedUser(req.user.sub);
+  const user = await getAuthenticatedUser(req.user);
   if (!user) {
     res.status(401).json({ error: 'Not authenticated' });
     return;
   }
   res.json(user);
+}
+
+const switchContextSchema = z.object({ membershipId: z.string().min(1).nullable() });
+
+export async function switchContextHandler(req: Request, res: Response) {
+  const parsed = switchContextSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request body' });
+    return;
+  }
+  try {
+    const token = await switchContext(req.user!, parsed.data.membershipId);
+    res.cookie(AUTH_COOKIE_NAME, token, cookieOptions);
+    res.status(204).end();
+  } catch (err) {
+    if (err instanceof InvalidContextError) {
+      res.status(403).json({ error: 'You do not have access to that organization' });
+      return;
+    }
+    throw err;
+  }
 }
 
 export async function changePasswordHandler(req: Request, res: Response) {
@@ -156,11 +180,15 @@ export async function updateProfileHandler(req: Request, res: Response) {
   }
 
   try {
-    await updateOwnProfile(req.user!.sub, parsed.data);
+    await updateOwnProfile(req.user!, parsed.data);
     res.status(204).end();
   } catch (err) {
     if (err instanceof UserNotFoundError) {
       res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    if (err instanceof NoActiveMembershipError) {
+      res.status(400).json({ error: 'Switch to an organization to complete its profile' });
       return;
     }
     if (err instanceof OpCoNotInOrganizationError) {

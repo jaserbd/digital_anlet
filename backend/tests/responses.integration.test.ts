@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma';
+import { callerFor } from './testUsers';
 import {
   ForbiddenError,
   UncoveredSkipError,
@@ -28,6 +29,7 @@ async function createTestUser(label: string) {
       passwordHash: 'not-a-real-hash',
       role: 'NORMAL_USER',
       organizationId: orgId,
+      memberships: { create: { organizationId: orgId, role: 'NORMAL_USER' } },
     },
   });
   userIds.push(user.id);
@@ -50,7 +52,7 @@ afterAll(async () => {
 describe('responses full submit flow (real DB)', () => {
   it('creates a response, records answers, submits, and computes a matching persisted result', async () => {
     const userId = await createTestUser('submitter');
-    const response = await getOrCreateResponse(userId, 'RAN_FM_GB1059A');
+    const response = await getOrCreateResponse(await callerFor(userId), 'RAN_FM_GB1059A');
     expect(response.status).toBe('IN_PROGRESS');
 
     const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
@@ -60,7 +62,7 @@ describe('responses full submit flow (real DB)', () => {
 
     for (const question of questionnaire.questions) {
       for (const subScenario of questionnaire.subScenarios) {
-        await upsertAnswer(response.id, userId, orgId, {
+        await upsertAnswer(response.id, userId, {
           questionId: question.id,
           subScenarioId: subScenario.id,
           selectedOption: 'A',
@@ -68,7 +70,7 @@ describe('responses full submit flow (real DB)', () => {
       }
     }
 
-    const result = await submitResponse(response.id, userId, orgId);
+    const result = await submitResponse(response.id, userId);
     // All-A across every question/sub-scenario -> every score hits its ceiling and every
     // sub-scenario achieves E2E, matching the scoring.test.ts unit-test golden master.
     expect(result.finalScore).toBe(4);
@@ -87,14 +89,14 @@ describe('responses full submit flow (real DB)', () => {
 
     // Single-shot for MVP: revisiting after submit returns the same submitted response,
     // not a fresh blank one (this was a real bug caught during manual browser testing).
-    const revisited = await getOrCreateResponse(userId, 'RAN_FM_GB1059A');
+    const revisited = await getOrCreateResponse(await callerFor(userId), 'RAN_FM_GB1059A');
     expect(revisited.id).toBe(response.id);
     expect(revisited.status).toBe('SUBMITTED');
   });
 
   it('rejects submitting a response with skipped answers that have no covering comment', async () => {
     const userId = await createTestUser('incomplete');
-    const response = await getOrCreateResponse(userId, 'RAN_FM_GB1059A');
+    const response = await getOrCreateResponse(await callerFor(userId), 'RAN_FM_GB1059A');
 
     const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
       where: { code: 'RAN_FM_GB1059A' },
@@ -102,7 +104,7 @@ describe('responses full submit flow (real DB)', () => {
     });
     const firstQuestion = questionnaire.questions[0]!;
     const firstSubScenario = questionnaire.subScenarios[0]!;
-    await upsertAnswer(response.id, userId, orgId, {
+    await upsertAnswer(response.id, userId, {
       questionId: firstQuestion.id,
       subScenarioId: firstSubScenario.id,
       selectedOption: 'A',
@@ -111,7 +113,7 @@ describe('responses full submit flow (real DB)', () => {
     const expectedMissingCount =
       questionnaire.questions.length * questionnaire.subScenarios.length - 1;
 
-    await expect(submitResponse(response.id, userId, orgId)).rejects.toSatisfy((err: unknown) => {
+    await expect(submitResponse(response.id, userId)).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(UncoveredSkipError);
       expect((err as UncoveredSkipError).missing).toHaveLength(expectedMissingCount);
       return true;
@@ -120,7 +122,7 @@ describe('responses full submit flow (real DB)', () => {
 
   it('allows submitting once every skipped answer is covered by a comment, re-normalizing the score', async () => {
     const userId = await createTestUser('skip-covered');
-    const response = await getOrCreateResponse(userId, 'RAN_FM_GB1059A');
+    const response = await getOrCreateResponse(await callerFor(userId), 'RAN_FM_GB1059A');
 
     const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
       where: { code: 'RAN_FM_GB1059A' },
@@ -134,7 +136,7 @@ describe('responses full submit flow (real DB)', () => {
         if (question.id === skippedQuestion.id && subScenario.id === skippedSubScenario.id) {
           continue; // deliberately left unanswered — covered by the comment below instead
         }
-        await upsertAnswer(response.id, userId, orgId, {
+        await upsertAnswer(response.id, userId, {
           questionId: question.id,
           subScenarioId: subScenario.id,
           selectedOption: 'A',
@@ -142,14 +144,14 @@ describe('responses full submit flow (real DB)', () => {
       }
     }
 
-    await upsertComment(response.id, userId, orgId, {
+    await upsertComment(response.id, userId, {
       questionId: skippedQuestion.id,
       commentText: 'Not applicable to this sub-scenario.',
       subScenarioIds: [skippedSubScenario.id],
       appliesToNone: false,
     });
 
-    const result = await submitResponse(response.id, userId, orgId);
+    const result = await submitResponse(response.id, userId);
     expect(result.subScenarioScores).toHaveLength(questionnaire.subScenarios.length);
     // The sub-scenario with the skipped question is still scored (re-normalized over its
     // remaining answered questions), not left at 0 or null — only a fully-skipped
@@ -168,7 +170,7 @@ describe('responses full submit flow (real DB)', () => {
     // an actual skip — only a comment explicitly tagged to the specific unanswered
     // sub-scenario counts as coverage.
     const userId = await createTestUser('none-not-coverage');
-    const response = await getOrCreateResponse(userId, 'RAN_FM_GB1059A');
+    const response = await getOrCreateResponse(await callerFor(userId), 'RAN_FM_GB1059A');
 
     const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
       where: { code: 'RAN_FM_GB1059A' },
@@ -182,7 +184,7 @@ describe('responses full submit flow (real DB)', () => {
         if (question.id === skippedQuestion.id && subScenario.id === skippedSubScenario.id) {
           continue; // deliberately left unanswered
         }
-        await upsertAnswer(response.id, userId, orgId, {
+        await upsertAnswer(response.id, userId, {
           questionId: question.id,
           subScenarioId: subScenario.id,
           selectedOption: 'A',
@@ -190,14 +192,14 @@ describe('responses full submit flow (real DB)', () => {
       }
     }
 
-    await upsertComment(response.id, userId, orgId, {
+    await upsertComment(response.id, userId, {
       questionId: skippedQuestion.id,
       commentText: 'General note, not tied to a specific sub-scenario.',
       subScenarioIds: [],
       appliesToNone: true,
     });
 
-    await expect(submitResponse(response.id, userId, orgId)).rejects.toSatisfy((err: unknown) => {
+    await expect(submitResponse(response.id, userId)).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(UncoveredSkipError);
       expect((err as UncoveredSkipError).missing).toEqual([
         { questionId: skippedQuestion.id, subScenarioId: skippedSubScenario.id },
@@ -209,10 +211,10 @@ describe('responses full submit flow (real DB)', () => {
   it('rejects another user from reading or answering someone else’s response', async () => {
     const userId = await createTestUser('owner');
     const otherUserId = await createTestUser('intruder');
-    const response = await getOrCreateResponse(userId, 'RAN_FM_GB1059A');
+    const response = await getOrCreateResponse(await callerFor(userId), 'RAN_FM_GB1059A');
 
     await expect(
-      upsertAnswer(response.id, otherUserId, orgId, {
+      upsertAnswer(response.id, otherUserId, {
         questionId: 'irrelevant',
         subScenarioId: 'irrelevant',
         selectedOption: 'A',

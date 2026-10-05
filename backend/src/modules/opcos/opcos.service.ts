@@ -52,17 +52,17 @@ export async function createOpCo(input: { name: string; country: string; organiz
   });
 }
 
-// Admin-only delete (ADMIN.md item 1). Blocked (not cascaded) if any user is still assigned
-// to this OpCo — User.opCoId has no onDelete: Cascade, so those respondents' history would
-// otherwise be orphaned.
+// Admin-only delete (ADMIN.md item 1). Blocked (not cascaded) if any membership is still
+// assigned to this OpCo — those respondents' NatCo would otherwise silently disappear from
+// their history.
 export async function deleteOpCo(id: string): Promise<void> {
   const opCo = await prisma.opCo.findUnique({ where: { id } });
   if (!opCo) {
     throw new OpCoNotFoundError();
   }
 
-  const userCount = await prisma.user.count({ where: { opCoId: id } });
-  if (userCount > 0) {
+  const membershipCount = await prisma.membership.count({ where: { opCoId: id } });
+  if (membershipCount > 0) {
     throw new OpCoHasDependentsError();
   }
 

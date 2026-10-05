@@ -132,10 +132,14 @@ export async function getOrganizationQuestionnaireSummary(
     throw new QuestionnaireNotFoundError();
   }
 
-  const users = await prisma.user.findMany({
+  // Respondents = this organization's memberships (MULTI_ORG_PLAN.md) — profile and response
+  // are per membership, so a person in two organizations appears in each with that
+  // organization's NatCo and answers.
+  const memberships = await prisma.membership.findMany({
     where: { organizationId, role: { in: RESPONDENT_ROLES } },
-    orderBy: { email: 'asc' },
+    orderBy: { user: { email: 'asc' } },
     include: {
+      user: { select: { id: true, email: true, firstName: true, lastName: true } },
       opCo: { select: { id: true, name: true, country: true } },
       responses: {
         where: { questionnaireId: questionnaire.id },
@@ -146,27 +150,27 @@ export async function getOrganizationQuestionnaireSummary(
     },
   });
 
-  const respondents: RespondentSummaryDto[] = users.map((u) => {
-    const latest = u.responses[0];
+  const respondents: RespondentSummaryDto[] = memberships.map((m) => {
+    const latest = m.responses[0];
     return {
-      userId: u.id,
-      email: u.email,
-      firstName: u.firstName,
-      lastName: u.lastName,
+      userId: m.user.id,
+      email: m.user.email,
+      firstName: m.user.firstName,
+      lastName: m.user.lastName,
       status: latest?.status ?? 'NOT_STARTED',
       finalScore: latest?.result ? Number(latest.result.finalScore) : null,
-      opCoId: u.opCo?.id ?? null,
-      opCoName: u.opCo?.name ?? null,
-      country: u.opCo?.country ?? null,
-      workingDomain: u.workingDomain,
-      designation: u.designation,
+      opCoId: m.opCo?.id ?? null,
+      opCoName: m.opCo?.name ?? null,
+      country: m.opCo?.country ?? null,
+      workingDomain: m.workingDomain,
+      designation: m.designation,
     };
   });
 
   const grouped = await prisma.answer.groupBy({
     by: ['questionId', 'subScenarioId', 'selectedOption'],
     where: {
-      response: { questionnaireId: questionnaire.id, status: 'SUBMITTED', user: { organizationId } },
+      response: { questionnaireId: questionnaire.id, status: 'SUBMITTED', membership: { organizationId } },
     },
     _count: { _all: true },
   });
@@ -194,23 +198,25 @@ export async function getOrganizationQuestionnaireSummary(
   return { questionnaireCode: questionnaire.code, respondents, answerDistribution };
 }
 
-type IdentitySourceUser = {
-  id: string;
-  email: string;
+// A respondent's identity comes from the membership the response belongs to
+// (MULTI_ORG_PLAN.md): email from the user, NatCo/profile from that organization's membership.
+type IdentitySourceMembership = {
+  userId: string;
   workingDomain: string | null;
   designation: string | null;
   opCo: { id: string; name: string; country: string } | null;
+  user: { email: string };
 };
 
-function toIdentity(user: IdentitySourceUser): DrilldownRespondentIdentityDto {
+function toIdentity(membership: IdentitySourceMembership): DrilldownRespondentIdentityDto {
   return {
-    userId: user.id,
-    email: user.email,
-    opCoId: user.opCo?.id ?? null,
-    opCoName: user.opCo?.name ?? null,
-    country: user.opCo?.country ?? null,
-    workingDomain: user.workingDomain,
-    designation: user.designation,
+    userId: membership.userId,
+    email: membership.user.email,
+    opCoId: membership.opCo?.id ?? null,
+    opCoName: membership.opCo?.name ?? null,
+    country: membership.opCo?.country ?? null,
+    workingDomain: membership.workingDomain,
+    designation: membership.designation,
   };
 }
 
@@ -223,11 +229,11 @@ const KEI_STATE_SELECT = {
 } as const;
 
 const IDENTITY_SELECT = {
-  id: true,
-  email: true,
+  userId: true,
   workingDomain: true,
   designation: true,
   opCo: { select: { id: true, name: true, country: true } },
+  user: { select: { email: true } },
 } as const;
 
 /**
@@ -250,7 +256,7 @@ export async function getAnswerDrilldown(
     throw new QuestionnaireNotFoundError();
   }
 
-  const responseScope = { questionnaireId: questionnaire.id, status: 'SUBMITTED' as const, user: { organizationId } };
+  const responseScope = { questionnaireId: questionnaire.id, status: 'SUBMITTED' as const, membership: { organizationId } };
 
   const [answers, comments, keis] = await Promise.all([
     prisma.answer.findMany({
@@ -259,7 +265,7 @@ export async function getAnswerDrilldown(
         questionId: true,
         subScenarioId: true,
         selectedOption: true,
-        response: { select: { user: { select: IDENTITY_SELECT } } },
+        response: { select: { membership: { select: IDENTITY_SELECT } } },
       },
     }),
     prisma.questionComment.findMany({
@@ -269,7 +275,7 @@ export async function getAnswerDrilldown(
         commentText: true,
         appliesToNone: true,
         subScenarios: { select: { subScenarioId: true } },
-        response: { select: { user: { select: IDENTITY_SELECT } } },
+        response: { select: { membership: { select: IDENTITY_SELECT } } },
       },
     }),
     prisma.responseKei.findMany({
@@ -277,20 +283,20 @@ export async function getAnswerDrilldown(
       orderBy: { indicator: { sortOrder: 'asc' } },
       select: {
         ...KEI_STATE_SELECT,
-        response: { select: { user: { select: IDENTITY_SELECT } } },
+        response: { select: { membership: { select: IDENTITY_SELECT } } },
       },
     }),
   ]);
 
   const commentByUserAndQuestion = new Map<string, string>();
   const commentEntries: CommentDrilldownEntryDto[] = comments.map((c) => {
-    commentByUserAndQuestion.set(`${c.response.user.id}:${c.questionId}`, c.commentText);
+    commentByUserAndQuestion.set(`${c.response.membership.userId}:${c.questionId}`, c.commentText);
     return {
       questionId: c.questionId,
       subScenarioIds: c.subScenarios.map((s) => s.subScenarioId),
       appliesToNone: c.appliesToNone,
       commentText: c.commentText,
-      respondent: toIdentity(c.response.user),
+      respondent: toIdentity(c.response.membership),
     };
   });
 
@@ -308,8 +314,8 @@ export async function getAnswerDrilldown(
       byKey.set(key, entry);
     }
     entry.respondents.push({
-      ...toIdentity(a.response.user),
-      comment: commentByUserAndQuestion.get(`${a.response.user.id}:${a.questionId}`) ?? null,
+      ...toIdentity(a.response.membership),
+      comment: commentByUserAndQuestion.get(`${a.response.membership.userId}:${a.questionId}`) ?? null,
     });
   }
 
@@ -318,7 +324,7 @@ export async function getAnswerDrilldown(
     selectedOption: k.selectedOption,
     indicatorValue: k.indicatorValue,
     comment: k.comment,
-    respondent: toIdentity(k.response.user),
+    respondent: toIdentity(k.response.membership),
   }));
 
   return {
@@ -356,7 +362,7 @@ export async function getCognitiveActivitySummary(
       response: {
         questionnaireId: questionnaire.id,
         status: 'SUBMITTED',
-        user: {
+        membership: {
           organizationId,
           ...(filters.opCoId ? { opCoId: filters.opCoId } : {}),
           ...(filters.country ? { opCo: { country: filters.country } } : {}),
@@ -416,7 +422,7 @@ export async function getCrossOrgCommentCollection(questionnaireCode: string): P
     throw new QuestionnaireNotFoundError();
   }
 
-  const userWithOrg = {
+  const membershipWithOrg = {
     select: { ...IDENTITY_SELECT, organization: { select: { id: true, name: true } } },
   };
   const [comments, keiComments] = await Promise.all([
@@ -427,7 +433,7 @@ export async function getCrossOrgCommentCollection(questionnaireCode: string): P
         commentText: true,
         appliesToNone: true,
         subScenarios: { select: { subScenarioId: true } },
-        response: { select: { user: userWithOrg } },
+        response: { select: { membership: membershipWithOrg } },
       },
     }),
     // KEI comments (NEW_HVS_PLAN.md Phase B) join the same collection.
@@ -437,7 +443,7 @@ export async function getCrossOrgCommentCollection(questionnaireCode: string): P
         comment: { not: null },
       },
       orderBy: { indicator: { sortOrder: 'asc' } },
-      select: { ...KEI_STATE_SELECT, response: { select: { user: userWithOrg } } },
+      select: { ...KEI_STATE_SELECT, response: { select: { membership: membershipWithOrg } } },
     }),
   ]);
 
@@ -446,9 +452,9 @@ export async function getCrossOrgCommentCollection(questionnaireCode: string): P
     subScenarioIds: c.subScenarios.map((s) => s.subScenarioId),
     appliesToNone: c.appliesToNone,
     commentText: c.commentText,
-    respondent: toIdentity(c.response.user),
-    organizationId: c.response.user.organization.id,
-    organizationName: c.response.user.organization.name,
+    respondent: toIdentity(c.response.membership),
+    organizationId: c.response.membership.organization.id,
+    organizationName: c.response.membership.organization.name,
   }));
 
   const keiCommentEntries: CrossOrgKeiCommentEntryDto[] = keiComments.map((k) => ({
@@ -456,9 +462,9 @@ export async function getCrossOrgCommentCollection(questionnaireCode: string): P
     selectedOption: k.selectedOption,
     indicatorValue: k.indicatorValue,
     comment: k.comment,
-    respondent: toIdentity(k.response.user),
-    organizationId: k.response.user.organization.id,
-    organizationName: k.response.user.organization.name,
+    respondent: toIdentity(k.response.membership),
+    organizationId: k.response.membership.organization.id,
+    organizationName: k.response.membership.organization.name,
   }));
 
   return { questionnaireCode: questionnaire.code, comments: commentEntries, keiComments: keiCommentEntries };
@@ -499,7 +505,7 @@ async function computeBenchmarkRows(
 
   const unassignedUserOrgIds = new Set(
     (
-      await prisma.user.findMany({
+      await prisma.membership.findMany({
         where: {
           role: { in: RESPONDENT_ROLES },
           opCoId: null,
@@ -508,7 +514,7 @@ async function computeBenchmarkRows(
         select: { organizationId: true },
         distinct: ['organizationId'],
       })
-    ).map((u) => u.organizationId),
+    ).map((m) => m.organizationId),
   );
 
   const rowLabels: BenchmarkRowLabel[] = [];
@@ -533,7 +539,7 @@ async function computeBenchmarkRows(
     }
   }
 
-  const respondentCounts = await prisma.user.groupBy({
+  const respondentCounts = await prisma.membership.groupBy({
     by: ['organizationId', 'opCoId'],
     where: { role: { in: RESPONDENT_ROLES }, ...(scopeOrganizationId ? { organizationId: scopeOrganizationId } : {}) },
     _count: { _all: true },
@@ -546,15 +552,15 @@ async function computeBenchmarkRows(
     where: {
       questionnaireId: questionnaire.id,
       status: 'SUBMITTED',
-      ...(scopeOrganizationId ? { user: { organizationId: scopeOrganizationId } } : {}),
+      ...(scopeOrganizationId ? { membership: { organizationId: scopeOrganizationId } } : {}),
     },
     include: {
-      user: { select: { organizationId: true, opCoId: true } },
+      membership: { select: { organizationId: true, opCoId: true } },
       result: { include: { subScenarioScores: { include: { subScenario: true } } } },
       _count: { select: { comments: true } },
     },
   });
-  const byKey = groupScores(submittedResponses, (r) => rowKey(r.user.organizationId, r.user.opCoId));
+  const byKey = groupScores(submittedResponses, (r) => rowKey(r.membership.organizationId, r.membership.opCoId));
 
   return rowLabels.map((label) => {
     const key = rowKey(label.organizationId, label.opCoId);

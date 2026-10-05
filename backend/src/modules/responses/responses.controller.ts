@@ -6,6 +6,7 @@ import {
   AcceptanceClosedError,
   ForbiddenError,
   InvalidKeiError,
+  NoMembershipError,
   ResponseNotFoundError,
   ResultNotAvailableError,
   UncoveredSkipError,
@@ -65,6 +66,10 @@ function handleKnownErrors(err: unknown, res: Response): boolean {
     });
     return true;
   }
+  if (err instanceof NoMembershipError) {
+    res.status(403).json({ error: 'Switch to an organization to answer questionnaires' });
+    return true;
+  }
   if (err instanceof InvalidKeiError) {
     res.status(400).json({ error: 'Invalid effectiveness indicator or option' });
     return true;
@@ -84,10 +89,7 @@ export async function createResponseHandler(req: Request, res: Response) {
   }
 
   try {
-    const response = await getOrCreateResponse(
-      req.user!.sub,
-      parsed.data.questionnaireCode,
-    );
+    const response = await getOrCreateResponse(req.user!, parsed.data.questionnaireCode);
     res.status(200).json(response);
   } catch (err) {
     if (!handleKnownErrors(err, res)) throw err;
@@ -111,7 +113,7 @@ export async function upsertAnswerHandler(req: Request, res: Response) {
   }
 
   try {
-    await upsertAnswer(requireParam(req, 'id'), req.user!.sub, req.user!.organizationId, parsed.data);
+    await upsertAnswer(requireParam(req, 'id'), req.user!.sub, parsed.data);
     res.status(204).end();
   } catch (err) {
     if (!handleKnownErrors(err, res)) throw err;
@@ -120,7 +122,7 @@ export async function upsertAnswerHandler(req: Request, res: Response) {
 
 export async function deleteAnswerHandler(req: Request, res: Response) {
   try {
-    await deleteAnswer(requireParam(req, 'id'), req.user!.sub, req.user!.organizationId, {
+    await deleteAnswer(requireParam(req, 'id'), req.user!.sub, {
       questionId: requireParam(req, 'questionId'),
       subScenarioId: requireParam(req, 'subScenarioId'),
     });
@@ -138,7 +140,7 @@ export async function upsertCommentHandler(req: Request, res: Response) {
   }
 
   try {
-    await upsertComment(requireParam(req, 'id'), req.user!.sub, req.user!.organizationId, parsed.data);
+    await upsertComment(requireParam(req, 'id'), req.user!.sub, parsed.data);
     res.status(204).end();
   } catch (err) {
     if (!handleKnownErrors(err, res)) throw err;
@@ -153,7 +155,7 @@ export async function upsertKeiHandler(req: Request, res: Response) {
   }
 
   try {
-    await upsertKei(requireParam(req, 'id'), req.user!.sub, req.user!.organizationId, parsed.data);
+    await upsertKei(requireParam(req, 'id'), req.user!.sub, parsed.data);
     res.status(204).end();
   } catch (err) {
     if (!handleKnownErrors(err, res)) throw err;
@@ -162,7 +164,7 @@ export async function upsertKeiHandler(req: Request, res: Response) {
 
 export async function submitResponseHandler(req: Request, res: Response) {
   try {
-    const result = await submitResponse(requireParam(req, 'id'), req.user!.sub, req.user!.organizationId);
+    const result = await submitResponse(requireParam(req, 'id'), req.user!.sub);
     res.json(result);
   } catch (err) {
     if (!handleKnownErrors(err, res)) throw err;
@@ -179,6 +181,6 @@ export async function getResultHandler(req: Request, res: Response) {
 }
 
 export async function getCoreDomainSummaryHandler(req: Request, res: Response) {
-  const summary = await getCoreDomainSummary(req.user!.sub);
+  const summary = await getCoreDomainSummary(req.user!.membershipId);
   res.json(summary);
 }

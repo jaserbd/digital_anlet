@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma';
+import { callerFor } from './testUsers';
 import { getCombinedBenchmarkingSummary } from '../src/modules/insights/insights.service';
 import { HVS_GROUPS } from '../src/modules/questionnaire/hvsGroups';
 import { getOrCreateResponse, submitResponse, upsertAnswer } from '../src/modules/responses/responses.service';
@@ -23,6 +24,7 @@ async function createUser(orgId: string, label: string) {
       passwordHash: 'not-a-real-hash',
       role: 'NORMAL_USER',
       organizationId: orgId,
+      memberships: { create: { organizationId: orgId, role: 'NORMAL_USER' } },
     },
   });
   userIds.push(user.id);
@@ -33,22 +35,22 @@ async function createUser(orgId: string, label: string) {
 // ceiling for both Core questionnaires (verified in scoring.test.ts: Core FM's Equipment
 // sub-scenario reaches exactly 4 all-A; Core Stability has no capped question at all), so a
 // full all-A submission gives finalScore = 4 for either questionnaire.
-async function submitAllA(userId: string, organizationId: string, questionnaireCode: string) {
-  const response = await getOrCreateResponse(userId, questionnaireCode);
+async function submitAllA(userId: string, questionnaireCode: string) {
+  const response = await getOrCreateResponse(await callerFor(userId), questionnaireCode);
   const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
     where: { code: questionnaireCode },
     include: { questions: true, subScenarios: true },
   });
   for (const question of questionnaire.questions) {
     for (const subScenario of questionnaire.subScenarios) {
-      await upsertAnswer(response.id, userId, organizationId, {
+      await upsertAnswer(response.id, userId, {
         questionId: question.id,
         subScenarioId: subScenario.id,
         selectedOption: 'A',
       });
     }
   }
-  return submitResponse(response.id, userId, organizationId);
+  return submitResponse(response.id, userId);
 }
 
 beforeAll(async () => {
@@ -66,11 +68,11 @@ afterAll(async () => {
 describe('getCombinedBenchmarkingSummary (real DB)', () => {
   it('blends both halves 50/50 for an org that submitted both, and returns null combined for an org missing one half', async () => {
     const bothUser = await createUser(orgBothId, 'both-halves');
-    await submitAllA(bothUser, orgBothId, CORE_GROUP.questionnaireCodes[0]!);
-    await submitAllA(bothUser, orgBothId, CORE_GROUP.questionnaireCodes[1]!);
+    await submitAllA(bothUser, CORE_GROUP.questionnaireCodes[0]!);
+    await submitAllA(bothUser, CORE_GROUP.questionnaireCodes[1]!);
 
     const oneUser = await createUser(orgOneId, 'one-half');
-    await submitAllA(oneUser, orgOneId, CORE_GROUP.questionnaireCodes[0]!);
+    await submitAllA(oneUser, CORE_GROUP.questionnaireCodes[0]!);
     // Deliberately no Stability submission for orgOneId.
 
     const summary = await getCombinedBenchmarkingSummary(CORE_GROUP);

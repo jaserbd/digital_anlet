@@ -32,6 +32,10 @@ export class ResultNotAvailableError extends Error {}
 // status.
 export class AcceptanceClosedError extends Error {}
 
+// Answering needs an organization membership (MULTI_ORG_PLAN.md) — the admin context, or a
+// user with no membership, can't start a response.
+export class NoMembershipError extends Error {}
+
 // Thrown at submit time when one or more unanswered (question, subScenario) pairs have no
 // covering comment — carries the specific list so the frontend can show exactly what's
 // missing (mirrors the client-side warning computed from the same data). An unanswered pair
@@ -110,6 +114,8 @@ function toResponseDto(response: {
 
 const RESPONSE_INCLUDE = {
   questionnaire: true,
+  // The organization the response counts toward — its open/closed setting governs edits.
+  membership: { select: { organizationId: true } },
   answers: true,
   comments: { include: { subScenarios: true } },
   keis: true,
@@ -129,9 +135,10 @@ async function loadOwnedResponse(responseId: string, userId: string) {
   return response;
 }
 
-// Resolves the caller's own-org accepting-responses flag for this response's questionnaire
-// (THIRD_REVIEW.md item 7 — was a single global Questionnaire.acceptingResponses read
-// directly off the loaded response). Shared by all 4 mutation guards below.
+// Resolves the accepting-responses flag of the organization this response counts toward
+// (THIRD_REVIEW.md item 7). It's the response's own membership organization, not the caller's
+// active context (MULTI_ORG_PLAN.md) — otherwise switching to another organization could
+// edit a response whose own organization has closed. Shared by all mutation guards below.
 async function assertAccepting(questionnaireId: string, organizationId: string): Promise<void> {
   if (!(await getAcceptingResponses(questionnaireId, organizationId))) {
     throw new AcceptanceClosedError();
@@ -146,9 +153,13 @@ async function assertAccepting(questionnaireId: string, organizationId: string):
  * caller (QuestionnairePage) redirects to /results when it sees a SUBMITTED response.
  */
 export async function getOrCreateResponse(
-  userId: string,
+  caller: { sub: string; membershipId: string | null },
   questionnaireCode: string,
 ): Promise<ResponseDto> {
+  if (!caller.membershipId) {
+    throw new NoMembershipError();
+  }
+  const membershipId = caller.membershipId;
   const questionnaire = await prisma.questionnaire.findUnique({
     where: { code: questionnaireCode },
   });
@@ -156,9 +167,9 @@ export async function getOrCreateResponse(
     throw new QuestionnaireNotFoundError();
   }
 
-  const existing = await prisma.questionnaireResponse.findFirst({
-    where: { userId, questionnaireId: questionnaire.id },
-    orderBy: { createdAt: 'desc' },
+  // One response per membership per questionnaire — answers are separate per organization.
+  const existing = await prisma.questionnaireResponse.findUnique({
+    where: { membershipId_questionnaireId: { membershipId, questionnaireId: questionnaire.id } },
     include: RESPONSE_INCLUDE,
   });
   if (existing) {
@@ -166,7 +177,7 @@ export async function getOrCreateResponse(
   }
 
   const created = await prisma.questionnaireResponse.create({
-    data: { userId, questionnaireId: questionnaire.id },
+    data: { userId: caller.sub, membershipId, questionnaireId: questionnaire.id },
     include: RESPONSE_INCLUDE,
   });
   return toResponseDto(created);
@@ -175,11 +186,10 @@ export async function getOrCreateResponse(
 export async function upsertAnswer(
   responseId: string,
   userId: string,
-  organizationId: string,
   input: { questionId: string; subScenarioId: string; selectedOption: AnswerOption },
 ): Promise<void> {
   const response = await loadOwnedResponse(responseId, userId);
-  await assertAccepting(response.questionnaireId, organizationId);
+  await assertAccepting(response.questionnaireId, response.membership.organizationId);
 
   await prisma.answer.upsert({
     where: {
@@ -205,11 +215,10 @@ export async function upsertAnswer(
 export async function deleteAnswer(
   responseId: string,
   userId: string,
-  organizationId: string,
   input: { questionId: string; subScenarioId: string },
 ): Promise<void> {
   const response = await loadOwnedResponse(responseId, userId);
-  await assertAccepting(response.questionnaireId, organizationId);
+  await assertAccepting(response.questionnaireId, response.membership.organizationId);
 
   await prisma.answer.deleteMany({
     where: { responseId, questionId: input.questionId, subScenarioId: input.subScenarioId },
@@ -219,7 +228,6 @@ export async function deleteAnswer(
 export async function upsertComment(
   responseId: string,
   userId: string,
-  organizationId: string,
   input: {
     questionId: string;
     commentText: string;
@@ -228,7 +236,7 @@ export async function upsertComment(
   },
 ): Promise<void> {
   const response = await loadOwnedResponse(responseId, userId);
-  await assertAccepting(response.questionnaireId, organizationId);
+  await assertAccepting(response.questionnaireId, response.membership.organizationId);
 
   await prisma.$transaction(async (tx) => {
     const comment = await tx.questionComment.upsert({
@@ -265,11 +273,10 @@ function blankToNull(value: string | null): string | null {
 export async function upsertKei(
   responseId: string,
   userId: string,
-  organizationId: string,
   input: KeiAnswerDto,
 ): Promise<void> {
   const response = await loadOwnedResponse(responseId, userId);
-  await assertAccepting(response.questionnaireId, organizationId);
+  await assertAccepting(response.questionnaireId, response.membership.organizationId);
 
   const indicator = await prisma.effectivenessIndicator.findUnique({ where: { id: input.indicatorId } });
   if (!indicator || indicator.questionnaireId !== response.questionnaireId) {
@@ -311,10 +318,9 @@ export async function upsertKei(
 export async function submitResponse(
   responseId: string,
   userId: string,
-  organizationId: string,
 ): Promise<ScoreResultDto> {
   const response = await loadOwnedResponse(responseId, userId);
-  await assertAccepting(response.questionnaireId, organizationId);
+  await assertAccepting(response.questionnaireId, response.membership.organizationId);
 
   const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
     where: { id: response.questionnaireId },
@@ -489,11 +495,11 @@ export async function getResult(responseId: string, userId: string): Promise<Sco
 }
 
 async function getLatestSubmittedResultByCode(
-  userId: string,
+  membershipId: string,
   questionnaireCode: string,
 ): Promise<ScoreResultDto | null> {
   const response = await prisma.questionnaireResponse.findFirst({
-    where: { userId, status: 'SUBMITTED', questionnaire: { code: questionnaireCode } },
+    where: { membershipId, status: 'SUBMITTED', questionnaire: { code: questionnaireCode } },
     orderBy: { submittedAt: 'desc' },
     include: { result: { include: { subScenarioScores: { include: { subScenario: true } } } } },
   });
@@ -522,11 +528,14 @@ async function getLatestSubmittedResultByCode(
  * score." Either half may not have been submitted yet — combinedScore is only present
  * once both are.
  */
-export async function getCoreDomainSummary(userId: string): Promise<CoreDomainSummaryDto> {
-  const [faultManagement, stability] = await Promise.all([
-    getLatestSubmittedResultByCode(userId, CORE_FAULT_MANAGEMENT_CODE),
-    getLatestSubmittedResultByCode(userId, CORE_STABILITY_CODE),
-  ]);
+export async function getCoreDomainSummary(membershipId: string | null): Promise<CoreDomainSummaryDto> {
+  // Per active membership (MULTI_ORG_PLAN.md) — the admin context has no answers of its own.
+  const [faultManagement, stability] = membershipId
+    ? await Promise.all([
+        getLatestSubmittedResultByCode(membershipId, CORE_FAULT_MANAGEMENT_CODE),
+        getLatestSubmittedResultByCode(membershipId, CORE_STABILITY_CODE),
+      ])
+    : [null, null];
 
   const combinedScore =
     faultManagement && stability

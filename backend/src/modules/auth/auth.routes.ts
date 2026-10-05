@@ -8,6 +8,7 @@ import {
   logoutHandler,
   meHandler,
   resetPasswordHandler,
+  switchContextHandler,
   updateProfileHandler,
 } from './auth.controller';
 
@@ -19,4 +20,5 @@ authRouter.post('/forgot-password', asyncHandler(forgotPasswordHandler));
 authRouter.post('/reset-password', asyncHandler(resetPasswordHandler));
 authRouter.get('/me', authenticate, asyncHandler(meHandler));
 authRouter.put('/profile', authenticate, asyncHandler(updateProfileHandler));
+authRouter.post('/context', authenticate, asyncHandler(switchContextHandler));
 authRouter.put('/change-password', authenticate, asyncHandler(changePasswordHandler));

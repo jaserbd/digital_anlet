@@ -1,14 +1,32 @@
 import type { AnswerOption, Role, SubScenarioCode } from './enums';
 import type { ScoreResultDto } from './scoring.types';
 
+// One working context a user can switch into (MULTI_ORG_PLAN.md): "Admin (all clients)"
+// (membershipId null, admins only) or one of their organization memberships.
+export interface UserContextDto {
+  membershipId: string | null;
+  organizationId: string;
+  organizationName: string;
+  role: Role;
+}
+
 export interface AuthenticatedUserDto {
   id: string;
   email: string;
+  // The *active context's* role and organization (MULTI_ORG_PLAN.md) — what every screen
+  // works with. ADMIN + home organization in the admin context; otherwise the active
+  // membership's role and organization.
   role: Role;
   organizationId: string;
-  // Null until the user completes their profile (see ProfilePage) — a NORMAL_USER with
-  // opCoId == null is routed there before reaching the domain picker. Not required for
-  // EXECUTIVE/ADMIN, who don't answer questionnaires.
+  activeMembershipId: string | null;
+  // Global admin (independent of the active context) — admins can always switch to the
+  // admin context.
+  isAdmin: boolean;
+  // Every context this user can switch into; the frontend shows a picker after login when
+  // there's more than one.
+  contexts: UserContextDto[];
+  // The active membership's profile (null in the admin context). Null until completed —
+  // a NORMAL_USER membership with opCoId == null is routed to /profile before answering.
   opCoId: string | null;
   workingDomain: string | null;
   designation: string | null;
@@ -17,6 +35,11 @@ export interface AuthenticatedUserDto {
   mustChangePassword: boolean;
   // An ADMIN who may also create/promote/demote admins (ADMIN_MANAGEMENT_PLAN.md).
   isSuperAdmin: boolean;
+}
+
+export interface SwitchContextRequestDto {
+  // null = the admin context (admins only)
+  membershipId: string | null;
 }
 
 export interface ChangePasswordRequestDto {
@@ -197,26 +220,59 @@ export interface ReferenceListEntryDto {
   organizationId: string | null;
 }
 
+// One organization + role for a user (MULTI_ORG_PLAN.md), with that organization's profile.
+export interface MembershipDto {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  role: Role; // EXECUTIVE or NORMAL_USER
+  opCoId: string | null;
+  opCoName: string | null;
+  workingDomain: string | null;
+  designation: string | null;
+  // Responses recorded under this membership — a membership with any can't be removed.
+  responseCount: number;
+}
+
 export interface UserDto {
   id: string;
   email: string;
+  // Global role only: ADMIN, or NORMAL_USER for every non-admin (whose per-organization roles
+  // are in `memberships`).
   role: Role;
+  // Home organization (the internal org for admins).
   organizationId: string;
   firstName: string | null;
   lastName: string | null;
-  opCoId: string | null;
-  workingDomain: string | null;
-  designation: string | null;
   isSuperAdmin: boolean;
+  memberships: MembershipDto[];
 }
 
-// Admin-only reassignment (SECOND_REVIEW.md item 8) — changing organizationId always clears
-// opCoId server-side unless a new opCoId (validated against the new org) is given too. `role`
-// switches Normal User <-> Executive (any admin) or to/from Admin (super admin only).
+// Grant (role: 'ADMIN') or remove (role: 'NORMAL_USER') the global Admin role — super admin only.
 export interface UpdateUserRequestDto {
-  organizationId?: string;
-  opCoId?: string | null;
   role?: Role;
+}
+
+export interface AddMembershipRequestDto {
+  organizationId: string;
+  role: Extract<Role, 'NORMAL_USER' | 'EXECUTIVE'>;
+}
+
+export interface UpdateMembershipRequestDto {
+  role: Extract<Role, 'NORMAL_USER' | 'EXECUTIVE'>;
+}
+
+// "Create user" with an email that already exists (and a non-admin role) adds a membership to
+// that user instead of failing (MULTI_ORG_PLAN.md).
+export interface CreateUserResultDto {
+  status: 'created' | 'membership-added';
+  user: UserDto;
+}
+
+// Admin-generated one-time password (admin_management.md line 12), shown once to forward to
+// the user, who must change it at next login.
+export interface TemporaryPasswordDto {
+  temporaryPassword: string;
 }
 
 // Bulk user creation from an uploaded CSV (OVERVIEW.md item 4) — one row per user, parsed
@@ -235,7 +291,9 @@ export interface BulkCreateUsersRowDto {
 export interface BulkCreateUsersResultDto {
   row: number;
   email: string;
-  status: 'created' | 'error';
+  // 'membership-added': the email already existed, so the row's organization/role was added
+  // to that user (password unchanged — no tempPassword).
+  status: 'created' | 'membership-added' | 'error';
   // Only present when status === 'created' — the one-time password (either the row's own or
   // a generated one), shown to the Admin exactly once since it isn't stored in plain text.
   tempPassword?: string;

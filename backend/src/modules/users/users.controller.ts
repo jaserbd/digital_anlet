@@ -1,18 +1,24 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import {
+  AlreadyMemberError,
   CannotChangeOwnRoleError,
   CannotModifyAdminError,
   EmailTakenError,
+  MembershipHasResponsesError,
+  MembershipNotFoundError,
   SuperAdminRequiredError,
-  OpCoNotInOrganizationError,
   OrganizationNotFoundError,
   UserHasResponsesError,
   UserNotFoundError,
+  addMembership,
   createUser,
   createUsersBulk,
   deleteUser,
   listUsers,
+  removeMembership,
+  setTemporaryPassword,
+  updateMembership,
   updateUser,
 } from './users.service';
 
@@ -35,8 +41,8 @@ export async function createUserHandler(req: Request, res: Response) {
   }
 
   try {
-    const user = await createUser(parsed.data, req.user!.sub);
-    res.status(201).json(user);
+    const result = await createUser(parsed.data, req.user!.sub);
+    res.status(result.status === 'created' ? 201 : 200).json(result);
   } catch (err) {
     if (err instanceof SuperAdminRequiredError) {
       res.status(403).json({ error: 'Only the super admin can create admin accounts' });
@@ -44,6 +50,10 @@ export async function createUserHandler(req: Request, res: Response) {
     }
     if (err instanceof EmailTakenError) {
       res.status(409).json({ error: 'A user with this email already exists' });
+      return;
+    }
+    if (err instanceof AlreadyMemberError) {
+      res.status(409).json({ error: 'This user is already a member of that organization' });
       return;
     }
     if (err instanceof OrganizationNotFoundError) {
@@ -85,9 +95,8 @@ export async function listUsersHandler(req: Request, res: Response) {
 }
 
 const updateUserSchema = z.object({
-  organizationId: z.string().min(1).optional(),
-  opCoId: z.string().min(1).nullable().optional(),
-  role: z.enum(['NORMAL_USER', 'EXECUTIVE', 'ADMIN']).optional(),
+  // Global role only: grant ('ADMIN') or remove ('NORMAL_USER') Admin.
+  role: z.enum(['NORMAL_USER', 'ADMIN']).optional(),
 });
 
 export async function updateUserHandler(req: Request, res: Response) {
@@ -123,14 +132,6 @@ export async function updateUserHandler(req: Request, res: Response) {
       res.status(400).json({ error: 'You cannot change your own role' });
       return;
     }
-    if (err instanceof OrganizationNotFoundError) {
-      res.status(400).json({ error: 'Organization not found' });
-      return;
-    }
-    if (err instanceof OpCoNotInOrganizationError) {
-      res.status(400).json({ error: 'OpCo does not belong to the target organization' });
-      return;
-    }
     throw err;
   }
 }
@@ -163,5 +164,98 @@ export async function deleteUserHandler(req: Request, res: Response) {
       return;
     }
     throw err;
+  }
+}
+
+function requireUserId(req: Request, res: Response): string | null {
+  const userId = req.params.id;
+  if (typeof userId !== 'string') {
+    res.status(400).json({ error: 'Invalid user id' });
+    return null;
+  }
+  return userId;
+}
+
+// Shared error mapping for the membership + temporary-password routes below.
+function handleUserAdminErrors(err: unknown, res: Response): boolean {
+  if (err instanceof UserNotFoundError || err instanceof MembershipNotFoundError) {
+    res.status(404).json({ error: 'Not found' });
+    return true;
+  }
+  if (err instanceof OrganizationNotFoundError) {
+    res.status(400).json({ error: 'Organization not found' });
+    return true;
+  }
+  if (err instanceof AlreadyMemberError) {
+    res.status(409).json({ error: 'This user is already a member of that organization' });
+    return true;
+  }
+  if (err instanceof MembershipHasResponsesError) {
+    res.status(409).json({ error: 'This membership has questionnaire responses and cannot be removed' });
+    return true;
+  }
+  if (err instanceof SuperAdminRequiredError) {
+    res.status(403).json({ error: 'Only the super admin can change another admin account' });
+    return true;
+  }
+  if (err instanceof CannotModifyAdminError) {
+    res.status(403).json({ error: 'This account cannot be changed here' });
+    return true;
+  }
+  return false;
+}
+
+const membershipRoleSchema = z.enum(['NORMAL_USER', 'EXECUTIVE']);
+const addMembershipSchema = z.object({ organizationId: z.string().min(1), role: membershipRoleSchema });
+const updateMembershipSchema = z.object({ role: membershipRoleSchema });
+
+export async function addMembershipHandler(req: Request, res: Response) {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+  const parsed = addMembershipSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request body' });
+    return;
+  }
+  try {
+    res.status(201).json(await addMembership(req.user!.sub, userId, parsed.data));
+  } catch (err) {
+    if (!handleUserAdminErrors(err, res)) throw err;
+  }
+}
+
+export async function updateMembershipHandler(req: Request, res: Response) {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+  const parsed = updateMembershipSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request body' });
+    return;
+  }
+  try {
+    res.json(await updateMembership(req.user!.sub, userId, String(req.params.membershipId), parsed.data));
+  } catch (err) {
+    if (!handleUserAdminErrors(err, res)) throw err;
+  }
+}
+
+export async function removeMembershipHandler(req: Request, res: Response) {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+  try {
+    res.json(await removeMembership(req.user!.sub, userId, String(req.params.membershipId)));
+  } catch (err) {
+    if (!handleUserAdminErrors(err, res)) throw err;
+  }
+}
+
+export async function setTemporaryPasswordHandler(req: Request, res: Response) {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+  try {
+    const temporaryPassword = await setTemporaryPassword(req.user!.sub, userId);
+    res.json({ temporaryPassword });
+  } catch (err) {
+    if (!handleUserAdminErrors(err, res)) throw err;
   }
 }

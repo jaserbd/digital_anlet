@@ -6,9 +6,13 @@ import { generateResetToken, hashResetToken } from '../../lib/token';
 import { sendPasswordResetEmail } from '../../lib/mailer';
 import { env } from '../../config/env';
 import { UserNotFoundError } from '../users/users.service';
+import { listUserContexts, type RequestUser } from '../../lib/userContext';
 
 export class InvalidCredentialsError extends Error {}
 export class InvalidResetTokenError extends Error {}
+// A context switch to a membership that isn't the caller's, or to the admin context by a
+// non-admin.
+export class InvalidContextError extends Error {}
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -23,34 +27,53 @@ export async function login(email: string, password: string): Promise<string> {
     throw new InvalidCredentialsError();
   }
 
-  const payload: JwtPayload = {
-    sub: user.id,
-    email: user.email,
-    role: user.role,
-    organizationId: user.organizationId,
-  };
+  // Default context (MULTI_ORG_PLAN.md): admins start in the admin context, everyone else in
+  // their first membership; the frontend offers the switcher/picker when there's more than one.
+  const payload: JwtPayload = { sub: user.id, email: user.email, membershipId: null };
   return signToken(payload);
 }
 
-// Fetched fresh from the DB (not just echoed from the JWT payload) because opCoId/
-// workingDomain/designation can change after login via profile completion, without a
-// fresh token being issued — see ProfilePage.tsx's post-submit `/api/auth/me` refetch.
-export async function getAuthenticatedUser(userId: string): Promise<AuthenticatedUserDto | null> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      email: true,
-      role: true,
-      organizationId: true,
-      opCoId: true,
-      workingDomain: true,
-      designation: true,
-      mustChangePassword: true,
-      isSuperAdmin: true,
-    },
-  });
-  return user;
+/** Issues a token for another of the caller's contexts — a membership of theirs, or (admins
+ * only) the admin context (membershipId null). */
+export async function switchContext(caller: RequestUser, membershipId: string | null): Promise<string> {
+  if (membershipId === null) {
+    if (!caller.isAdmin) throw new InvalidContextError();
+  } else {
+    const membership = await prisma.membership.findUnique({ where: { id: membershipId }, select: { userId: true } });
+    if (!membership || membership.userId !== caller.sub) throw new InvalidContextError();
+  }
+  return signToken({ sub: caller.sub, email: caller.email, membershipId });
+}
+
+// Built from the request's resolved context (lib/userContext.ts) plus a fresh read of the
+// active membership's profile, since the profile can change after login (ProfilePage refetches
+// /api/auth/me after saving).
+export async function getAuthenticatedUser(caller: RequestUser): Promise<AuthenticatedUserDto | null> {
+  const [user, membership, contexts] = await Promise.all([
+    prisma.user.findUnique({ where: { id: caller.sub }, select: { mustChangePassword: true, isSuperAdmin: true } }),
+    caller.membershipId
+      ? prisma.membership.findUnique({
+          where: { id: caller.membershipId },
+          select: { opCoId: true, workingDomain: true, designation: true },
+        })
+      : null,
+    listUserContexts(caller.sub),
+  ]);
+  if (!user) return null;
+  return {
+    id: caller.sub,
+    email: caller.email,
+    role: caller.role,
+    organizationId: caller.organizationId,
+    activeMembershipId: caller.membershipId,
+    isAdmin: caller.isAdmin,
+    contexts,
+    opCoId: membership?.opCoId ?? null,
+    workingDomain: membership?.workingDomain ?? null,
+    designation: membership?.designation ?? null,
+    mustChangePassword: user.mustChangePassword,
+    isSuperAdmin: user.isSuperAdmin,
+  };
 }
 
 // Self-service password change (OVERVIEW.md item 4) — required before an admin-created user

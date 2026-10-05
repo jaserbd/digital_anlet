@@ -6,8 +6,7 @@ import { signToken, verifyToken, type JwtPayload } from './jwt';
 const payload: JwtPayload = {
   sub: 'user-1',
   email: 'user@example.com',
-  role: 'NORMAL_USER',
-  organizationId: 'org-1',
+  membershipId: 'membership-1',
 };
 
 describe('jwt', () => {

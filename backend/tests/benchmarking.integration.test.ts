@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma';
+import { callerFor } from './testUsers';
 import { getBenchmarkingSummary, getOpCoBenchmarkingSummary } from '../src/modules/insights/insights.service';
 import {
   getOrCreateResponse,
@@ -25,6 +26,7 @@ async function createUser(orgId: string, label: string) {
       passwordHash: 'not-a-real-hash',
       role: 'NORMAL_USER',
       organizationId: orgId,
+      memberships: { create: { organizationId: orgId, role: 'NORMAL_USER' } },
     },
   });
   userIds.push(user.id);
@@ -36,25 +38,25 @@ async function createUser(orgId: string, label: string) {
 // everywhere else -> final score 3.9145.
 // All callers in this file use orgAId — every submitter created here belongs to Org A.
 async function submitAllA(userId: string) {
-  const response = await getOrCreateResponse(userId, 'RAN_FM_GB1059A');
+  const response = await getOrCreateResponse(await callerFor(userId), 'RAN_FM_GB1059A');
   const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
     where: { code: 'RAN_FM_GB1059A' },
     include: { questions: true, subScenarios: true },
   });
   for (const question of questionnaire.questions) {
     for (const subScenario of questionnaire.subScenarios) {
-      await upsertAnswer(response.id, userId, orgAId, {
+      await upsertAnswer(response.id, userId, {
         questionId: question.id,
         subScenarioId: subScenario.id,
         selectedOption: 'A',
       });
     }
   }
-  return submitResponse(response.id, userId, orgAId);
+  return submitResponse(response.id, userId);
 }
 
 async function submitGoldenMasterPattern(userId: string) {
-  const response = await getOrCreateResponse(userId, 'RAN_FM_GB1059A');
+  const response = await getOrCreateResponse(await callerFor(userId), 'RAN_FM_GB1059A');
   const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
     where: { code: 'RAN_FM_GB1059A' },
     include: { questions: true, subScenarios: true },
@@ -68,14 +70,14 @@ async function submitGoldenMasterPattern(userId: string) {
       if (question.serviceCapability === 'Data collection & Alarm filtering' && subScenario.code === 'COMMUNICATIONS') {
         option = 'B';
       }
-      await upsertAnswer(response.id, userId, orgAId, {
+      await upsertAnswer(response.id, userId, {
         questionId: question.id,
         subScenarioId: subScenario.id,
         selectedOption: option,
       });
     }
   }
-  return submitResponse(response.id, userId, orgAId);
+  return submitResponse(response.id, userId);
 }
 
 beforeAll(async () => {
@@ -101,12 +103,12 @@ describe('getBenchmarkingSummary (real DB)', () => {
 
     // THIRD_REVIEW.md item 8: commentCount should reflect QuestionComment rows across this
     // group's SUBMITTED responses — one comment from submitter1, none from submitter2.
-    const submitter1Response = await getOrCreateResponse(submitter1, 'RAN_FM_GB1059A');
+    const submitter1Response = await getOrCreateResponse(await callerFor(submitter1), 'RAN_FM_GB1059A');
     const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
       where: { code: 'RAN_FM_GB1059A' },
       include: { questions: true },
     });
-    await upsertComment(submitter1Response.id, submitter1, orgAId, {
+    await upsertComment(submitter1Response.id, submitter1, {
       questionId: questionnaire.questions[0]!.id,
       commentText: 'Great automation coverage here.',
       subScenarioIds: [],
@@ -169,8 +171,8 @@ describe('getBenchmarkingSummary NatCo/country rows and getOpCoBenchmarkingSumma
 
     const kenyaUser = await createUser(orgAId, 'opco-kenya');
     const nigeriaUser = await createUser(orgAId, 'opco-nigeria');
-    await prisma.user.update({ where: { id: kenyaUser }, data: { opCoId: opCoKenyaId } });
-    await prisma.user.update({ where: { id: nigeriaUser }, data: { opCoId: opCoNigeriaId } });
+    await prisma.membership.updateMany({ where: { userId: kenyaUser }, data: { opCoId: opCoKenyaId } });
+    await prisma.membership.updateMany({ where: { userId: nigeriaUser }, data: { opCoId: opCoNigeriaId } });
 
     await submitAllA(kenyaUser); // final score 4
     await submitGoldenMasterPattern(nigeriaUser); // final score 3.9145

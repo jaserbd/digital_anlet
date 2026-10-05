@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma';
+import { requestUserFor } from './testUsers';
 import {
   OrganizationIdNotAllowedError,
   OrganizationIdRequiredError,
@@ -118,21 +119,22 @@ describe('updateOwnProfile catalog validation (real DB)', () => {
       data: {
         email: '__integration-test-reflists-profile__@example.com',
         passwordHash: 'not-a-real-hash',
-        role: 'EXECUTIVE',
+        role: 'NORMAL_USER',
         organizationId: orgId,
+        memberships: { create: { organizationId: orgId, role: 'EXECUTIVE' } },
       },
     });
     userIds.push(user.id);
 
     await expect(
-      updateOwnProfile(user.id, { workingDomain: 'not-in-catalog', designation: 'not-in-catalog' }),
+      updateOwnProfile(await requestUserFor(user.id), { workingDomain: 'not-in-catalog', designation: 'not-in-catalog' }),
     ).rejects.toBeInstanceOf(WorkingDomainNotInCatalogError);
 
     const designation = await createReferenceListEntry({ category: 'WORKING_DOMAIN', name: WORKING_DOMAIN_NAME });
     referenceListEntryIds.push(designation.id);
 
     await expect(
-      updateOwnProfile(user.id, { workingDomain: WORKING_DOMAIN_NAME, designation: 'still-not-in-catalog' }),
+      updateOwnProfile(await requestUserFor(user.id), { workingDomain: WORKING_DOMAIN_NAME, designation: 'still-not-in-catalog' }),
     ).rejects.toBeInstanceOf(DesignationNotInCatalogError);
   });
 
@@ -141,8 +143,9 @@ describe('updateOwnProfile catalog validation (real DB)', () => {
       data: {
         email: '__integration-test-reflists-profile-2__@example.com',
         passwordHash: 'not-a-real-hash',
-        role: 'EXECUTIVE',
+        role: 'NORMAL_USER',
         organizationId: orgId,
+        memberships: { create: { organizationId: orgId, role: 'EXECUTIVE' } },
       },
     });
     userIds.push(user.id);
@@ -151,7 +154,7 @@ describe('updateOwnProfile catalog validation (real DB)', () => {
     referenceListEntryIds.push(entry.id);
 
     await expect(
-      updateOwnProfile(user.id, { workingDomain: WORKING_DOMAIN_NAME, designation: DESIGNATION_NAME }),
+      updateOwnProfile(await requestUserFor(user.id), { workingDomain: WORKING_DOMAIN_NAME, designation: DESIGNATION_NAME }),
     ).resolves.toBeUndefined();
   });
 });

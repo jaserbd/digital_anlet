@@ -225,7 +225,7 @@ async function seedGlobalReferenceList(category: ReferenceListCategory, values: 
 async function backfillReferenceListsFromExistingData() {
   const [opCos, users] = await Promise.all([
     prisma.opCo.findMany({ select: { name: true, country: true, organizationId: true } }),
-    prisma.user.findMany({ select: { workingDomain: true, designation: true } }),
+    prisma.membership.findMany({ select: { workingDomain: true, designation: true } }),
   ]);
 
   await seedGlobalReferenceList(

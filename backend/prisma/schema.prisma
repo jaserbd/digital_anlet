@@ -32,6 +32,7 @@ model Organization {
   updatedAt DateTime @updatedAt
 
   users                    User[]
+  memberships              Membership[]
   opCos                    OpCo[]
   questionnaireOrgSettings QuestionnaireOrgSetting[]
   referenceListEntries     ReferenceListEntry[]
@@ -78,7 +79,7 @@ model OpCo {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
 
-  users User[]
+  memberships Membership[]
 
   @@unique([organizationId, name])
 }
@@ -106,21 +107,44 @@ model User {
   // the bootstrap ADMIN_EMAIL account — never through the API.
   isSuperAdmin Boolean @default(false)
 
+  // Home organization: the internal org for admins, the first membership's org for everyone
+  // else. Organization/role/profile for answering and viewing live on Membership
+  // (MULTI_ORG_PLAN.md) — `role` here is only the *global* role: ADMIN, or NORMAL_USER for
+  // any non-admin (whose per-organization roles are on their memberships).
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
 
-  // Nullable: filled in by the user themselves at profile completion, not at admin
-  // creation time. A NORMAL_USER with opCoId == null is routed to /profile before
-  // reaching the domain picker (see CLAUDE.md "Profile completion"). Not required for
-  // EXECUTIVE/ADMIN, who don't answer questionnaires.
-  opCoId String?
-  opCo   OpCo?   @relation(fields: [opCoId], references: [id])
+  memberships         Membership[]
+  responses           QuestionnaireResponse[]
+  passwordResetTokens PasswordResetToken[]
+}
 
+// One organization + role for a user (MULTI_ORG_PLAN.md): a user can hold several, one per
+// organization (e.g. Executive of Client A and Normal User of Client B), and works in one at a
+// time — the active membership is carried in the login token. The profile (NatCo, working
+// domain, designation) is per membership; a NORMAL_USER membership with opCoId == null is
+// routed to /profile before answering. Responses belong to a membership, so answers are
+// separate per organization.
+model Membership {
+  id        String   @id @default(cuid())
+  role      Role // EXECUTIVE or NORMAL_USER — Admin is global, on User.role
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  opCoId        String?
+  opCo          OpCo?   @relation(fields: [opCoId], references: [id])
   workingDomain String?
   designation   String?
 
-  responses           QuestionnaireResponse[]
-  passwordResetTokens PasswordResetToken[]
+  responses QuestionnaireResponse[]
+
+  @@unique([userId, organizationId])
 }
 
 // Forgot-password flow (OVERVIEW.md item 12) — a single-use, expiring token emailed as a
@@ -272,6 +296,11 @@ model QuestionnaireResponse {
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
+  // The organization this response counts toward (MULTI_ORG_PLAN.md) — one response per
+  // membership per questionnaire, so a user in two organizations answers separately for each.
+  membershipId String
+  membership   Membership @relation(fields: [membershipId], references: [id])
+
   questionnaireId String
   questionnaire   Questionnaire @relation(fields: [questionnaireId], references: [id])
 
@@ -279,6 +308,8 @@ model QuestionnaireResponse {
   comments QuestionComment[]
   keis     ResponseKei[]
   result   ScoreResult?
+
+  @@unique([membershipId, questionnaireId])
 }
 
 model Answer {

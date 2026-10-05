@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma';
+import { callerFor } from './testUsers';
 import {
   getAnswerDrilldown,
   getCognitiveActivitySummary,
@@ -31,15 +32,15 @@ async function createUser(orgId: string, label: string, opCoId?: string) {
       passwordHash: 'not-a-real-hash',
       role: 'NORMAL_USER',
       organizationId: orgId,
-      ...(opCoId ? { opCoId } : {}),
+      memberships: { create: { organizationId: orgId, role: 'NORMAL_USER', ...(opCoId ? { opCoId } : {}) } },
     },
   });
   userIds.push(user.id);
   return user.id;
 }
 
-async function answerAllAndSubmit(userId: string, orgId: string, override?: { serviceCapability: string; subScenarioCode: string; option: 'A' | 'B' | 'C' | 'D' }) {
-  const response = await getOrCreateResponse(userId, 'RAN_FM_GB1059A');
+async function answerAllAndSubmit(userId: string, override?: { serviceCapability: string; subScenarioCode: string; option: 'A' | 'B' | 'C' | 'D' }) {
+  const response = await getOrCreateResponse(await callerFor(userId), 'RAN_FM_GB1059A');
   const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
     where: { code: 'RAN_FM_GB1059A' },
     include: { questions: true, subScenarios: true },
@@ -50,14 +51,14 @@ async function answerAllAndSubmit(userId: string, orgId: string, override?: { se
         override &&
         question.serviceCapability === override.serviceCapability &&
         subScenario.code === override.subScenarioCode;
-      await upsertAnswer(response.id, userId, orgId, {
+      await upsertAnswer(response.id, userId, {
         questionId: question.id,
         subScenarioId: subScenario.id,
         selectedOption: useOverride ? override.option : 'A',
       });
     }
   }
-  await submitResponse(response.id, userId, orgId);
+  await submitResponse(response.id, userId);
 }
 
 beforeAll(async () => {
@@ -80,13 +81,13 @@ describe('getOrganizationQuestionnaireSummary (real DB)', () => {
     const otherOrgUserId = await createUser(orgBId, 'other-org');
 
     // Org A: one submitter answers B for Intent-driven/Equipment, A everywhere else.
-    await answerAllAndSubmit(submitterId, orgAId, {
+    await answerAllAndSubmit(submitterId, {
       serviceCapability: 'Intent-driven',
       subScenarioCode: 'EQUIPMENT',
       option: 'B',
     });
     // Org B: a user in a *different* org also submits — must not leak into Org A's summary.
-    await answerAllAndSubmit(otherOrgUserId, orgBId, {
+    await answerAllAndSubmit(otherOrgUserId, {
       serviceCapability: 'Intent-driven',
       subScenarioCode: 'EQUIPMENT',
       option: 'C',
@@ -137,12 +138,12 @@ describe('getAnswerDrilldown (real DB)', () => {
 
     // Org A: submits B for Intent-driven/Equipment. Org B: submits C for the same cell —
     // must not leak into Org A's drilldown.
-    await answerAllAndSubmit(drilldownUserId, orgAId, {
+    await answerAllAndSubmit(drilldownUserId, {
       serviceCapability: 'Intent-driven',
       subScenarioCode: 'EQUIPMENT',
       option: 'B',
     });
-    await answerAllAndSubmit(otherOrgDrilldownUserId, orgBId, {
+    await answerAllAndSubmit(otherOrgDrilldownUserId, {
       serviceCapability: 'Intent-driven',
       subScenarioCode: 'EQUIPMENT',
       option: 'C',
@@ -181,26 +182,26 @@ describe('getAnswerDrilldown (real DB)', () => {
     const intentQuestion = questionnaire.questions.find((q) => q.serviceCapability === 'Intent-driven')!;
     const equipmentSubScenario = questionnaire.subScenarios.find((s) => s.code === 'EQUIPMENT')!;
 
-    const response = await getOrCreateResponse(commenterId, 'RAN_FM_GB1059A');
+    const response = await getOrCreateResponse(await callerFor(commenterId), 'RAN_FM_GB1059A');
     for (const question of questionnaire.questions) {
       for (const subScenario of questionnaire.subScenarios) {
-        await upsertAnswer(response.id, commenterId, orgAId, {
+        await upsertAnswer(response.id, commenterId, {
           questionId: question.id,
           subScenarioId: subScenario.id,
           selectedOption: 'A',
         });
       }
     }
-    await upsertComment(response.id, commenterId, orgAId, {
+    await upsertComment(response.id, commenterId, {
       questionId: intentQuestion.id,
       commentText: 'Automated end-to-end for this sub-scenario.',
       subScenarioIds: [equipmentSubScenario.id],
       appliesToNone: false,
     });
-    await submitResponse(response.id, commenterId, orgAId);
+    await submitResponse(response.id, commenterId);
 
     // A different org's comment must not leak into Org A's drilldown.
-    await answerAllAndSubmit(otherOrgCommenterId, orgBId);
+    await answerAllAndSubmit(otherOrgCommenterId);
 
     const drilldown = await getAnswerDrilldown(orgAId, 'RAN_FM_GB1059A');
 
@@ -239,14 +240,14 @@ describe('getCognitiveActivitySummary (real DB)', () => {
     const noOpCoUserId = await createUser(orgAId, 'cog-no-opco');
     const otherOrgUserId = await createUser(orgBId, 'cog-other-org');
 
-    await answerAllAndSubmit(inOpCoUserId, orgAId, {
+    await answerAllAndSubmit(inOpCoUserId, {
       serviceCapability: 'Intent-driven',
       subScenarioCode: 'EQUIPMENT',
       option: 'B',
     });
-    await answerAllAndSubmit(noOpCoUserId, orgAId);
+    await answerAllAndSubmit(noOpCoUserId);
     // A different org's submission must not leak into Org A's summary.
-    await answerAllAndSubmit(otherOrgUserId, orgBId);
+    await answerAllAndSubmit(otherOrgUserId);
 
     const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
       where: { code: 'RAN_FM_GB1059A' },

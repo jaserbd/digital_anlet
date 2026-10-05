@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AnswerOption } from '@anlet/shared';
 import { prisma } from '../src/lib/prisma';
+import { callerFor } from './testUsers';
 import { getQuestionnaireByCode } from '../src/modules/questionnaire/questionnaire.service';
 import {
   InvalidKeiError,
@@ -35,6 +36,7 @@ async function createTestUser(label: string) {
       passwordHash: 'not-a-real-hash',
       role: 'NORMAL_USER',
       organizationId: orgId,
+      memberships: { create: { organizationId: orgId, role: 'NORMAL_USER' } },
     },
   });
   userIds.push(user.id);
@@ -52,11 +54,11 @@ async function answerAll(
 ) {
   const userId = await createTestUser(`${code}-${label}`);
   const questionnaire = await getQuestionnaireByCode(code, orgId);
-  const response = await getOrCreateResponse(userId, code);
+  const response = await getOrCreateResponse(await callerFor(userId), code);
   for (const [qi, q] of questionnaire.questions.entries()) {
     for (const [si, s] of questionnaire.subScenarios.entries()) {
       if (skip && skip.questionIndex === qi && skip.subScenarioIndex === si) continue;
-      await upsertAnswer(response.id, userId, orgId, {
+      await upsertAnswer(response.id, userId, {
         questionId: q.id,
         subScenarioId: s.id,
         selectedOption: pick(q),
@@ -65,7 +67,7 @@ async function answerAll(
   }
   if (keiPick) {
     for (const k of questionnaire.effectivenessIndicators) {
-      await upsertKei(response.id, userId, orgId, {
+      await upsertKei(response.id, userId, {
         indicatorId: k.id,
         selectedOption: keiPick(k.sortOrder),
         indicatorValue: null,
@@ -156,7 +158,7 @@ describe.each(NEW_QUESTIONNAIRES)('$code (real DB)', (expected) => {
 
   it('submits an all-A response and persists a matching result (score 4 via compensation)', async () => {
     const { userId, response, questionnaire } = await answerAll(expected.code, 'all-a', () => 'A');
-    const result = await submitResponse(response.id, userId, orgId);
+    const result = await submitResponse(response.id, userId);
     expect(result.finalScore).toBe(4);
     expect(result.keiScore).toBe(expected.keis > 0 ? 4 : null);
     expect(result.subScenarioScores).toHaveLength(expected.subScenarios);
@@ -183,13 +185,13 @@ describe.each(NEW_QUESTIONNAIRES)('$code (real DB)', (expected) => {
       questionIndex: 0,
       subScenarioIndex: 0,
     });
-    await upsertComment(response.id, userId, orgId, {
+    await upsertComment(response.id, userId, {
       questionId: questionnaire.questions[0]!.id,
       commentText: 'Not applicable here.',
       subScenarioIds: [questionnaire.subScenarios[0]!.id],
       appliesToNone: false,
     });
-    const result = await submitResponse(response.id, userId, orgId);
+    const result = await submitResponse(response.id, userId);
     expect(result.finalScore).toBe(4);
     expect(result.questionScores.filter((qs) => qs.compensatedScore === null)).toHaveLength(1);
   });
@@ -201,7 +203,7 @@ describe('IP_FM_GB1523E demo answers (real DB)', () => {
     const { userId, response } = await answerAll('IP_FM_GB1523E', 'demo', (q) =>
       q.cognitiveActivity === 'Execution' ? 'C' : 'D',
     );
-    const result = await submitResponse(response.id, userId, orgId);
+    const result = await submitResponse(response.id, userId);
     expect(result.finalScore).toBeCloseTo(0.9, 4);
     expect(result.e2eAutomationRate).toBe(0);
   });
@@ -217,7 +219,7 @@ describe('Key Effectiveness Indicators (real DB)', () => {
       undefined,
       (i) => demo[i]!,
     );
-    const result = await submitResponse(response.id, userId, orgId);
+    const result = await submitResponse(response.id, userId);
     expect(result.keiScore).toBeCloseTo(2.4, 4);
     expect((await getResult(response.id, userId)).keiScore).toBeCloseTo(2.4, 4);
   });
@@ -232,20 +234,20 @@ describe('Key Effectiveness Indicators (real DB)', () => {
     );
     const [first, second] = questionnaire.effectivenessIndicators;
     // An indicator value alone doesn't cover a KEI — only an answer or a comment does.
-    await upsertKei(response.id, userId, orgId, {
+    await upsertKei(response.id, userId, {
       indicatorId: first!.id,
       selectedOption: null,
       indicatorValue: '85%',
       comment: null,
     });
-    await upsertKei(response.id, userId, orgId, {
+    await upsertKei(response.id, userId, {
       indicatorId: second!.id,
       selectedOption: 'B',
       indicatorValue: null,
       comment: null,
     });
 
-    await expect(submitResponse(response.id, userId, orgId)).rejects.toSatisfy((err: unknown) => {
+    await expect(submitResponse(response.id, userId)).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(UncoveredSkipError);
       expect((err as UncoveredSkipError).missing).toHaveLength(0);
       expect((err as UncoveredSkipError).missingKeis).toEqual(
@@ -265,20 +267,20 @@ describe('Key Effectiveness Indicators (real DB)', () => {
       null,
     );
     const [mttr, automation] = questionnaire.effectivenessIndicators;
-    await upsertKei(response.id, userId, orgId, {
+    await upsertKei(response.id, userId, {
       indicatorId: mttr!.id,
       selectedOption: null,
       indicatorValue: null,
       comment: 'Not measured yet.',
     });
-    await upsertKei(response.id, userId, orgId, {
+    await upsertKei(response.id, userId, {
       indicatorId: automation!.id,
       selectedOption: 'C',
       indicatorValue: ' 55% ',
       comment: null,
     });
 
-    const result = await submitResponse(response.id, userId, orgId);
+    const result = await submitResponse(response.id, userId);
     expect(result.keiScore).toBe(2);
 
     const stored = await getResponse(response.id, userId);
@@ -308,7 +310,7 @@ describe('Key Effectiveness Indicators (real DB)', () => {
       () => 'A',
     );
     const indicatorId = questionnaire.effectivenessIndicators[0]!.id;
-    await upsertKei(response.id, userId, orgId, {
+    await upsertKei(response.id, userId, {
       indicatorId,
       selectedOption: null,
       indicatorValue: '  ',
@@ -326,7 +328,7 @@ describe('Key Effectiveness Indicators (real DB)', () => {
     );
     const ip = questionnaire.effectivenessIndicators[0]!;
     await expect(
-      upsertKei(response.id, userId, orgId, {
+      upsertKei(response.id, userId, {
         indicatorId: ip.id,
         selectedOption: 'D',
         indicatorValue: null,
@@ -336,7 +338,7 @@ describe('Key Effectiveness Indicators (real DB)', () => {
 
     const otn = await getQuestionnaireByCode('TRANSPORT_OTN_FM_GB1523D', orgId);
     await expect(
-      upsertKei(response.id, userId, orgId, {
+      upsertKei(response.id, userId, {
         indicatorId: otn.effectivenessIndicators[0]!.id,
         selectedOption: 'A',
         indicatorValue: null,
