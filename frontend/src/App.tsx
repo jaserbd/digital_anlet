@@ -5,6 +5,7 @@ import { LoginPage } from './pages/LoginPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { HomePage } from './pages/HomePage';
+import { ContextPickerPage } from './pages/ContextPickerPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { DomainPickerPage } from './pages/DomainPickerPage';
@@ -37,6 +38,7 @@ function App() {
           <Route element={<ProtectedRoute requireProfile={false} />}>
             <Route path="/" element={<HomePage />} />
             <Route path="/change-password" element={<ChangePasswordPage />} />
+            <Route path="/context" element={<ContextPickerPage />} />
           </Route>
 
           <Route element={<ProtectedRoute allowedRoles={['NORMAL_USER', 'EXECUTIVE']} />}>

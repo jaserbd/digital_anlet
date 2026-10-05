@@ -7,6 +7,7 @@ import Stack from '@mui/material/Stack';
 import Link from '@mui/material/Link';
 import { useAuth } from '../context/AuthContext';
 import { LogoutButton } from './LogoutButton';
+import { ContextSwitcher } from './ContextSwitcher';
 
 interface AppHeaderProps {
   title: string;
@@ -48,7 +49,8 @@ export function AppHeader({ title }: AppHeaderProps) {
         <Typography variant="h5" component="h1" sx={{ flexGrow: 1, color: 'text.primary', fontWeight: 800 }}>
           {title}
         </Typography>
-        <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+          <ContextSwitcher />
           {user && (
             <Typography variant="body2" color="text.secondary">
               {user.email}

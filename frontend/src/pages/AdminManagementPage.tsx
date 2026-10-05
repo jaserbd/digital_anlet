@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { OrganizationDto, Role, UpdateUserRequestDto, UserDto } from '@anlet/shared';
+import type { OrganizationDto, Role } from '@anlet/shared';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
 import MenuItem from '@mui/material/MenuItem';
@@ -24,10 +24,10 @@ import { PageShell } from '../components/PageShell';
 import { SectionCard } from '../components/SectionCard';
 import { OrganizationAutocomplete } from '../components/OrganizationAutocomplete';
 import { BulkCreateUsersForm } from '../components/BulkCreateUsersForm';
+import { ManageUsersSection } from '../components/ManageUsersSection';
 import { ReferenceListSelect } from '../components/ReferenceListSelect';
 import { ManageReferenceListSection } from '../components/ManageReferenceListSection';
 import { CollapsibleTable } from '../components/CollapsibleTable';
-import Chip from '@mui/material/Chip';
 import { useAuth } from '../context/AuthContext';
 import { ROLE_LABELS, assignableRoles } from '../lib/roles';
 
@@ -431,8 +431,14 @@ function CreateUserForm() {
 
   const createUser = useMutation({
     mutationFn: () => usersApi.create({ email, password, role, organizationId }),
-    onSuccess: (user) => {
-      setMessage({ kind: 'success', text: `Created user "${user.email}"` });
+    onSuccess: (result) => {
+      setMessage({
+        kind: 'success',
+        text:
+          result.status === 'membership-added'
+            ? `"${result.user.email}" already existed — added to this organization (password unchanged)`
+            : `Created user "${result.user.email}"`,
+      });
       setEmail('');
       setPassword('');
     },
@@ -510,198 +516,5 @@ function CreateUserForm() {
         </Alert>
       )}
     </SectionCard>
-  );
-}
-
-// Admin can only create brand-new users elsewhere (CreateUserForm) — this lets Admin
-// reassign an *existing* account's Organization (and OpCo) without recreating it
-// (SECOND_REVIEW.md item 8), change its role, and delete it (ADMIN.md item 1). Reassigning
-// org clears OpCo server-side (an OpCo belongs to a specific org), which naturally re-triggers
-// profile completion for a NORMAL_USER on their next visit. Role changes follow
-// ADMIN_MANAGEMENT_PLAN.md: Normal User <-> Executive for any admin; admin accounts (and
-// granting Admin) for the super admin only; the super admin's own account is read-only.
-function ManageUsersSection() {
-  const queryClient = useQueryClient();
-  const usersQuery = useQuery({ queryKey: ['users'], queryFn: () => usersApi.list() });
-  const orgsQuery = useQuery({ queryKey: ['organizations'], queryFn: organizationsApi.list });
-
-  return (
-    <SectionCard title="Existing users">
-      {usersQuery.isLoading || orgsQuery.isLoading ? (
-        <Typography color="text.secondary">Loading…</Typography>
-      ) : !usersQuery.data || !orgsQuery.data ? (
-        <Typography color="text.secondary">Something went wrong loading users.</Typography>
-      ) : (
-        <CollapsibleTable label="Existing users" count={usersQuery.data.length}>
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Email</TableCell>
-                  <TableCell>Role</TableCell>
-                  <TableCell>Organization</TableCell>
-                  <TableCell>OpCo</TableCell>
-                  <TableCell />
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {usersQuery.data.map((user) => (
-                  <UserRow
-                    key={user.id}
-                    user={user}
-                    organizations={orgsQuery.data!}
-                    onSaved={() => void queryClient.invalidateQueries({ queryKey: ['users'] })}
-                  />
-                ))}
-                {usersQuery.data.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5}>No users yet.</TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </CollapsibleTable>
-      )}
-    </SectionCard>
-  );
-}
-
-function UserRow({
-  user,
-  organizations,
-  onSaved,
-}: {
-  user: UserDto;
-  organizations: OrganizationDto[];
-  onSaved: () => void;
-}) {
-  const { user: currentUser } = useAuth();
-  const isSuperAdmin = !!currentUser?.isSuperAdmin;
-  // Read-only rows: the super admin account, the caller's own account, and — for a regular
-  // admin — any other admin account. Mirrors users.service.ts's rules.
-  const readOnly = user.isSuperAdmin || user.id === currentUser?.id || (user.role === 'ADMIN' && !isSuperAdmin);
-  const [organizationId, setOrganizationId] = useState(user.organizationId);
-  const [role, setRole] = useState<Role>(user.role);
-  const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
-  const opCosQuery = useQuery({
-    queryKey: ['opcos', organizationId],
-    queryFn: () => opCoApi.list(organizationId),
-  });
-
-  const updateUser = useMutation({
-    mutationFn: (input: UpdateUserRequestDto) => usersApi.update(user.id, input),
-    onSuccess: () => {
-      setMessage({ kind: 'success', text: 'Saved' });
-      onSaved();
-    },
-    onError: (err) => {
-      setMessage({ kind: 'error', text: err instanceof ApiError ? err.message : 'Failed to save' });
-    },
-  });
-
-  const deleteUser = useMutation({
-    mutationFn: () => usersApi.delete(user.id),
-    onSuccess: onSaved,
-    onError: (err) => {
-      setMessage({
-        kind: 'error',
-        text: err instanceof ApiError ? err.message : 'Failed to delete user',
-      });
-    },
-  });
-
-  function handleDelete() {
-    if (!window.confirm(`Delete user "${user.email}"? This cannot be undone.`)) return;
-    setMessage(null);
-    deleteUser.mutate();
-  }
-
-  const orgChanged = organizationId !== user.organizationId;
-  const dirty = orgChanged || role !== user.role;
-
-  return (
-    <TableRow>
-      <TableCell>{user.email}</TableCell>
-      <TableCell>
-        {readOnly ? (
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-            <span>{ROLE_LABELS[user.role]}</span>
-            {user.isSuperAdmin && <Chip size="small" color="primary" label="Super admin" />}
-          </Stack>
-        ) : (
-          <TextField
-            select
-            size="small"
-            value={role}
-            onChange={(e) => setRole(e.target.value as Role)}
-            sx={{ minWidth: 140 }}
-          >
-            {assignableRoles(isSuperAdmin).map((r) => (
-              <MenuItem key={r} value={r}>
-                {ROLE_LABELS[r]}
-              </MenuItem>
-            ))}
-          </TextField>
-        )}
-      </TableCell>
-      <TableCell>
-        <TextField
-          select
-          size="small"
-          value={organizationId}
-          disabled={readOnly}
-          onChange={(e) => setOrganizationId(e.target.value)}
-          sx={{ minWidth: 160 }}
-        >
-          {organizations.map((org) => (
-            <MenuItem key={org.id} value={org.id}>
-              {org.name}
-            </MenuItem>
-          ))}
-        </TextField>
-      </TableCell>
-      <TableCell>
-        {orgChanged
-          ? '— will be cleared —'
-          : (opCosQuery.data?.find((o) => o.id === user.opCoId)?.name ?? '—')}
-      </TableCell>
-      <TableCell>
-        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-          <Button
-            size="small"
-            variant="contained"
-            disabled={readOnly || !dirty || updateUser.isPending}
-            onClick={() => {
-              setMessage(null);
-              updateUser.mutate({
-                ...(orgChanged ? { organizationId } : {}),
-                ...(role !== user.role ? { role } : {}),
-              });
-            }}
-          >
-            {updateUser.isPending ? 'Saving…' : 'Save'}
-          </Button>
-          <Button
-            size="small"
-            color="error"
-            variant="outlined"
-            disabled={readOnly || deleteUser.isPending}
-            onClick={handleDelete}
-          >
-            {deleteUser.isPending ? 'Deleting…' : 'Delete'}
-          </Button>
-          {message && (
-            <Typography
-              component="span"
-              variant="caption"
-              color={message.kind === 'error' ? 'error' : 'success.main'}
-            >
-              {message.text}
-            </Typography>
-          )}
-        </Stack>
-      </TableCell>
-    </TableRow>
   );
 }

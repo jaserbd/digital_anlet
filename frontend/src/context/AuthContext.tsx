@@ -22,6 +22,10 @@ interface AuthContextValue {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  // Switches to another organization/role (MULTI_ORG_PLAN.md). Clears every cached query
+  // first — much cached data is keyed only by questionnaire code (e.g. "my response to IP FM"),
+  // so nothing from the previous organization may be shown under the new one.
+  switchContext: (membershipId: string | null) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -50,6 +54,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     logout: async () => {
       await logoutMutation.mutateAsync();
+    },
+    switchContext: async (membershipId) => {
+      try {
+        await authApi.switchContext(membershipId);
+      } finally {
+        // Always re-sync with the server, even if the request errored: the session cookie may
+        // already have changed, and the screen must never show a different organization than
+        // the one the server is acting in.
+        queryClient.clear();
+        await queryClient.fetchQuery({ queryKey: ME_QUERY_KEY, queryFn: fetchMe });
+      }
     },
   };
 

@@ -32,6 +32,18 @@ export class CannotChangeOwnRoleError extends Error {}
 
 type MembershipRole = Extract<Role, 'NORMAL_USER' | 'EXECUTIVE'>;
 
+// A response that holds something worth keeping: submitted, or with any answer, comment or KEI.
+// Opening a questionnaire or results page creates an empty IN_PROGRESS response, which must not
+// make a membership impossible to remove (MULTI_ORG_PLAN.md).
+const RESPONSE_WITH_DATA = {
+  OR: [
+    { status: 'SUBMITTED' as const },
+    { answers: { some: {} } },
+    { comments: { some: {} } },
+    { keis: { some: {} } },
+  ],
+};
+
 // Re-read from the DB on every privileged call rather than trusting the JWT payload, so a
 // token issued before a role change can't be used to claim super admin rights.
 async function isCallerSuperAdmin(callerId: string): Promise<boolean> {
@@ -60,7 +72,7 @@ const USER_SELECT = {
       opCo: { select: { name: true } },
       workingDomain: true,
       designation: true,
-      _count: { select: { responses: true } },
+      _count: { select: { responses: { where: RESPONSE_WITH_DATA } } },
     },
     orderBy: { organization: { name: 'asc' } },
   },
@@ -223,7 +235,7 @@ export async function addMembership(
 async function loadMembershipOfUser(userId: string, membershipId: string) {
   const membership = await prisma.membership.findUnique({
     where: { id: membershipId },
-    select: { id: true, userId: true, _count: { select: { responses: true } } },
+    select: { id: true, userId: true, _count: { select: { responses: { where: RESPONSE_WITH_DATA } } } },
   });
   if (!membership || membership.userId !== userId) throw new MembershipNotFoundError();
   return membership;
@@ -241,8 +253,9 @@ export async function updateMembership(
   return loadUserDto(userId);
 }
 
-// Blocked while the membership has responses — that assessment history belongs to the
-// organization and has value after the person leaves (same rule as deleteUser).
+// Blocked while the membership has responses with data — that assessment history belongs to
+// the organization and has value after the person leaves (same idea as deleteUser). Empty
+// in-progress responses (created just by opening a page) are removed with the membership.
 export async function removeMembership(
   callerId: string,
   userId: string,
@@ -251,7 +264,10 @@ export async function removeMembership(
   await assertCanManageMemberships(callerId, userId);
   const membership = await loadMembershipOfUser(userId, membershipId);
   if (membership._count.responses > 0) throw new MembershipHasResponsesError();
-  await prisma.membership.delete({ where: { id: membershipId } });
+  await prisma.$transaction([
+    prisma.questionnaireResponse.deleteMany({ where: { membershipId } }),
+    prisma.membership.delete({ where: { id: membershipId } }),
+  ]);
   return loadUserDto(userId);
 }
 

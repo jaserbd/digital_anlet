@@ -1,5 +1,7 @@
 # Multi-organization memberships + admin temporary passwords
 
+**Status: steps 1–4 done** (145 backend + 21 frontend tests, browser walkthrough). Remaining: merge, deploy.
+
 Source: `admin_management.md` lines 10 and 12 (local notes), clarified in discussion on 2026-10-05.
 
 ## Decisions

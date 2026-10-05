@@ -164,7 +164,9 @@ export function BulkCreateUsersForm() {
         Header row: <code>email,role,organization,password</code> — <code>password</code> is
         optional (a one-time password is generated if left blank), <code>role</code> is{' '}
         <code>NORMAL_USER</code> or <code>EXECUTIVE</code>, and <code>organization</code> must
-        match an existing organization's name exactly.
+        match an existing organization's name exactly. An email that already exists is added to
+        that organization (its password stays unchanged), so one person can be listed for
+        several organizations.
         {orgsQuery.data && orgsQuery.data.length > 0 && (
           <>
             {' '}
@@ -269,13 +271,13 @@ export function BulkCreateUsersForm() {
                     <TableCell>{r.email}</TableCell>
                     <TableCell>
                       <Chip
-                        label={r.status === 'created' ? 'Created' : 'Error'}
-                        color={r.status === 'created' ? 'success' : 'error'}
+                        label={r.status === 'created' ? 'Created' : r.status === 'membership-added' ? 'Added to organization' : 'Error'}
+                        color={r.status === 'error' ? 'error' : 'success'}
                         size="small"
                       />
                     </TableCell>
                     <TableCell sx={{ fontFamily: r.tempPassword ? 'monospace' : undefined }}>
-                      {r.tempPassword ?? r.error}
+                      {r.tempPassword ?? r.error ?? (r.status === 'membership-added' ? 'Existing account — password unchanged' : '')}
                     </TableCell>
                   </TableRow>
                 ))}

@@ -20,10 +20,13 @@ CREATE TABLE "Membership" (
 
 -- Data: one membership per non-admin user (an admin who somehow has responses gets an
 -- EXECUTIVE membership so those responses keep a home).
-INSERT INTO "Membership" ("id", "role", "updatedAt", "userId", "organizationId", "opCoId", "workingDomain", "designation")
+-- Timestamps are copied from the user (written by Prisma in UTC) rather than CURRENT_TIMESTAMP,
+-- whose value depends on the database session's time zone — memberships created later by the
+-- app are UTC too, so "first membership" ordering stays correct.
+INSERT INTO "Membership" ("id", "role", "createdAt", "updatedAt", "userId", "organizationId", "opCoId", "workingDomain", "designation")
 SELECT 'm_' || md5(u."id"),
        CASE WHEN u."role" = 'ADMIN' THEN 'EXECUTIVE'::"Role" ELSE u."role" END,
-       CURRENT_TIMESTAMP, u."id", u."organizationId", u."opCoId", u."workingDomain", u."designation"
+       u."createdAt", u."createdAt", u."id", u."organizationId", u."opCoId", u."workingDomain", u."designation"
 FROM "User" u
 WHERE u."role" <> 'ADMIN'
    OR EXISTS (SELECT 1 FROM "QuestionnaireResponse" r WHERE r."userId" = u."id");

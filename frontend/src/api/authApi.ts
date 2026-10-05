@@ -11,6 +11,9 @@ export const authApi = {
     apiClient.post<void>('/auth/login', { email, password }),
   logout: () => apiClient.post<void>('/auth/logout'),
   me: () => apiClient.get<AuthenticatedUserDto>('/auth/me'),
+  // Switch the active working context (MULTI_ORG_PLAN.md): a membership id, or null for the
+  // admin context.
+  switchContext: (membershipId: string | null) => apiClient.post<void>('/auth/context', { membershipId }),
   updateProfile: (input: { opCoId?: string; workingDomain: string; designation: string }) =>
     apiClient.put<void>('/auth/profile', input),
   changePassword: (input: ChangePasswordRequestDto) => apiClient.put<void>('/auth/change-password', input),

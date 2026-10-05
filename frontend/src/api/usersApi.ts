@@ -1,4 +1,14 @@
-import type { BulkCreateUsersResultDto, BulkCreateUsersRowDto, Role, UpdateUserRequestDto, UserDto } from '@anlet/shared';
+import type {
+  AddMembershipRequestDto,
+  BulkCreateUsersResultDto,
+  BulkCreateUsersRowDto,
+  CreateUserResultDto,
+  Role,
+  TemporaryPasswordDto,
+  UpdateMembershipRequestDto,
+  UpdateUserRequestDto,
+  UserDto,
+} from '@anlet/shared';
 import { apiClient } from './client';
 
 export interface CreateUserInput {
@@ -12,7 +22,9 @@ export interface CreateUserInput {
 }
 
 export const usersApi = {
-  create: (input: CreateUserInput) => apiClient.post<UserDto>('/users', input),
+  // An existing email (non-admin role) adds the organization as a membership instead
+  // (MULTI_ORG_PLAN.md) — see CreateUserResultDto.status.
+  create: (input: CreateUserInput) => apiClient.post<CreateUserResultDto>('/users', input),
   bulkCreate: (rows: BulkCreateUsersRowDto[]) =>
     apiClient.post<BulkCreateUsersResultDto[]>('/users/bulk', { rows }),
   list: (organizationId?: string) =>
@@ -20,4 +32,12 @@ export const usersApi = {
   update: (userId: string, input: UpdateUserRequestDto) =>
     apiClient.patch<UserDto>(`/users/${userId}`, input),
   delete: (userId: string) => apiClient.delete<void>(`/users/${userId}`),
+  addMembership: (userId: string, input: AddMembershipRequestDto) =>
+    apiClient.post<UserDto>(`/users/${userId}/memberships`, input),
+  updateMembership: (userId: string, membershipId: string, input: UpdateMembershipRequestDto) =>
+    apiClient.patch<UserDto>(`/users/${userId}/memberships/${membershipId}`, input),
+  removeMembership: (userId: string, membershipId: string) =>
+    apiClient.delete<UserDto>(`/users/${userId}/memberships/${membershipId}`),
+  temporaryPassword: (userId: string) =>
+    apiClient.post<TemporaryPasswordDto>(`/users/${userId}/temporary-password`),
 };

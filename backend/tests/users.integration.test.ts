@@ -174,14 +174,40 @@ describe('memberships (real DB)', () => {
     expect(self.memberships.some((m) => m.organizationId === orgBId)).toBe(true);
   });
 
-  it('blocks removing a membership that has responses', async () => {
+  it('blocks removing a membership whose responses hold answers, but not one with only empty responses', async () => {
     const userId = await createRawUser('membership-responses', {
       organizationId: orgAId,
-      memberOf: [{ organizationId: orgAId, role: 'NORMAL_USER' }],
+      memberOf: [
+        { organizationId: orgAId, role: 'NORMAL_USER' },
+        { organizationId: orgBId, role: 'NORMAL_USER' },
+      ],
     });
-    const membership = await prisma.membership.findFirstOrThrow({ where: { userId } });
-    await getOrCreateResponse({ sub: userId, membershipId: membership.id }, 'RAN_FM_GB1059A');
-    await expect(removeMembership(adminId, userId, membership.id)).rejects.toBeInstanceOf(MembershipHasResponsesError);
+    const [inA, inB] = await Promise.all([
+      prisma.membership.findFirstOrThrow({ where: { userId, organizationId: orgAId } }),
+      prisma.membership.findFirstOrThrow({ where: { userId, organizationId: orgBId } }),
+    ]);
+    const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
+      where: { code: 'RAN_FM_GB1059A' },
+      include: { questions: { take: 1 }, subScenarios: { take: 1 } },
+    });
+
+    // A: one real answer → blocked.
+    const answered = await getOrCreateResponse({ sub: userId, membershipId: inA.id }, 'RAN_FM_GB1059A');
+    await prisma.answer.create({
+      data: {
+        responseId: answered.id,
+        questionId: questionnaire.questions[0]!.id,
+        subScenarioId: questionnaire.subScenarios[0]!.id,
+        selectedOption: 'A',
+      },
+    });
+    await expect(removeMembership(adminId, userId, inA.id)).rejects.toBeInstanceOf(MembershipHasResponsesError);
+
+    // B: only an empty in-progress response (e.g. from opening a page) → removed with it.
+    const empty = await getOrCreateResponse({ sub: userId, membershipId: inB.id }, 'RAN_FM_GB1059A');
+    const user = await removeMembership(adminId, userId, inB.id);
+    expect(user.memberships.map((m) => m.organizationId)).toEqual([orgAId]);
+    expect(await prisma.questionnaireResponse.findUnique({ where: { id: empty.id } })).toBeNull();
   });
 
   it('keeps answers separate per organization', async () => {

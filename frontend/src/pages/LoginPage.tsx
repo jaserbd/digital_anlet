@@ -24,7 +24,8 @@ export function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (user) {
-    const from = (location.state as { from?: string } | null)?.from ?? '/';
+    // More than one organization/role (MULTI_ORG_PLAN.md) → choose where to work first.
+    const from = (location.state as { from?: string } | null)?.from ?? (user.contexts.length > 1 ? '/context' : '/');
     return <Navigate to={from} replace />;
   }
 
