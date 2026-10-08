@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "db:seed": "tsx prisma/seed/seed.ts"
+    "db:seed": "tsx prisma/seed/seed.ts",
+    "db:seed:questionnaires": "tsx prisma/seed/seed.ts --questionnaires-only"
   },
   "prisma": {
     "seed": "tsx prisma/seed/seed.ts"

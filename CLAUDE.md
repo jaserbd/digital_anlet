@@ -106,6 +106,12 @@ Outcome measures (MTTR, automation/diagnosis ratios) listed under each source's 
 - `components/QuestionContent.tsx` (`QuestionText`, `OptionList`, `OptionCard`, `OptionBadge`) is the single look: question bold dark blue, note grey italic in a bordered box, options in cards with an `A · 4` badge; colors in `QUESTION_COLORS` (`lib/questionText.ts`). Used by `QuestionCard` (plus a filled chip on the selected answer per sub-scenario), `KeiCard` (selected card highlighted), `AnswerDistributionDrilldown` and `KeiDistribution`.
 - PDF: `PdfTextSection.lines` accepts `PdfStyledLine` (`question`/`note`/`option`), built by `questionPdfLines`; the personal results PDF's "Questions & options" is one styled block per question instead of a table. Excel exports unchanged.
 
+### Questionnaire text corrections (`SPELLING_PLAN.md`)
+
+- `prisma/seed/textCorrections.ts` fixes typos, spacing/punctuation and clear grammar errors in the source workbooks **at seed time** (`applyTextCorrections`, called first thing in `seedQuestionnaire`) — the xlsx files stay untouched. A generic `normalizeSpacing` (double/non-breaking spaces, space before punctuation, full-width CJK punctuation) runs first, then the ordered `TEXT_CORRECTIONS` find/replace list (optionally scoped per questionnaire code). British/American variants are deliberately left as in the source; sub-scenario names (which key their codes) are never corrected.
+- `textCorrections.test.ts` fails if any fix no longer matches its source text (remove it when a revised workbook already fixes it) or if corrections touch codes, weights, criteria or structure. Parser golden-master tests still run on the uncorrected text.
+- Rolling text changes out to an existing database: `npm run db:seed:questionnaires` (`--questionnaires-only`) — updates questionnaire text in place (questions/KEIs keyed by `sortOrder`, sub-scenarios by code, so answers stay attached) without the full seed's super-admin password reset.
+
 ### Org hierarchy and profile completion (from `FIRST_REVIEW.md`)
 
 Real-world usage feedback after the MVP demo described large CSP groups with multiple NatCos/OpCos per Organization, and users self-identifying their Country/Company/Working Domain/Designation before answering. Decisions locked in for this:

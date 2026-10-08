@@ -231,6 +231,19 @@ SMTP_FROM=no-reply@placeholder.invalid APP_BASE_URL=https://anlet-602185048647.e
 npm run db:seed
 ```
 
+**Questionnaire text only** (e.g. rolling out `textCorrections.ts` changes) — same proxy, but no admin secret needed and
+accounts are untouched (no super-admin password reset); answers stay attached:
+
+```bash
+# terminal 2 — from backend/
+DATABASE_URL="$(gcloud secrets versions access latest --secret anlet-database-url --project anlet-504115 \
+  | sed -E 's#@localhost/anlet\?host=/cloudsql/[^&]+&#@127.0.0.1:5433/anlet?#')" \
+ADMIN_PASSWORD=unused-by-this-seed ADMIN_EMAIL=jaserbin.rahman@detecon.com JWT_SECRET=unused-by-seed NODE_ENV=production \
+SMTP_HOST=smtp.placeholder.invalid SMTP_PORT=587 SMTP_USER=placeholder SMTP_PASSWORD=placeholder \
+SMTP_FROM=no-reply@placeholder.invalid APP_BASE_URL=https://anlet-602185048647.europe-west3.run.app \
+npm run db:seed:questionnaires
+```
+
 **Add a secret version** (e.g. rotate the JWT key, or set real SMTP credentials later), then redeploy so Cloud Run
 picks it up:
 

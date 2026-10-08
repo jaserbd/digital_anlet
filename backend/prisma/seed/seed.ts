@@ -9,6 +9,7 @@ import { parseIpFmXlsx } from './parseIpFmXlsx';
 import { parseTransportMicrowaveXlsx, parseTransportOtnXlsx } from './parseTransportXlsx';
 import { parseFixedAccessXlsx } from './parseFixedAccessXlsx';
 import countries from './data/countries.json';
+import { applyTextCorrections } from './textCorrections';
 
 const INTERNAL_ORG_NAME = 'Anlet (Internal)';
 
@@ -62,7 +63,8 @@ async function seedInternalOrgAndAdmin() {
   console.log(`Seeded internal org "${INTERNAL_ORG_NAME}" and super admin "${env.ADMIN_EMAIL}"`);
 }
 
-async function seedQuestionnaire(parsed: ParsedQuestionnaire) {
+async function seedQuestionnaire(source: ParsedQuestionnaire) {
+  const parsed = applyTextCorrections(source);
   const questionnaire = await prisma.questionnaire.upsert({
     where: { code: parsed.code },
     update: {
@@ -273,8 +275,15 @@ async function seedReferenceLists() {
   console.log('Seeded reference lists (Country/Working Domain/Designation/NatCo Name)');
 }
 
+// `--questionnaires-only` (npm run db:seed:questionnaires) reloads just the questionnaire text and
+// structure — e.g. to roll out text corrections to production — without touching accounts: the
+// full seed resets the super admin's password to ADMIN_PASSWORD (SPELLING_PLAN.md).
+const QUESTIONNAIRES_ONLY = process.argv.includes('--questionnaires-only');
+
 async function main() {
-  await seedInternalOrgAndAdmin();
+  if (!QUESTIONNAIRES_ONLY) {
+    await seedInternalOrgAndAdmin();
+  }
   await seedQuestionnaire(parseRanFmXlsx());
   await seedQuestionnaire(parseCoreFaultManagementXlsx());
   await seedQuestionnaire(parseCoreStabilityXlsx());
@@ -282,7 +291,9 @@ async function main() {
   await seedQuestionnaire(parseTransportMicrowaveXlsx());
   await seedQuestionnaire(parseTransportOtnXlsx());
   await seedQuestionnaire(parseFixedAccessXlsx());
-  await seedReferenceLists();
+  if (!QUESTIONNAIRES_ONLY) {
+    await seedReferenceLists();
+  }
 }
 
 main()
