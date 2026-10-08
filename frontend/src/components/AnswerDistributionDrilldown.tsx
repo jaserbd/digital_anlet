@@ -29,6 +29,7 @@ import { ANSWER_OPTIONS, buildOptionCountsChartData, indexAnswerDistribution } f
 import { OptionCountsChart, OPTION_COLORS } from './charts/OptionCountsChart';
 import { formatSubScenarioLabel, groupSubScenariosByCategory } from '../lib/subScenarioCategories';
 import { buildCommentCollectionRows, buildCommentCollectionSheet } from './CommentCollectionTable';
+import { OptionList, QuestionText } from './QuestionContent';
 
 interface AnswerDistributionDrilldownProps {
   questions: QuestionDto[];
@@ -137,14 +138,8 @@ export function AnswerDistributionDrilldown({
                   <Typography sx={{ fontWeight: 700 }}>{q.serviceCapability}</Typography>
                 </AccordionSummary>
                 <AccordionDetails>
-                  <Typography sx={{ mb: 1 }}>{q.questionText}</Typography>
-                  <Stack spacing={0.25} sx={{ mb: 2 }}>
-                    {q.options.map((o) => (
-                      <Typography key={o.option} variant="body2" color="text.secondary">
-                        {o.option} ({o.criteria}): {o.text}
-                      </Typography>
-                    ))}
-                  </Stack>
+                  <QuestionText text={q.questionText} compact />
+                  <OptionList options={q.options} compact />
 
                   <Stack spacing={1} sx={{ mb: 2 }}>
                     {groupSubScenariosByCategory(subScenarios).map((group, groupIndex) => (

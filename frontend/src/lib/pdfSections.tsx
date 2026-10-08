@@ -13,6 +13,7 @@ import { captureChartImage } from './chartCapture';
 import { ScoreBarChart, computeScoreBarChartHeight } from '../components/charts/ScoreBarChart';
 import { OptionCountsChart, OPTION_COUNTS_CHART_HEIGHT } from '../components/charts/OptionCountsChart';
 import { formatSubScenarioLabel } from './subScenarioCategories';
+import { questionPdfLines } from './questionText';
 
 const STATUS_LABEL: Record<string, string> = {
   NOT_STARTED: 'Not started',
@@ -205,7 +206,7 @@ export async function buildAnswerDistributionPdfSections(
     sections.push({
       kind: 'text',
       heading: `${q.cognitiveActivity} — ${q.serviceCapability}`,
-      lines: [q.questionText, ...q.options.map((o) => `${o.option}: ${o.text} (${o.criteria})`)],
+      lines: questionPdfLines(q.questionText, q.options),
     });
     sections.push({
       kind: 'table',

@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { QUESTION_COLORS } from './questionText';
 
 export interface PdfTableSection {
   kind: 'table';
@@ -8,10 +9,17 @@ export interface PdfTableSection {
   body: (string | number)[][];
 }
 
+// A text line drawn in the question / note / option look (QUESTION_STYLING_PLAN.md); plain
+// strings keep the default body style.
+export interface PdfStyledLine {
+  text: string;
+  style: 'question' | 'note' | 'option';
+}
+
 export interface PdfTextSection {
   kind: 'text';
   heading?: string;
-  lines: string[];
+  lines: (string | PdfStyledLine)[];
 }
 
 export interface PdfImageSection {
@@ -27,6 +35,12 @@ export interface PdfImageSection {
 export type PdfSection = PdfTableSection | PdfTextSection | PdfImageSection;
 
 const PAGE_BOTTOM_MARGIN = 280;
+const BODY_TEXT_COLOR = '#000000';
+const STYLED_LINE_LOOK: Record<PdfStyledLine['style'], { fontStyle: string; fontSize: number; color: string; lineHeight: number }> = {
+  question: { fontStyle: 'bold', fontSize: 11, color: QUESTION_COLORS.question, lineHeight: 6 },
+  note: { fontStyle: 'italic', fontSize: 9.5, color: QUESTION_COLORS.noteText, lineHeight: 5 },
+  option: { fontStyle: 'normal', fontSize: 10, color: '#1c1c1c', lineHeight: 5.5 },
+};
 const LEFT_MARGIN = 14;
 const PAGE_WIDTH_MM = 210;
 const MAX_IMAGE_WIDTH_MM = PAGE_WIDTH_MM - LEFT_MARGIN * 2;
@@ -78,7 +92,18 @@ export function exportSectionsToPdf(filename: string, title: string, sections: P
 
     if (section.kind === 'text') {
       for (const line of section.lines) {
-        drawLines(line, 6);
+        if (typeof line === 'string') {
+          drawLines(line, 6);
+          continue;
+        }
+        const look = STYLED_LINE_LOOK[line.style];
+        doc.setFont('helvetica', look.fontStyle);
+        doc.setFontSize(look.fontSize);
+        doc.setTextColor(look.color);
+        drawLines(line.text, look.lineHeight);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(11);
+        doc.setTextColor(BODY_TEXT_COLOR);
       }
       y += 3;
     } else if (section.kind === 'image') {

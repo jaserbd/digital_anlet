@@ -13,6 +13,7 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import { OptionCountsChart, OPTION_COLORS } from './charts/OptionCountsChart';
+import { OptionList, QuestionText } from './QuestionContent';
 import { exportRowsToXlsx } from '../lib/exportXlsx';
 import {
   buildKeiChartData,
@@ -74,13 +75,10 @@ export function KeiDistribution({
                   — weight {(k.weight * 100).toFixed(0)}%
                 </Typography>
               </Typography>
-              <Stack spacing={0.25} sx={{ my: 1 }}>
-                {k.options.map((o) => (
-                  <Typography key={o.option} variant="body2" color="text.secondary">
-                    {o.option} ({o.criteria}): {o.text}
-                  </Typography>
-                ))}
-              </Stack>
+              <Box sx={{ my: 1 }}>
+                {k.description && <QuestionText text={k.description} compact />}
+                <OptionList options={k.options} compact />
+              </Box>
               <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
                 {buckets.map((bucket) => {
                   const count = counts?.[bucket] ?? 0;

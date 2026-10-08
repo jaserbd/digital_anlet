@@ -3,6 +3,8 @@ import type { AnswerOption, QuestionDto, SubScenarioDto } from '@anlet/shared';
 import { formatQuestionLabel } from '../lib/cognitiveActivity';
 import { categoryRowSpans, hasSubScenarioCategories } from '../lib/subScenarioCategories';
 import { QuestionCommentEditor, type CommentState } from './QuestionCommentEditor';
+import { QUESTION_COLORS } from '../lib/questionText';
+import { OptionList, QuestionText } from './QuestionContent';
 
 interface QuestionCardProps {
   question: QuestionDto;
@@ -39,23 +41,14 @@ export function QuestionCard({
         </strong>{' '}
         — weight {(question.weight * 100).toFixed(0)}%
       </legend>
-      <p style={{ whiteSpace: 'pre-wrap' }}>{question.questionText}</p>
+      <QuestionText text={question.questionText} />
       {question.answeringGuideline && (
         <details style={{ margin: '0 0 1rem', border: '1px solid #ddd', borderRadius: 4, padding: '0.4rem 0.6rem' }}>
           <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>Guideline for this question</summary>
           <p style={{ whiteSpace: 'pre-wrap', fontSize: '0.9em' }}>{question.answeringGuideline}</p>
         </details>
       )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginBottom: '1rem' }}>
-        {question.options.map((opt) => (
-          <div key={opt.option}>
-            <strong>
-              {opt.option} ({opt.criteria}).
-            </strong>{' '}
-            <span style={{ whiteSpace: 'pre-wrap' }}>{opt.text}</span>
-          </div>
-        ))}
-      </div>
+      <OptionList options={question.options} />
 
       <table style={{ borderCollapse: 'collapse', width: '100%', maxWidth: 720 }}>
         <thead>
@@ -89,17 +82,22 @@ export function QuestionCard({
                       />
                       <span style={{ fontSize: '0.85em', color: '#666' }}>No answer</span>
                     </label>
-                    {question.options.map((opt) => (
-                      <label key={opt.option} style={radioLabelStyle}>
-                        <input
-                          type="radio"
-                          name={`answer-${question.id}-${s.id}`}
-                          checked={answers.get(s.id) === opt.option}
-                          onChange={() => onSelect(s.id, opt.option)}
-                        />
-                        {opt.option} ({opt.criteria})
-                      </label>
-                    ))}
+                    {question.options.map((opt) => {
+                      const selected = answers.get(s.id) === opt.option;
+                      return (
+                        <label key={opt.option} style={radioLabelStyle}>
+                          <input
+                            type="radio"
+                            name={`answer-${question.id}-${s.id}`}
+                            checked={selected}
+                            onChange={() => onSelect(s.id, opt.option)}
+                          />
+                          <span style={selected ? selectedAnswerStyle : undefined}>
+                            {opt.option} ({opt.criteria})
+                          </span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </td>
               </tr>
@@ -136,4 +134,13 @@ const radioLabelStyle = {
   gap: '0.25rem',
   alignItems: 'center',
   whiteSpace: 'nowrap' as const,
+};
+
+// The picked answer reads as a filled chip, so chosen answers stand out from the other options.
+const selectedAnswerStyle = {
+  padding: '0 0.45rem',
+  borderRadius: 999,
+  background: QUESTION_COLORS.selected,
+  color: '#ffffff',
+  fontWeight: 700,
 };

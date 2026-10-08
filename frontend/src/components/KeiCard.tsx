@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AnswerOption, EffectivenessIndicatorDto, KeiAnswerDto } from '@anlet/shared';
 import { isKeiCovered } from '../lib/kei';
+import { OptionCard, QuestionText } from './QuestionContent';
 
 interface KeiCardProps {
   indicator: EffectivenessIndicatorDto;
@@ -67,10 +68,10 @@ export function KeiCard({ indicator, ordinal, answer, onChange }: KeiCardProps) 
         </strong>{' '}
         — weight {(indicator.weight * 100).toFixed(0)}%
       </legend>
-      <p style={{ whiteSpace: 'pre-wrap', marginTop: 0 }}>{indicator.description}</p>
+      {indicator.description && <QuestionText text={indicator.description} />}
 
       <div role="radiogroup" aria-label={`Answer for ${indicator.name}`} style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-        <label style={radioLabelStyle}>
+        <label style={{ ...radioLabelStyle, padding: '0 0.65rem' }}>
           <input
             type="radio"
             name={`kei-${indicator.id}`}
@@ -80,18 +81,21 @@ export function KeiCard({ indicator, ordinal, answer, onChange }: KeiCardProps) 
           <span style={{ color: '#666' }}>No answer</span>
         </label>
         {indicator.options.map((opt) => (
-          <label key={opt.option} style={radioLabelStyle}>
-            <input
-              type="radio"
-              name={`kei-${indicator.id}`}
-              checked={local.selectedOption === opt.option}
-              onChange={() => update({ ...local, selectedOption: opt.option as AnswerOption }, true)}
-            />
-            <strong>
-              {opt.option} ({opt.criteria})
-            </strong>
-            <span>{opt.text}</span>
-          </label>
+          <OptionCard
+            key={opt.option}
+            option={opt.option}
+            criteria={opt.criteria}
+            text={opt.text}
+            selected={local.selectedOption === opt.option}
+            control={
+              <input
+                type="radio"
+                name={`kei-${indicator.id}`}
+                checked={local.selectedOption === opt.option}
+                onChange={() => update({ ...local, selectedOption: opt.option as AnswerOption }, true)}
+              />
+            }
+          />
         ))}
       </div>
 

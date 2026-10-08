@@ -100,6 +100,12 @@ Outcome measures (MTTR, automation/diagnosis ratios) listed under each source's 
 - **Temporary password**: `POST /users/:id/temporary-password` generates one, sets `mustChangePassword`, returns it once (shown in `ManageUsersSection`). Any admin for non-admins; only the super admin for another admin; never for the super admin or yourself.
 - Migration `20261005090000_add_memberships` converts each existing non-admin user (and any admin with responses, as Executive) into one membership with id `'m_' || md5(userId)` and `createdAt` = the user's own `createdAt` (not `CURRENT_TIMESTAMP`, which would make it sort after later-added memberships and break the default context).
 
+### Question / note / answer styling (`QUESTION_STYLING_PLAN.md`)
+
+- Notes live **inside** `Question.questionText` (and KEI descriptions) as a trailing paragraph starting `Note:`/`Note :`/`NOTE:`/`NOTE 1:` (23 of 58 questions). `lib/questionText.ts`'s `splitQuestionNote` splits it at display time — no schema/seed change; a "note" mid-sentence or on the first line is never split.
+- `components/QuestionContent.tsx` (`QuestionText`, `OptionList`, `OptionCard`, `OptionBadge`) is the single look: question bold dark blue, note grey italic in a bordered box, options in cards with an `A · 4` badge; colors in `QUESTION_COLORS` (`lib/questionText.ts`). Used by `QuestionCard` (plus a filled chip on the selected answer per sub-scenario), `KeiCard` (selected card highlighted), `AnswerDistributionDrilldown` and `KeiDistribution`.
+- PDF: `PdfTextSection.lines` accepts `PdfStyledLine` (`question`/`note`/`option`), built by `questionPdfLines`; the personal results PDF's "Questions & options" is one styled block per question instead of a table. Excel exports unchanged.
+
 ### Org hierarchy and profile completion (from `FIRST_REVIEW.md`)
 
 Real-world usage feedback after the MVP demo described large CSP groups with multiple NatCos/OpCos per Organization, and users self-identifying their Country/Company/Working Domain/Designation before answering. Decisions locked in for this:

@@ -10,6 +10,7 @@ import { PersonalCognitiveActivityRadar } from './PersonalCognitiveActivityRadar
 import { formatQuestionLabel, groupByCognitiveActivity } from '../lib/cognitiveActivity';
 import { exportSectionsToPdf, type PdfSection } from '../lib/exportPdf';
 import { formatSubScenarioLabel } from '../lib/subScenarioCategories';
+import { questionPdfLines } from '../lib/questionText';
 import { KeiResultsTable } from './KeiResultsTable';
 import { buildKeiResultsPdfSection } from '../lib/kei';
 
@@ -44,16 +45,18 @@ function buildPdfSections(
     });
   }
 
-  sections.push({
-    kind: 'table',
-    heading: 'Questions & options',
-    head: [['Cognitive Activity', 'Service Capability', 'Options (criteria)', 'Guideline']],
-    body: questionnaire.questions.map((q) => [
-      q.cognitiveActivity,
-      q.serviceCapability,
-      q.options.map((o) => `${o.option}: ${o.text} (${o.criteria})`).join('\n'),
-      q.answeringGuideline ?? '—',
-    ]),
+  // One block per question in the question / note / option look (QUESTION_STYLING_PLAN.md),
+  // rather than a table, so the three read as distinctly in the PDF as on screen.
+  sections.push({ kind: 'text', heading: 'Questions & options', lines: [] });
+  questionnaire.questions.forEach((q, index) => {
+    sections.push({
+      kind: 'text',
+      heading: `${index + 1}. ${formatQuestionLabel(q)}`,
+      lines: [
+        ...questionPdfLines(q.questionText, q.options),
+        ...(q.answeringGuideline ? [{ text: `Guideline: ${q.answeringGuideline}`, style: 'note' as const }] : []),
+      ],
+    });
   });
 
   const scoreByKey = new Map(result.questionScores.map((qs) => [`${qs.questionId}:${qs.subScenarioId}`, qs]));
