@@ -8,11 +8,39 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    # The backend's integration tests (backend/tests/*.integration.test.ts) need a real
+    # Postgres with the schema migrated and the questionnaires seeded — same as local dev.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    # backend/src/config/env.ts validates these on import (tests and seed included); the values
+    # are CI-only placeholders — no email is sent, and the seeded admin exists only in this run.
     env:
-      # Only needed for `prisma generate`, which reads the datasource block but
-      # doesn't connect. Real migrations run against a real DB once Phase 1 adds
-      # a Postgres service container here.
       DATABASE_URL: 'postgresql://ci:ci@localhost:5432/ci?schema=public'
+      NODE_ENV: test
+      JWT_SECRET: ci-only-jwt-secret
+      ADMIN_EMAIL: admin@anlet.local
+      ADMIN_PASSWORD: ci-only-admin-password
+      SMTP_HOST: smtp.placeholder.invalid
+      SMTP_PORT: '587'
+      SMTP_USER: placeholder
+      SMTP_PASSWORD: placeholder
+      SMTP_FROM: no-reply@placeholder.invalid
+      APP_BASE_URL: http://localhost:5173
+
     steps:
       - uses: actions/checkout@v4
 
@@ -28,5 +56,10 @@ jobs:
       - run: npm run lint
 
       - run: npm run typecheck
+
+      - name: Migrate and seed the test database
+        run: |
+          npx prisma migrate deploy --schema=backend/prisma/schema.prisma
+          npm run db:seed -w backend
 
       - run: npm test --workspaces --if-present
