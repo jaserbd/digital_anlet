@@ -30,8 +30,11 @@ import { OptionCountsChart, OPTION_COLORS } from './charts/OptionCountsChart';
 import { formatSubScenarioLabel, groupSubScenariosByCategory } from '../lib/subScenarioCategories';
 import { buildCommentCollectionRows, buildCommentCollectionSheet } from './CommentCollectionTable';
 import { OptionList, QuestionText } from './QuestionContent';
+import { respondentColumnHeader } from '../lib/respondentIdentity';
 
 interface AnswerDistributionDrilldownProps {
+  // Executive view: respondents are pseudonyms, without designation (ANONYMOUS_EXECUTIVE_PLAN.md).
+  anonymized?: boolean;
   questions: QuestionDto[];
   subScenarios: SubScenarioDto[];
   entries: AnswerDrilldownEntryDto[];
@@ -66,6 +69,7 @@ export function AnswerDistributionDrilldown({
   comments,
   opCoScopeId,
   exportFileNamePrefix,
+  anonymized,
 }: AnswerDistributionDrilldownProps) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
@@ -88,8 +92,8 @@ export function AnswerDistributionDrilldown({
       .filter((e) => e.respondents.length > 0);
     const scopedComments = opCoScopeId ? comments.filter((c) => c.respondent.opCoId === opCoScopeId) : comments;
     exportRowsToXlsx(`${exportFileNamePrefix ?? 'answer'}-matrix`, [
-      ...buildAnswerMatrix(questions, subScenarios, scopedEntries),
-      buildCommentCollectionSheet(buildCommentCollectionRows(scopedComments, questions, subScenarios)),
+      ...buildAnswerMatrix(questions, subScenarios, scopedEntries, anonymized),
+      buildCommentCollectionSheet(buildCommentCollectionRows(scopedComments, questions, subScenarios), false, anonymized),
     ]);
   }
 
@@ -200,7 +204,7 @@ export function AnswerDistributionDrilldown({
                       <Typography sx={{ fontWeight: 700, mb: 0.5 }}>
                         Respondents — {expandedSubScenarioName}, option {expandedOption}:
                       </Typography>
-                      <RespondentTable respondents={expandedRespondents ?? []} />
+                      <RespondentTable respondents={expandedRespondents ?? []} anonymized={anonymized} />
                     </Box>
                   )}
                 </AccordionDetails>
@@ -213,17 +217,17 @@ export function AnswerDistributionDrilldown({
   );
 }
 
-function RespondentTable({ respondents }: { respondents: DrilldownRespondentDto[] }) {
+function RespondentTable({ respondents, anonymized }: { respondents: DrilldownRespondentDto[]; anonymized?: boolean }) {
   return (
     <TableContainer component={Paper} variant="outlined">
       <Table size="small">
         <TableHead>
           <TableRow>
-            <TableCell>Email</TableCell>
+            <TableCell>{respondentColumnHeader(anonymized)}</TableCell>
             <TableCell>NatCo</TableCell>
             <TableCell>Country</TableCell>
             <TableCell>Working Domain</TableCell>
-            <TableCell>Designation</TableCell>
+            {!anonymized && <TableCell>Designation</TableCell>}
             <TableCell>Comment</TableCell>
           </TableRow>
         </TableHead>
@@ -234,13 +238,13 @@ function RespondentTable({ respondents }: { respondents: DrilldownRespondentDto[
               <TableCell>{r.opCoName ?? '—'}</TableCell>
               <TableCell>{r.country ?? '—'}</TableCell>
               <TableCell>{r.workingDomain ?? '—'}</TableCell>
-              <TableCell>{r.designation ?? '—'}</TableCell>
+              {!anonymized && <TableCell>{r.designation ?? '—'}</TableCell>}
               <TableCell>{r.comment ?? '—'}</TableCell>
             </TableRow>
           ))}
           {respondents.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6}>No respondents.</TableCell>
+              <TableCell colSpan={anonymized ? 5 : 6}>No respondents.</TableCell>
             </TableRow>
           )}
         </TableBody>

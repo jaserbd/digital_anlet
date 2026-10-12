@@ -64,3 +64,34 @@ describe('buildAnswerMatrix', () => {
     ]);
   });
 });
+
+// ANONYMOUS_EXECUTIVE_PLAN.md: an Executive's export shows a "Participant" column (the server
+// already replaced the email with a pseudonym) and no Designation column.
+describe('buildAnswerMatrix (anonymized)', () => {
+  const anonEntries: AnswerDrilldownEntryDto[] = [
+    {
+      questionId: 'q1',
+      subScenarioId: 'sub-1',
+      option: 'A',
+      respondents: ['Participant 10', 'Participant 2'].map((label) => ({
+        userId: label,
+        email: label,
+        opCoId: null,
+        opCoName: 'NatCo DE',
+        country: 'Germany',
+        workingDomain: 'IP',
+        designation: null,
+        comment: null,
+      })),
+    },
+  ];
+
+  it('labels the identity column "Participant", drops Designation, and orders labels numerically', () => {
+    const [sheet] = buildAnswerMatrix([question], [subScenario], anonEntries, true);
+    const headers = sheet!.columns.map((c) => c.header);
+    expect(headers[0]).toBe('Participant');
+    expect(headers).not.toContain('Email');
+    expect(headers).not.toContain('Designation');
+    expect(sheet!.rows.map((r) => r.email)).toEqual(['Participant 2', 'Participant 10']);
+  });
+});

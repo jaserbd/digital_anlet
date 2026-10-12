@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Role } from '@anlet/shared';
 import type {
   AnswerDistributionEntryDto,
@@ -17,6 +18,7 @@ import type {
   CrossOrgKeiCommentEntryDto,
   DrilldownRespondentIdentityDto,
   KeiDrilldownEntryDto,
+  NatCoStatusDto,
   OpCoBenchmarkingSummaryDto,
   OrganizationQuestionnaireSummaryDto,
   RespondentSummaryDto,
@@ -33,6 +35,12 @@ export class QuestionnaireNotFoundError extends Error {}
 // Normal User's does, so every respondent-scoped query below counts both roles. Admin never
 // answers questionnaires and is excluded.
 const RESPONDENT_ROLES: Role[] = ['NORMAL_USER', 'EXECUTIVE'];
+
+// Executives see participants anonymously (ANONYMOUS_EXECUTIVE_PLAN.md): no emails, names,
+// designations or user ids leave the server for them. Admins pass `anonymize: false`.
+export interface InsightsViewOptions {
+  anonymize?: boolean;
+}
 
 function emptyCounts(): AnswerOptionCounts {
   return { A: 0, B: 0, C: 0, D: 0 };
@@ -120,6 +128,7 @@ function subScenarioAverages(
 export async function getOrganizationQuestionnaireSummary(
   organizationId: string,
   questionnaireCode: string,
+  options: InsightsViewOptions = {},
 ): Promise<OrganizationQuestionnaireSummaryDto> {
   const questionnaire = await prisma.questionnaire.findUnique({
     where: { code: questionnaireCode },
@@ -195,7 +204,63 @@ export async function getOrganizationQuestionnaireSummary(
     }
   }
 
-  return { questionnaireCode: questionnaire.code, respondents, answerDistribution };
+  if (options.anonymize) {
+    return {
+      questionnaireCode: questionnaire.code,
+      anonymized: true,
+      respondents: [],
+      natCoStatus: summarizeByNatCo(respondents),
+      answerDistribution,
+    };
+  }
+  return { questionnaireCode: questionnaire.code, anonymized: false, respondents, natCoStatus: [], answerDistribution };
+}
+
+// Per-NatCo participation counts — what an Executive sees instead of per-person rows.
+function summarizeByNatCo(respondents: RespondentSummaryDto[]): NatCoStatusDto[] {
+  const groups = new Map<string, NatCoStatusDto & { scoreSum: number; scoreCount: number }>();
+  for (const r of respondents) {
+    const key = r.opCoId ?? '';
+    const g = groups.get(key) ?? {
+      opCoId: r.opCoId,
+      opCoName: r.opCoName,
+      country: r.country,
+      participantCount: 0,
+      submittedCount: 0,
+      inProgressCount: 0,
+      notStartedCount: 0,
+      averageFinalScore: null,
+      scoreSum: 0,
+      scoreCount: 0,
+    };
+    g.participantCount += 1;
+    if (r.status === 'SUBMITTED') g.submittedCount += 1;
+    else if (r.status === 'IN_PROGRESS') g.inProgressCount += 1;
+    else g.notStartedCount += 1;
+    if (r.status === 'SUBMITTED' && r.finalScore != null) {
+      g.scoreSum += r.finalScore;
+      g.scoreCount += 1;
+    }
+    groups.set(key, g);
+  }
+  return [...groups.values()]
+    .map(({ scoreSum, scoreCount, ...g }) => ({ ...g, averageFinalScore: scoreCount > 0 ? round4(scoreSum / scoreCount) : null }))
+    .sort((a, b) => (a.opCoName ?? '\uffff').localeCompare(b.opCoName ?? '\uffff'));
+}
+
+// Stable "Participant N" labels for one organization + questionnaire, numbered in the order of
+// a hash of the user id — never by email, name or submission time, so the numbers reveal
+// nothing about who is who. Within one organization a user has exactly one membership.
+function buildPseudonyms(userIds: Iterable<string>, questionnaireId: string): Map<string, string> {
+  const ordered = [...new Set(userIds)]
+    .map((id) => ({ id, hash: createHash('sha256').update(`${questionnaireId}:${id}`).digest('hex') }))
+    .sort((a, b) => a.hash.localeCompare(b.hash));
+  return new Map(ordered.map((u, i) => [u.id, `Participant ${i + 1}`]));
+}
+
+function anonymizeIdentity<T extends DrilldownRespondentIdentityDto>(identity: T, pseudonyms: Map<string, string>): T {
+  const label = pseudonyms.get(identity.userId) ?? 'Participant';
+  return { ...identity, userId: label, email: label, designation: null };
 }
 
 // A respondent's identity comes from the membership the response belongs to
@@ -250,6 +315,7 @@ const IDENTITY_SELECT = {
 export async function getAnswerDrilldown(
   organizationId: string,
   questionnaireCode: string,
+  options: InsightsViewOptions = {},
 ): Promise<AnswerDrilldownDto> {
   const questionnaire = await prisma.questionnaire.findUnique({ where: { code: questionnaireCode } });
   if (!questionnaire) {
@@ -327,9 +393,25 @@ export async function getAnswerDrilldown(
     respondent: toIdentity(k.response.membership),
   }));
 
+  const entries = [...byKey.values()];
+  if (options.anonymize) {
+    const pseudonyms = buildPseudonyms(
+      [...answers, ...comments, ...keis].map((x) => x.response.membership.userId),
+      questionnaire.id,
+    );
+    return {
+      questionnaireCode: questionnaire.code,
+      anonymized: true,
+      entries: entries.map((e) => ({ ...e, respondents: e.respondents.map((r) => anonymizeIdentity(r, pseudonyms)) })),
+      comments: commentEntries.map((c) => ({ ...c, respondent: anonymizeIdentity(c.respondent, pseudonyms) })),
+      keiResponses: keiResponses.map((k) => ({ ...k, respondent: anonymizeIdentity(k.respondent, pseudonyms) })),
+    };
+  }
+
   return {
     questionnaireCode: questionnaire.code,
-    entries: [...byKey.values()],
+    anonymized: false,
+    entries,
     comments: commentEntries,
     keiResponses,
   };

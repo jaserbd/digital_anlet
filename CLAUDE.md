@@ -112,6 +112,13 @@ Outcome measures (MTTR, automation/diagnosis ratios) listed under each source's 
 - `textCorrections.test.ts` fails if any fix no longer matches its source text (remove it when a revised workbook already fixes it) or if corrections touch codes, weights, criteria or structure. Parser golden-master tests still run on the uncorrected text.
 - Rolling text changes out to an existing database: `npm run db:seed:questionnaires` (`--questionnaires-only`) — updates questionnaire text in place (questions/KEIs keyed by `sortOrder`, sub-scenarios by code, so answers stay attached) without the full seed's super-admin password reset.
 
+### Anonymous answers for Executives (`ANONYMOUS_EXECUTIVE_PLAN.md`)
+
+- **Reverses, for Executives only, the per-respondent identity exposure** described in "Executive per-respondent answer drill-down" below. Enforced on the server: `insights.controller.ts` passes `{ anonymize: req.user.role === 'EXECUTIVE' }` (the active context's role) to `getOrganizationQuestionnaireSummary` and `getAnswerDrilldown`. Admins (incl. the Organization Deep-Dive) keep full identities.
+- Anonymized summary: `respondents: []` + `natCoStatus` (per-NatCo participants/submitted/in progress/not started/average score) — no individual status or score. Anonymized drill-down: every identity becomes `email = userId = "Participant N"`, `designation: null`; NatCo/Country/Working Domain kept. Both DTOs carry `anonymized`.
+- Pseudonyms are numbered per organization + questionnaire in the order of `sha256(questionnaireId:userId)` — never email/name/time order — so the same person has the same label across answers, comments and KEIs; numbers can shift when someone new submits.
+- Frontend: `lib/respondentIdentity.ts` (column header "Participant" vs "Email", drop Designation); `NatCoStatusTable` replaces `RespondentsTable` for Executives; every Excel/PDF builder takes `anonymized`. Participants see a one-line notice on `QuestionnairePage`.
+
 ### Org hierarchy and profile completion (from `FIRST_REVIEW.md`)
 
 Real-world usage feedback after the MVP demo described large CSP groups with multiple NatCos/OpCos per Organization, and users self-identifying their Country/Company/Working Domain/Designation before answering. Decisions locked in for this:

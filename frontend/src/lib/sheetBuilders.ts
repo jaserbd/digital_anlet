@@ -1,4 +1,4 @@
-import type { BenchmarkRowDto, CombinedBenchmarkRowDto, RespondentSummaryDto, SubScenarioDto } from '@anlet/shared';
+import type { BenchmarkRowDto, CombinedBenchmarkRowDto, NatCoStatusDto, RespondentSummaryDto, SubScenarioDto } from '@anlet/shared';
 import type { XlsxSheet } from './exportXlsx';
 import { formatSubScenarioLabel } from './subScenarioCategories';
 
@@ -33,6 +33,32 @@ export function buildRespondentsSheet(respondents: RespondentSummaryDto[]): Xlsx
       designation: r.designation ?? '',
       status: STATUS_LABEL[r.status] ?? r.status,
       finalScore: r.finalScore ?? '',
+    })),
+  };
+}
+
+// Executive counterpart of buildRespondentsSheet (ANONYMOUS_EXECUTIVE_PLAN.md): participation per
+// NatCo instead of one row per person.
+export function buildNatCoStatusSheet(rows: NatCoStatusDto[]): XlsxSheet {
+  return {
+    name: 'Participation',
+    columns: [
+      { header: 'NatCo', key: 'opCoName' },
+      { header: 'Country', key: 'country' },
+      { header: 'Participants', key: 'participantCount' },
+      { header: 'Submitted', key: 'submittedCount' },
+      { header: 'In progress', key: 'inProgressCount' },
+      { header: 'Not started', key: 'notStartedCount' },
+      { header: 'Avg. final score', key: 'averageFinalScore' },
+    ],
+    rows: rows.map((r) => ({
+      opCoName: r.opCoName ?? 'No NatCo yet',
+      country: r.country ?? '',
+      participantCount: r.participantCount,
+      submittedCount: r.submittedCount,
+      inProgressCount: r.inProgressCount,
+      notStartedCount: r.notStartedCount,
+      averageFinalScore: r.averageFinalScore ?? '',
     })),
   };
 }

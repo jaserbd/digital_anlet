@@ -9,6 +9,7 @@ import type { OptionCountsChartRow } from '../components/charts/OptionCountsChar
 import type { XlsxSheet } from './exportXlsx';
 import type { PdfSection } from './exportPdf';
 import { formatKeiAnswer, keiOptionScore } from './kei';
+import { respondentColumnHeader, withoutDesignation } from './respondentIdentity';
 
 // Aggregation of submitted Key Effectiveness Indicator answers for the Executive / Admin
 // views (NEW_HVS_PLAN.md Phase B), derived client-side from the drill-down's flat
@@ -69,12 +70,13 @@ export function buildKeiChartData(
 export function buildKeiResponsesSheet(
   indicators: EffectivenessIndicatorDto[],
   responses: KeiDrilldownEntryDto[],
+  anonymized?: boolean,
 ): XlsxSheet {
   const indicatorById = new Map(indicators.map((k) => [k.id, k]));
   return {
     name: 'Effectiveness indicators',
-    columns: [
-      { header: 'Email', key: 'email' },
+    columns: withoutDesignation([
+      { header: respondentColumnHeader(anonymized), key: 'email' },
       { header: 'NatCo', key: 'opCoName' },
       { header: 'Country', key: 'country' },
       { header: 'Designation', key: 'designation' },
@@ -83,7 +85,7 @@ export function buildKeiResponsesSheet(
       { header: 'Score', key: 'score' },
       { header: 'Measured value', key: 'value' },
       { header: 'Comment', key: 'comment' },
-    ],
+    ], anonymized),
     rows: responses.flatMap((r) => {
       const indicator = indicatorById.get(r.indicatorId);
       if (!indicator) return [];
@@ -108,11 +110,12 @@ export function buildKeiResponsesSheet(
 export function buildKeiDistributionPdfSections(
   indicators: EffectivenessIndicatorDto[],
   responses: KeiDrilldownEntryDto[],
+  anonymized?: boolean,
 ): PdfSection[] {
   if (indicators.length === 0) return [];
   const index = indexKeiResponses(responses);
   const options = keiOptionsOffered(indicators);
-  const sheet = buildKeiResponsesSheet(indicators, responses);
+  const sheet = buildKeiResponsesSheet(indicators, responses, anonymized);
   return [
     {
       kind: 'table',
@@ -133,7 +136,7 @@ export function buildKeiDistributionPdfSections(
           {
             kind: 'table' as const,
             heading: 'Key Effectiveness Indicators — respondents',
-            head: [['Email', 'NatCo', 'Indicator', 'Answer', 'Measured value', 'Comment']],
+            head: [[respondentColumnHeader(anonymized), 'NatCo', 'Indicator', 'Answer', 'Measured value', 'Comment']],
             body: sheet.rows.map((r) => [
               String(r.email),
               String(r.opCoName || '—'),

@@ -2,6 +2,7 @@ import type { AnswerDrilldownEntryDto, DrilldownRespondentDto, QuestionDto, SubS
 import { formatQuestionLabel, groupByCognitiveActivity } from './cognitiveActivity';
 import type { XlsxColumn, XlsxSheet } from './exportXlsx';
 import { formatSubScenarioLabel } from './subScenarioCategories';
+import { compareRespondentLabels, respondentColumnHeader, withoutDesignation } from './respondentIdentity';
 
 interface RespondentRow {
   identity: DrilldownRespondentDto;
@@ -29,6 +30,7 @@ export function buildAnswerMatrix(
   questions: QuestionDto[],
   subScenarios: SubScenarioDto[],
   entries: AnswerDrilldownEntryDto[],
+  anonymized?: boolean,
 ): XlsxSheet[] {
   const byUser = new Map<string, RespondentRow>();
 
@@ -43,15 +45,15 @@ export function buildAnswerMatrix(
     }
   }
 
-  const identityColumns: XlsxColumn[] = [
-    { header: 'Email', key: 'email' },
+  const identityColumns: XlsxColumn[] = withoutDesignation([
+    { header: respondentColumnHeader(anonymized), key: 'email' },
     { header: 'NatCo', key: 'opCoName' },
     { header: 'Country', key: 'country' },
     { header: 'Working Domain', key: 'workingDomain' },
     { header: 'Designation', key: 'designation' },
-  ];
+  ], anonymized);
 
-  const respondentRows = [...byUser.values()].sort((a, b) => a.identity.email.localeCompare(b.identity.email));
+  const respondentRows = [...byUser.values()].sort((a, b) => compareRespondentLabels(a.identity.email, b.identity.email));
 
   return groupByCognitiveActivity(questions).map((group) => {
     const columns: XlsxColumn[] = [...identityColumns];

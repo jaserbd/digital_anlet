@@ -9,13 +9,14 @@ import type {
 import { buildCommentCollectionRows, buildCommentCollectionSheet } from '../components/CommentCollectionTable';
 import { buildKeiCommentRows, buildKeiDistributionPdfSections, buildKeiResponsesSheet } from './keiDistribution';
 import { buildAnswerMatrix } from './answerMatrix';
-import { buildBenchmarkSheet, buildCombinedBenchmarkSheet, buildRespondentsSheet } from './sheetBuilders';
+import { buildBenchmarkSheet, buildCombinedBenchmarkSheet, buildNatCoStatusSheet, buildRespondentsSheet } from './sheetBuilders';
 import type { XlsxSheet } from './exportXlsx';
 import {
   buildAnswerDistributionPdfSections,
   buildBenchmarkPdfSections,
   buildCombinedBenchmarkPdfSections,
   buildCommentCollectionPdfSection,
+  buildNatCoStatusPdfSections,
   buildRespondentsPdfSections,
 } from './pdfSections';
 import type { PdfSection } from './exportPdf';
@@ -62,11 +63,13 @@ export function buildOrganizationReportSheets(
     );
   }
   for (const { questionnaire, summary, drilldown } of details) {
-    sheets.push(buildRespondentsSheet(summary.respondents));
-    sheets.push(buildCommentCollectionSheet(reportCommentRows(questionnaire, drilldown)));
-    sheets.push(...buildAnswerMatrix(questionnaire.questions, questionnaire.subScenarios, drilldown?.entries ?? []));
+    // Executives get anonymized data (ANONYMOUS_EXECUTIVE_PLAN.md): participation per NatCo, pseudonyms.
+    const anonymized = summary.anonymized;
+    sheets.push(anonymized ? buildNatCoStatusSheet(summary.natCoStatus) : buildRespondentsSheet(summary.respondents));
+    sheets.push(buildCommentCollectionSheet(reportCommentRows(questionnaire, drilldown), false, anonymized));
+    sheets.push(...buildAnswerMatrix(questionnaire.questions, questionnaire.subScenarios, drilldown?.entries ?? [], anonymized));
     if (questionnaire.effectivenessIndicators.length > 0) {
-      sheets.push(buildKeiResponsesSheet(questionnaire.effectivenessIndicators, drilldown?.keiResponses ?? []));
+      sheets.push(buildKeiResponsesSheet(questionnaire.effectivenessIndicators, drilldown?.keiResponses ?? [], anonymized));
     }
   }
   return sheets;
@@ -91,12 +94,23 @@ export async function buildOrganizationReportPdfSections(
     );
   }
   for (const { questionnaire, summary, drilldown } of details) {
-    sections.push(...(await buildRespondentsPdfSections(summary.respondents)));
-    sections.push(buildCommentCollectionPdfSection(reportCommentRows(questionnaire, drilldown)));
+    const anonymized = summary.anonymized;
     sections.push(
-      ...(await buildAnswerDistributionPdfSections(questionnaire.questions, questionnaire.subScenarios, drilldown?.entries ?? [])),
+      ...(anonymized
+        ? await buildNatCoStatusPdfSections(summary.natCoStatus)
+        : await buildRespondentsPdfSections(summary.respondents)),
     );
-    sections.push(...buildKeiDistributionPdfSections(questionnaire.effectivenessIndicators, drilldown?.keiResponses ?? []));
+    sections.push(buildCommentCollectionPdfSection(reportCommentRows(questionnaire, drilldown), anonymized));
+    sections.push(
+      ...(await buildAnswerDistributionPdfSections(
+        questionnaire.questions,
+        questionnaire.subScenarios,
+        drilldown?.entries ?? [],
+        undefined,
+        anonymized,
+      )),
+    );
+    sections.push(...buildKeiDistributionPdfSections(questionnaire.effectivenessIndicators, drilldown?.keiResponses ?? [], anonymized));
   }
   return sections;
 }

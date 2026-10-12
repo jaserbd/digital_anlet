@@ -15,6 +15,7 @@ import Typography from '@mui/material/Typography';
 import { OptionCountsChart, OPTION_COLORS } from './charts/OptionCountsChart';
 import { OptionList, QuestionText } from './QuestionContent';
 import { exportRowsToXlsx } from '../lib/exportXlsx';
+import { respondentColumnHeader } from '../lib/respondentIdentity';
 import {
   buildKeiChartData,
   buildKeiResponsesSheet,
@@ -34,11 +35,14 @@ export function KeiDistribution({
   responses,
   opCoScopeId,
   exportFileNamePrefix,
+  anonymized,
 }: {
   indicators: EffectivenessIndicatorDto[];
   responses: KeiDrilldownEntryDto[];
   opCoScopeId?: string | null;
   exportFileNamePrefix?: string;
+  // Executive view: respondents are pseudonyms (ANONYMOUS_EXECUTIVE_PLAN.md).
+  anonymized?: boolean;
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const index = indexKeiResponses(responses, opCoScopeId);
@@ -54,7 +58,7 @@ export function KeiDistribution({
             disabled={scopedResponses.length === 0}
             onClick={() =>
               exportRowsToXlsx(`${exportFileNamePrefix}-effectiveness-indicators`, [
-                buildKeiResponsesSheet(indicators, scopedResponses),
+                buildKeiResponsesSheet(indicators, scopedResponses, anonymized),
               ])
             }
           >
@@ -105,7 +109,7 @@ export function KeiDistribution({
                   );
                 })}
               </Stack>
-              {expanded && <KeiRespondentTable respondents={index.respondentsByKey.get(expanded) ?? []} />}
+              {expanded && <KeiRespondentTable respondents={index.respondentsByKey.get(expanded) ?? []} anonymized={anonymized} />}
             </Paper>
           );
         })}
@@ -117,16 +121,16 @@ export function KeiDistribution({
   );
 }
 
-function KeiRespondentTable({ respondents }: { respondents: KeiDrilldownEntryDto[] }) {
+function KeiRespondentTable({ respondents, anonymized }: { respondents: KeiDrilldownEntryDto[]; anonymized?: boolean }) {
   return (
     <TableContainer component={Paper} variant="outlined" sx={{ mt: 1.5 }}>
       <Table size="small">
         <TableHead>
           <TableRow>
-            <TableCell>Email</TableCell>
+            <TableCell>{respondentColumnHeader(anonymized)}</TableCell>
             <TableCell>NatCo</TableCell>
             <TableCell>Country</TableCell>
-            <TableCell>Designation</TableCell>
+            {!anonymized && <TableCell>Designation</TableCell>}
             <TableCell>Measured value</TableCell>
             <TableCell>Comment</TableCell>
           </TableRow>
@@ -137,7 +141,7 @@ function KeiRespondentTable({ respondents }: { respondents: KeiDrilldownEntryDto
               <TableCell>{r.respondent.email}</TableCell>
               <TableCell>{r.respondent.opCoName ?? '—'}</TableCell>
               <TableCell>{r.respondent.country ?? '—'}</TableCell>
-              <TableCell>{r.respondent.designation ?? '—'}</TableCell>
+              {!anonymized && <TableCell>{r.respondent.designation ?? '—'}</TableCell>}
               <TableCell>{r.indicatorValue ?? '—'}</TableCell>
               <TableCell sx={{ whiteSpace: 'pre-wrap' }}>{r.comment ?? '—'}</TableCell>
             </TableRow>

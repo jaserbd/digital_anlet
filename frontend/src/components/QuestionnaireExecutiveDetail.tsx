@@ -3,6 +3,7 @@ import { questionnaireApi } from '../api/questionnaireApi';
 import { insightsApi } from '../api/insightsApi';
 import { AnswerDistributionDrilldown } from './AnswerDistributionDrilldown';
 import { RespondentsTable } from './RespondentsTable';
+import { NatCoStatusTable } from './NatCoStatusTable';
 import { buildCommentCollectionRows, CommentCollectionTable } from './CommentCollectionTable';
 import { buildKeiCommentRows } from '../lib/keiDistribution';
 import { KeiDistribution } from './KeiDistribution';
@@ -64,6 +65,8 @@ export function QuestionnaireExecutiveDetail({
   }
   const { data: questionnaire } = questionnaireQuery;
   const { data: summary } = summaryQuery;
+  // Executives get anonymized data from the server (ANONYMOUS_EXECUTIVE_PLAN.md); Admins don't.
+  const anonymized = summary.anonymized || !!drilldownQuery.data?.anonymized;
 
   return (
     <>
@@ -73,11 +76,19 @@ export function QuestionnaireExecutiveDetail({
         organizationSwitcher={organizationSwitcher}
       />
 
-      <RespondentsTable
-        respondents={summary.respondents}
-        title={`${questionnaire.name} — Respondents`}
-        exportFileNamePrefix={`org-${organizationId}-${questionnaireCode}`}
-      />
+      {summary.anonymized ? (
+        <NatCoStatusTable
+          rows={summary.natCoStatus}
+          title={`${questionnaire.name} — Participation`}
+          exportFileNamePrefix={`org-${organizationId}-${questionnaireCode}`}
+        />
+      ) : (
+        <RespondentsTable
+          respondents={summary.respondents}
+          title={`${questionnaire.name} — Respondents`}
+          exportFileNamePrefix={`org-${organizationId}-${questionnaireCode}`}
+        />
+      )}
 
       <h3 style={{ marginTop: '1.5rem' }}>{questionnaire.name} — Answer distribution</h3>
       <AnswerDistributionDrilldown
@@ -87,6 +98,7 @@ export function QuestionnaireExecutiveDetail({
         comments={drilldownQuery.data?.comments ?? []}
         opCoScopeId={opCoScopeId}
         exportFileNamePrefix={`org-${organizationId}-${questionnaireCode}`}
+        anonymized={anonymized}
       />
 
       {questionnaire.effectivenessIndicators.length > 0 && (
@@ -97,6 +109,7 @@ export function QuestionnaireExecutiveDetail({
             responses={drilldownQuery.data?.keiResponses ?? []}
             opCoScopeId={opCoScopeId}
             exportFileNamePrefix={`org-${organizationId}-${questionnaireCode}`}
+            anonymized={anonymized}
           />
         </>
       )}
@@ -111,6 +124,7 @@ export function QuestionnaireExecutiveDetail({
           hvs={questionnaire.hvsCategory}
           title={`${questionnaire.name} — Comment Collection`}
           exportFileNamePrefix={`org-${organizationId}-${questionnaireCode}`}
+          anonymized={anonymized}
         />
       </div>
     </>

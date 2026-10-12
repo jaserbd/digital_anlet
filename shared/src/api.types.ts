@@ -327,9 +327,26 @@ export interface AnswerDistributionEntryDto {
   counts: AnswerOptionCounts;
 }
 
+// Per-NatCo participation for an Executive (ANONYMOUS_EXECUTIVE_PLAN.md), who never gets
+// per-person rows. `opCoId`/`opCoName`/`country` are null for participants without a NatCo yet.
+export interface NatCoStatusDto {
+  opCoId: string | null;
+  opCoName: string | null;
+  country: string | null;
+  participantCount: number;
+  submittedCount: number;
+  inProgressCount: number;
+  notStartedCount: number;
+  averageFinalScore: number | null;
+}
+
 export interface OrganizationQuestionnaireSummaryDto {
   questionnaireCode: string;
+  // True when the caller is an Executive: `respondents` is then empty and `natCoStatus` holds
+  // the per-NatCo counts instead (ANONYMOUS_EXECUTIVE_PLAN.md). Admins get `respondents`.
+  anonymized: boolean;
   respondents: RespondentSummaryDto[];
+  natCoStatus: NatCoStatusDto[];
   answerDistribution: AnswerDistributionEntryDto[];
 }
 
@@ -339,6 +356,10 @@ export interface OrganizationQuestionnaireSummaryDto {
 // specific respondent picked which option — an intentional privacy/scope expansion over the
 // aggregate-only answerDistribution, not an oversight (the review's own example: a Group
 // CTO wants to see who, from which OpCo/country, chose which option).
+//
+// For an Executive the identity is anonymized on the server (ANONYMOUS_EXECUTIVE_PLAN.md):
+// `email` then holds a pseudonym ("Participant 3"), `userId` a matching pseudonymous key, and
+// `designation` is null — see AnswerDrilldownDto.anonymized.
 export interface DrilldownRespondentIdentityDto {
   userId: string;
   email: string;
@@ -384,6 +405,8 @@ export interface KeiDrilldownEntryDto extends KeiAnswerDto {
 
 export interface AnswerDrilldownDto {
   questionnaireCode: string;
+  // True when respondent identities are pseudonyms (Executive caller).
+  anonymized: boolean;
   entries: AnswerDrilldownEntryDto[];
   comments: CommentDrilldownEntryDto[];
   keiResponses: KeiDrilldownEntryDto[];

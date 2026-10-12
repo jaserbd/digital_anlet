@@ -274,3 +274,96 @@ describe('getCognitiveActivitySummary (real DB)', () => {
     expect(countryScoped.averageFinalScore).toBeCloseTo(scoreA, 4);
   });
 });
+
+// ANONYMOUS_EXECUTIVE_PLAN.md: an Executive's view (anonymize: true) must carry no email, name,
+// designation or real user id — only stable "Participant N" pseudonyms plus NatCo/Country/
+// Working Domain — while the Admin view (default) keeps full identities.
+describe('anonymized Executive view (real DB)', () => {
+  const ORG_C_NAME = '__integration-test-insights-org-anon__';
+  let orgCId: string;
+
+  beforeAll(async () => {
+    orgCId = (await prisma.organization.create({ data: { name: ORG_C_NAME } })).id;
+  });
+
+  afterAll(async () => {
+    await prisma.questionnaireResponse.deleteMany({ where: { membership: { organizationId: orgCId } } });
+    await prisma.user.deleteMany({ where: { organizationId: orgCId } });
+    await prisma.opCo.deleteMany({ where: { organizationId: orgCId } });
+    await prisma.organization.deleteMany({ where: { id: orgCId } });
+  });
+
+  it('replaces identities with consistent pseudonyms and per-NatCo counts', async () => {
+    const opCo = await prisma.opCo.create({ data: { name: '__anon-natco__', country: 'Anonland', organizationId: orgCId } });
+    const commenterId = await createUser(orgCId, 'anon-commenter', opCo.id);
+    const otherId = await createUser(orgCId, 'anon-other', opCo.id);
+    const notStartedId = await createUser(orgCId, 'anon-not-started', opCo.id);
+    await prisma.membership.updateMany({
+      where: { organizationId: orgCId },
+      data: { workingDomain: 'Core', designation: 'Chief Anonymity Officer' },
+    });
+    await prisma.user.update({ where: { id: commenterId }, data: { firstName: 'Secret', lastName: 'Person' } });
+
+    const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
+      where: { code: 'RAN_FM_GB1059A' },
+      include: { questions: true, subScenarios: true },
+    });
+    const intentQuestion = questionnaire.questions.find((q) => q.serviceCapability === 'Intent-driven')!;
+    await answerAllAndSubmit(otherId);
+    const response = await getOrCreateResponse(await callerFor(commenterId), 'RAN_FM_GB1059A');
+    for (const question of questionnaire.questions) {
+      for (const subScenario of questionnaire.subScenarios) {
+        await upsertAnswer(response.id, commenterId, { questionId: question.id, subScenarioId: subScenario.id, selectedOption: 'B' });
+      }
+    }
+    await upsertComment(response.id, commenterId, {
+      questionId: intentQuestion.id,
+      commentText: 'Anonymous remark.',
+      subScenarioIds: [questionnaire.subScenarios[0]!.id],
+      appliesToNone: false,
+    });
+    await submitResponse(response.id, commenterId);
+
+    const [drilldown, summary] = await Promise.all([
+      getAnswerDrilldown(orgCId, 'RAN_FM_GB1059A', { anonymize: true }),
+      getOrganizationQuestionnaireSummary(orgCId, 'RAN_FM_GB1059A', { anonymize: true }),
+    ]);
+
+    // Nothing identifying anywhere in the payloads.
+    const payload = JSON.stringify([drilldown, summary]);
+    for (const secret of ['@example.com', 'Chief Anonymity Officer', 'Secret', commenterId, otherId, notStartedId]) {
+      expect(payload).not.toContain(secret);
+    }
+
+    expect(drilldown.anonymized).toBe(true);
+    const comment = drilldown.comments.find((c) => c.commentText === 'Anonymous remark.')!;
+    expect(comment.respondent).toMatchObject({ opCoName: '__anon-natco__', country: 'Anonland', workingDomain: 'Core', designation: null });
+    expect(comment.respondent.email).toMatch(/^Participant [12]$/);
+    // The same person carries the same label on their answers as on their comment.
+    const bEntry = drilldown.entries.find((e) => e.questionId === intentQuestion.id && e.option === 'B')!;
+    expect(bEntry.respondents.map((r) => r.email)).toEqual([comment.respondent.email]);
+    expect(bEntry.respondents[0]!.comment).toBe('Anonymous remark.');
+    const labels = new Set(drilldown.entries.flatMap((e) => e.respondents.map((r) => r.email)));
+    expect([...labels].sort()).toEqual(['Participant 1', 'Participant 2']);
+
+    expect(summary).toMatchObject({ anonymized: true, respondents: [] });
+    expect(summary.natCoStatus).toEqual([
+      expect.objectContaining({
+        opCoName: '__anon-natco__',
+        country: 'Anonland',
+        participantCount: 3,
+        submittedCount: 2,
+        inProgressCount: 0,
+        notStartedCount: 1,
+      }),
+    ]);
+    expect(summary.natCoStatus[0]!.averageFinalScore).not.toBeNull();
+
+    // Admin view keeps identities.
+    const adminDrilldown = await getAnswerDrilldown(orgCId, 'RAN_FM_GB1059A');
+    expect(adminDrilldown.anonymized).toBe(false);
+    expect(adminDrilldown.comments[0]!.respondent.email).toBe('__integration-test-insights-anon-commenter__@example.com');
+    const adminSummary = await getOrganizationQuestionnaireSummary(orgCId, 'RAN_FM_GB1059A');
+    expect(adminSummary.respondents).toHaveLength(3);
+  });
+});

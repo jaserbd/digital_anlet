@@ -41,7 +41,9 @@ export async function getOrganizationQuestionnaireSummaryHandler(req: Request, r
   }
 
   try {
-    const summary = await getOrganizationQuestionnaireSummary(orgId, questionnaireCode);
+    const summary = await getOrganizationQuestionnaireSummary(orgId, questionnaireCode, {
+      anonymize: req.user!.role === 'EXECUTIVE',
+    });
     res.json(summary);
   } catch (err) {
     if (err instanceof QuestionnaireNotFoundError) {
@@ -112,7 +114,8 @@ export async function getAnswerDrilldownHandler(req: Request, res: Response) {
   }
 
   try {
-    const drilldown = await getAnswerDrilldown(orgId, questionnaireCode);
+    // Executives see participants as pseudonyms (ANONYMOUS_EXECUTIVE_PLAN.md); Admins see identities.
+    const drilldown = await getAnswerDrilldown(orgId, questionnaireCode, { anonymize: req.user!.role === 'EXECUTIVE' });
     res.json(drilldown);
   } catch (err) {
     if (err instanceof QuestionnaireNotFoundError) {

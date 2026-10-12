@@ -6,6 +6,7 @@ import Typography from '@mui/material/Typography';
 import { SortableTable, type SortableTableColumn } from './SortableTable';
 import { exportRowsToXlsx, type XlsxSheet } from '../lib/exportXlsx';
 import { formatSubScenarioLabel } from '../lib/subScenarioCategories';
+import { respondentColumnHeader, withoutDesignation } from '../lib/respondentIdentity';
 
 export interface CommentCollectionRow {
   key: string;
@@ -75,19 +76,23 @@ export function buildCrossOrgCommentCollectionRows(
   return flattenCommentRows(comments, questions, subScenarios, (c) => ({ organizationName: c.organizationName }));
 }
 
-export function buildCommentCollectionSheet(rows: CommentCollectionRow[], showOrganizationColumn?: boolean): XlsxSheet {
+export function buildCommentCollectionSheet(
+  rows: CommentCollectionRow[],
+  showOrganizationColumn?: boolean,
+  anonymized?: boolean,
+): XlsxSheet {
   return {
     name: 'Comment collection',
-    columns: [
+    columns: withoutDesignation([
       ...(showOrganizationColumn ? [{ header: 'Organization', key: 'organizationName' }] : []),
-      { header: 'Email', key: 'email' },
+      { header: respondentColumnHeader(anonymized), key: 'email' },
       { header: 'NatCo', key: 'opCoName' },
       { header: 'Country', key: 'country' },
       { header: 'Designation', key: 'designation' },
       { header: 'Cognitive Activity', key: 'cognitiveActivity' },
       { header: 'Sub Scenario', key: 'subScenario' },
       { header: 'Comment', key: 'comment' },
-    ],
+    ], anonymized),
     rows: rows.map((r) => ({
       organizationName: r.organizationName ?? '',
       email: r.email,
@@ -115,6 +120,7 @@ export function CommentCollectionTable({
   title = 'Comment Collection',
   exportFileNamePrefix,
   showOrganizationColumn,
+  anonymized,
 }: {
   rows: CommentCollectionRow[];
   domain: string;
@@ -122,10 +128,12 @@ export function CommentCollectionTable({
   title?: string;
   exportFileNamePrefix?: string;
   showOrganizationColumn?: boolean;
+  // Executive view: rows carry pseudonyms (ANONYMOUS_EXECUTIVE_PLAN.md).
+  anonymized?: boolean;
 }) {
   const [visibleRows, setVisibleRows] = useState<CommentCollectionRow[]>(rows);
 
-  const columns: SortableTableColumn<CommentCollectionRow>[] = [
+  const columns: SortableTableColumn<CommentCollectionRow>[] = withoutDesignation<SortableTableColumn<CommentCollectionRow>>([
     ...(showOrganizationColumn
       ? [
           {
@@ -136,18 +144,18 @@ export function CommentCollectionTable({
           },
         ]
       : []),
-    { key: 'email', header: 'Email', getValue: (r) => r.email, filterType: 'multiselect' },
+    { key: 'email', header: respondentColumnHeader(anonymized), getValue: (r) => r.email, filterType: 'multiselect' },
     { key: 'opCo', header: 'NatCo', getValue: (r) => r.opCoName, filterType: 'multiselect' },
     { key: 'country', header: 'Country', getValue: (r) => r.country, filterType: 'multiselect' },
     { key: 'designation', header: 'Designation', getValue: (r) => r.designation, filterType: 'multiselect' },
     { key: 'cognitiveActivity', header: 'Cognitive Activity', getValue: (r) => r.cognitiveActivity, filterType: 'multiselect' },
     { key: 'subScenario', header: 'Sub Scenario', getValue: (r) => r.subScenario, filterType: 'multiselect' },
     { key: 'comment', header: 'Comment', getValue: (r) => r.comment, filterable: true },
-  ];
+  ], anonymized);
 
   function handleExport() {
     if (!exportFileNamePrefix) return;
-    exportRowsToXlsx(`${exportFileNamePrefix}-comments`, [buildCommentCollectionSheet(visibleRows, showOrganizationColumn)]);
+    exportRowsToXlsx(`${exportFileNamePrefix}-comments`, [buildCommentCollectionSheet(visibleRows, showOrganizationColumn, anonymized)]);
   }
 
   return (

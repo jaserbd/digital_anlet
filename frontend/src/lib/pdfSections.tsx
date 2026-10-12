@@ -2,6 +2,7 @@ import type {
   AnswerDrilldownEntryDto,
   BenchmarkRowDto,
   CombinedBenchmarkRowDto,
+  NatCoStatusDto,
   QuestionDto,
   RespondentSummaryDto,
   SubScenarioDto,
@@ -14,6 +15,7 @@ import { ScoreBarChart, computeScoreBarChartHeight } from '../components/charts/
 import { OptionCountsChart, OPTION_COUNTS_CHART_HEIGHT } from '../components/charts/OptionCountsChart';
 import { formatSubScenarioLabel } from './subScenarioCategories';
 import { questionPdfLines } from './questionText';
+import { respondentColumnHeader } from './respondentIdentity';
 
 const STATUS_LABEL: Record<string, string> = {
   NOT_STARTED: 'Not started',
@@ -45,6 +47,34 @@ export function buildRespondentsPdfSection(respondents: RespondentSummaryDto[]):
       r.finalScore != null ? r.finalScore.toFixed(2) : '—',
     ]),
   };
+}
+
+// Executive counterpart of the Respondents table (ANONYMOUS_EXECUTIVE_PLAN.md).
+export async function buildNatCoStatusPdfSections(rows: NatCoStatusDto[]): Promise<PdfSection[]> {
+  const table: PdfSection = {
+    kind: 'table',
+    heading: 'Participation by NatCo',
+    head: [['NatCo', 'Country', 'Participants', 'Submitted', 'In progress', 'Not started', 'Avg. final score']],
+    body: rows.map((r) => [
+      r.opCoName ?? 'No NatCo yet',
+      r.country ?? '—',
+      String(r.participantCount),
+      String(r.submittedCount),
+      String(r.inProgressCount),
+      String(r.notStartedCount),
+      r.averageFinalScore != null ? r.averageFinalScore.toFixed(2) : '—',
+    ]),
+  };
+  if (rows.length === 0) return [table];
+  const image = await captureChartImage(
+    <ScoreBarChart
+      data={rows.map((r) => ({ label: r.opCoName ?? 'No NatCo yet', score: r.averageFinalScore }))}
+      series={[{ key: 'score', name: 'Avg. final score' }]}
+    />,
+    CHART_CAPTURE_WIDTH,
+    computeScoreBarChartHeight(rows.length),
+  );
+  return [table, { kind: 'image', dataUrl: image.dataUrl, width: image.width, height: image.height }];
 }
 
 export async function buildRespondentsPdfSections(respondents: RespondentSummaryDto[]): Promise<PdfSection[]> {
@@ -177,7 +207,15 @@ export async function buildCombinedBenchmarkPdfSections(
   return [table, { kind: 'image', dataUrl: image.dataUrl, width: image.width, height: image.height }];
 }
 
-export function buildCommentCollectionPdfSection(rows: CommentCollectionRow[]): PdfSection {
+export function buildCommentCollectionPdfSection(rows: CommentCollectionRow[], anonymized?: boolean): PdfSection {
+  if (anonymized) {
+    return {
+      kind: 'table',
+      heading: 'Comment Collection',
+      head: [[respondentColumnHeader(true), 'NatCo', 'Country', 'Cognitive Activity', 'Sub Scenario', 'Comment']],
+      body: rows.map((r) => [r.email, r.opCoName ?? '—', r.country ?? '—', r.cognitiveActivity, r.subScenario, r.comment]),
+    };
+  }
   return {
     kind: 'table',
     heading: 'Comment Collection',
@@ -195,6 +233,7 @@ export async function buildAnswerDistributionPdfSections(
   subScenarios: SubScenarioDto[],
   entries: AnswerDrilldownEntryDto[],
   opCoScopeId?: string | null,
+  anonymized?: boolean,
 ): Promise<PdfSection[]> {
   const { countsByKey, respondentsByKey } = indexAnswerDistribution(entries, opCoScopeId);
 
@@ -235,13 +274,15 @@ export async function buildAnswerDistributionPdfSections(
         sections.push({
           kind: 'table',
           heading: `${formatSubScenarioLabel(s)} — Option ${o} respondents`,
-          head: [['Email', 'NatCo', 'Country', 'Working Domain', 'Designation', 'Comment']],
+          head: [
+            [respondentColumnHeader(anonymized), 'NatCo', 'Country', 'Working Domain', ...(anonymized ? [] : ['Designation']), 'Comment'],
+          ],
           body: respondents.map((r) => [
             r.email,
             r.opCoName ?? '—',
             r.country ?? '—',
             r.workingDomain ?? '—',
-            r.designation ?? '—',
+            ...(anonymized ? [] : [r.designation ?? '—']),
             r.comment ?? '—',
           ]),
         });

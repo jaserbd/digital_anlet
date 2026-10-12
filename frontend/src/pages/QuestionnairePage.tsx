@@ -301,6 +301,11 @@ export function QuestionnairePage() {
       <Button onClick={() => navigate('/domains')} sx={{ mb: 2 }}>
         ← All assessments
       </Button>
+      {/* ANONYMOUS_EXECUTIVE_PLAN.md: tells participants what their management can see. */}
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Your organization&apos;s executives see your answers and comments without your name or email — only
+        your NatCo, country and working domain.
+      </Typography>
       {isEditingSubmitted && (
         <Alert severity="info" sx={{ mb: 2 }}>
           You already submitted this response. You can keep editing and re-submit until an
