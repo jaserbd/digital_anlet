@@ -1,6 +1,6 @@
 # Existing users table, moving memberships, import results, template drop-downs
 
-**Status: steps 1–2 done** (backend 287 + frontend 35 tests) — branch `feature/users-table-cleanup`. Remaining: deploy, live testing.
+**Status: done** — merged to `main`, deployed to `anlet-504115` as revision `anlet-00008-sfn` on 2026-10-13 (rollback target `anlet-00007-s59`), live-tested with "ZZ Claude Test" data that was deleted afterwards.
 
 Source: user feedback on 2026-10-13 after the projects release, clarified in discussion.
 
