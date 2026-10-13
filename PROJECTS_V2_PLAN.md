@@ -1,6 +1,6 @@
 # Projects v2 — organizations in many projects, project-level Project Admins, answers per project
 
-**Status: steps 1–3 done** (backend 290 + frontend 36 tests, local smoke test) — branch `feature/projects-many-to-many`. Remaining: backup, deploy, live testing.
+**Status: done** — merged to `main`, deployed to `anlet-504115` as revision `anlet-00009-gt9` on 2026-10-13 after Cloud SQL backup `1791908889993` (rollback: revision `anlet-00008-sfn` + restore that backup, since the migration changes data); live-tested with "ZZ Claude Test 2026/2027" data that was deleted afterwards.
 
 Source: user feedback on 2026-10-13 (Detecon in every project; Mike is Project Admin of Project A but not B; add/remove
 Project Admins without Excel; a Project column in the users table; an organization in several projects), clarified in
