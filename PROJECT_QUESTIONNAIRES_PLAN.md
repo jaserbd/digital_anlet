@@ -1,6 +1,6 @@
 # Questionnaires per project + retire bulk CSV user creation
 
-**Status: steps 1–2 done** (backend 286 + frontend 34 tests) — branch `feature/project-questionnaires`. Remaining: merge, deploy, live testing.
+**Status: done** — merged to `main`, deployed to `anlet-504115` as revision `anlet-00007-s59` on 2026-10-13 (migration `20261013150000_add_project_questionnaires` applied; rollback target `anlet-00006-d8z`), live-tested with a "ZZ Claude Test" project that was deleted afterwards.
 
 Source: `admin_management.md` line 22 (local notes), clarified in discussion on 2026-10-13. Builds on `PROJECTS_PLAN.md`.
 
