@@ -1,6 +1,6 @@
 # Projects + Project Admins + Excel project import
 
-**Status: steps 1–4 done** (backend 284 + frontend 33 tests, browser walkthrough). Remaining: merge, deploy.
+**Status: done** — merged to `main`, deployed to `anlet-504115` as revision `anlet-00006-d8z` on 2026-10-13 (migration `20261013090000_add_projects` applied; rollback target `anlet-00005-xss`).
 
 Source: `admin_management.md` line 20 (local notes), clarified in discussion on 2026-10-13. Revives, in a different
 shape, the cancelled "Projects / external admins" phase of `ADMIN_MANAGEMENT_PLAN.md`.
