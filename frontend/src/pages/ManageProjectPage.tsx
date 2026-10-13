@@ -10,15 +10,16 @@ import { CreateUserForm, ManageOpCosSection, QuestionnaireSettingsSection } from
 // (the sections show only that organization; the backend rejects anything else).
 export function ManageProjectPage() {
   const { user } = useAuth();
-  const organizationName = user?.contexts.find((c) => c.membershipId === user.activeMembershipId)?.organizationName;
+  const active = user?.contexts.find((c) => c.membershipId === user.activeMembershipId);
+  const where = active ? (active.projectName ? `${active.projectName} · ${active.organizationName}` : active.organizationName) : '';
 
   return (
-    <PageShell title={`Manage project — ${organizationName ?? ''}`} maxWidth={1400}>
+    <PageShell title={`Manage project — ${where}`} maxWidth={1400}>
       <SectionCard>
         <Typography variant="body2" color="text.secondary">
-          As Project Admin you manage this organization&apos;s members (Executives and Normal Users),
-          its NatCos and which assessments accept responses. Other Project Admins and Application
-          Admins are managed by an Application Admin.
+          As Project Admin you manage this organization&apos;s members in this project (Executives and
+          Normal Users), its NatCos and which assessments accept responses here. Project Admins are
+          added and removed by an Application Admin on the Projects list.
         </Typography>
       </SectionCard>
       <CreateUserForm />

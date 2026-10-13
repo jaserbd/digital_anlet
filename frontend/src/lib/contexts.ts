@@ -1,11 +1,12 @@
 import type { UserContextDto } from '@anlet/shared';
 import { ROLE_LABELS } from './roles';
 
-/** "Admin — all clients" or "Client A — Executive". */
+/** "Application Admin — all projects", "C056875 · Post Luxemburg — Executive" or, outside
+ * projects, "Detecon — Executive" (PROJECTS_V2_PLAN.md). */
 export function formatContextLabel(context: UserContextDto): string {
-  return context.membershipId === null
-    ? 'Application Admin — all projects'
-    : `${context.organizationName} — ${ROLE_LABELS[context.role]}`;
+  if (context.membershipId === null) return 'Application Admin — all projects';
+  const where = context.projectName ? `${context.projectName} · ${context.organizationName}` : context.organizationName;
+  return `${where} — ${ROLE_LABELS[context.role]}`;
 }
 
 /** Stable key for a context (the admin context has no membership id). */

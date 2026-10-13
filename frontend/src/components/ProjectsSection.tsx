@@ -1,6 +1,12 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { HvsListItemDto, OrganizationDto, ProjectDto, ProjectImportResultDto } from '@anlet/shared';
+import type {
+  HvsListItemDto,
+  OrganizationDto,
+  ProjectAdminCandidateDto,
+  ProjectDto,
+  ProjectImportResultDto,
+} from '@anlet/shared';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -46,12 +52,15 @@ export function ProjectsSection() {
   const orgsQuery = useQuery({ queryKey: ['organizations'], queryFn: organizationsApi.list });
   // The Application Admin context lists every questionnaire, grouped as HVS items.
   const hvsQuery = useQuery({ queryKey: ['hvs-entries'], queryFn: questionnaireApi.listHvsEntries });
+  const candidatesQuery = useQuery({ queryKey: ['project-admin-candidates'], queryFn: projectsApi.projectAdminCandidates });
   const [name, setName] = useState('');
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['projects'] });
     void queryClient.invalidateQueries({ queryKey: ['organizations'] });
+    void queryClient.invalidateQueries({ queryKey: ['users'] });
+    void queryClient.invalidateQueries({ queryKey: ['project-admin-candidates'] });
   };
 
   const createProject = useMutation({
@@ -70,15 +79,15 @@ export function ProjectsSection() {
     createProject.mutate();
   }
 
-  const unassigned = (orgsQuery.data ?? []).filter((o) => !o.projectId);
 
   return (
     <SectionCard title="Projects">
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        A project is a client engagement — normally one organization with its NatCos. Its members
-        only see and answer the project&apos;s questionnaires. Its Project Admins (Detecon consultants)
-        manage members, NatCos and open/close for that organization only, see its dashboard and can
-        test-answer questionnaires (not counted in any results).
+        A project is a client engagement: its organizations (an organization can be in several
+        projects, e.g. yearly rounds), questionnaires and members — answers are separate per project.
+        Pick its Project Admins (Detecon consultants or Application Admins) here; they manage members,
+        NatCos and open/close for this project only, see its dashboard and can test-answer
+        questionnaires (not counted in any results).
       </Typography>
       <Stack component="form" onSubmit={handleSubmit} direction="row" spacing={1.5} sx={{ mb: 2 }}>
         <TextField required size="small" placeholder="Project name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -108,7 +117,8 @@ export function ProjectsSection() {
                 <ProjectRow
                   key={project.id}
                   project={project}
-                  unassigned={unassigned}
+                  organizations={orgsQuery.data ?? []}
+                  candidates={candidatesQuery.data ?? []}
                   hvsEntries={hvsQuery.data ?? []}
                   onSaved={refresh}
                 />
@@ -129,15 +139,19 @@ export function ProjectsSection() {
 
 function ProjectRow({
   project,
-  unassigned,
+  organizations,
+  candidates,
   hvsEntries,
   onSaved,
 }: {
   project: ProjectDto;
-  unassigned: OrganizationDto[];
+  organizations: OrganizationDto[];
+  candidates: ProjectAdminCandidateDto[];
   hvsEntries: HvsListItemDto[];
   onSaved: () => void;
 }) {
+  // Any organization can join any project (PROJECTS_V2_PLAN.md) — offer those not in this one.
+  const unassigned = organizations.filter((o) => !project.organizations.some((po) => po.id === o.id));
   const [organizationId, setOrganizationId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const currentIds = project.organizations.map((o) => o.id);
@@ -158,7 +172,14 @@ function ProjectRow({
 
   return (
     <TableRow sx={{ verticalAlign: 'top' }}>
-      <TableCell sx={{ fontWeight: 600 }}>{project.name}</TableCell>
+      <TableCell>
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {project.name}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {project.memberCount} member{project.memberCount === 1 ? '' : 's'}
+        </Typography>
+      </TableCell>
       <TableCell>
         <Stack spacing={1}>
           <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
@@ -215,17 +236,7 @@ function ProjectRow({
         <QuestionnaireSelection project={project} hvsEntries={hvsEntries} onSaved={onSaved} />
       </TableCell>
       <TableCell>
-        {project.projectAdmins.length > 0 ? (
-          project.projectAdmins.map((a) => (
-            <Typography key={a.userId} variant="body2">
-              {a.email}
-            </Typography>
-          ))
-        ) : (
-          <Typography variant="body2" color="text.secondary">
-            None yet
-          </Typography>
-        )}
+        <ProjectAdminsCell project={project} candidates={candidates} onSaved={onSaved} />
       </TableCell>
       <TableCell>
         <Button
@@ -247,6 +258,100 @@ function ProjectRow({
         )}
       </TableCell>
     </TableRow>
+  );
+}
+
+// The project's Project Admins (PROJECTS_V2_PLAN.md): chips to remove, and a drop-down of
+// Application Admins + Detecon members to add — no Excel needed for existing employees.
+function ProjectAdminsCell({
+  project,
+  candidates,
+  onSaved,
+}: {
+  project: ProjectDto;
+  candidates: ProjectAdminCandidateDto[];
+  onSaved: () => void;
+}) {
+  const [userId, setUserId] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const add = useMutation({
+    mutationFn: () => projectsApi.addProjectAdmin(project.id, userId),
+    onSuccess: () => {
+      setUserId('');
+      onSaved();
+    },
+    onError: (err) => setError(errorText(err, 'Failed to add the Project Admin')),
+  });
+  const remove = useMutation({
+    mutationFn: (adminId: string) => projectsApi.removeProjectAdmin(project.id, adminId),
+    onSuccess: onSaved,
+    onError: (err) => setError(errorText(err, 'Failed to remove the Project Admin')),
+  });
+  const available = candidates.filter((c) => !project.projectAdmins.some((a) => a.userId === c.userId));
+
+  return (
+    <Stack spacing={1} sx={{ minWidth: 240 }}>
+      <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+        {project.projectAdmins.map((a) => (
+          <Chip
+            key={a.userId}
+            size="small"
+            label={a.email}
+            onDelete={() => {
+              if (window.confirm(`Remove ${a.email} as Project Admin of "${project.name}"? Their test answers in this project are deleted.`)) {
+                setError(null);
+                remove.mutate(a.userId);
+              }
+            }}
+          />
+        ))}
+        {project.projectAdmins.length === 0 && (
+          <Typography variant="body2" color="text.secondary">
+            None yet
+          </Typography>
+        )}
+      </Stack>
+      {project.organizations.length === 0 ? (
+        <Typography variant="caption" color="text.secondary">
+          Add an organization first
+        </Typography>
+      ) : (
+        available.length > 0 && (
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <TextField
+              select
+              size="small"
+              label="Add Project Admin"
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              sx={{ minWidth: 220 }}
+            >
+              {available.map((c) => (
+                <MenuItem key={c.userId} value={c.userId}>
+                  {c.email}
+                </MenuItem>
+              ))}
+            </TextField>
+            <Button
+              size="small"
+              variant="contained"
+              disabled={!userId || add.isPending}
+              onClick={() => {
+                setError(null);
+                add.mutate();
+              }}
+            >
+              Add
+            </Button>
+          </Stack>
+        )
+      )}
+      {error && (
+        <Typography variant="caption" color="error">
+          {error}
+        </Typography>
+      )}
+    </Stack>
   );
 }
 

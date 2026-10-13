@@ -82,13 +82,14 @@ export async function buildProjectTemplate(
     ['ANLET — project import template'],
     [],
     ['1. Project: the project name in the first row, and one organization per row (normally just one).'],
-    ['   Organizations are created when they do not exist yet; an organization can only belong to one project.'],
+    ['   Organizations are created when they do not exist yet; an organization can be in several projects.'],
     ['2. Questionnaires (optional): one assessment per row, picked from the drop-down — only these are available'],
     ['   to the project\'s members. Leave it empty for all assessments (or, for an existing project, to keep its selection).'],
     ['3. NatCos (optional): the organization\'s NatCos (OpCos) with their country — leave empty if it has none.'],
     ['4. Members: one row per person — organization, email and role (Project Admin, Executive or Normal User).'],
-    ['   Project Admins are the Detecon consultants of the project; Executives and Normal Users are client members.'],
-    ['   The same email can appear for several organizations. First and last name are optional.'],
+    ['   Project Admins are the Detecon consultants of the whole project: leave their organization empty. New ones'],
+    ['   are created as Detecon members. Existing employees can also be picked on the Projects list without Excel.'],
+    ['   Executives and Normal Users are client members of the organization in this project. First/last name optional.'],
     [],
     ['Organization, Questionnaire, Country and Role cells have drop-down lists (fill the Project sheet first).'],
     ['New accounts get a temporary password, listed in the results file you can download after the import.'],
@@ -109,7 +110,7 @@ export async function buildProjectTemplate(
     PROJECT_TEMPLATE_SHEETS.members,
     [
       MEMBER_HEADERS,
-      ['Client A', 'consultant@detecon.com', 'Project Admin', 'Jane', 'Consultant'],
+      ['', 'consultant@detecon.com', 'Project Admin', 'Jane', 'Consultant'],
       ['Client A', 'cto@client-a.com', 'Executive', '', ''],
       ['Client A', 'engineer@client-a.com', 'Normal User', '', ''],
     ],
@@ -234,10 +235,6 @@ export function parseProjectWorkbook(workbook: XLSX.WorkBook): ParsedProjectWork
   for (const { row, values } of memberRows) {
     const email = values['Email']!;
     const role = ROLE_BY_TEXT.get(values['Role']!.toLowerCase());
-    if (!values['Organization']) {
-      skipped.push(`Members row ${row}: organization is required.`);
-      continue;
-    }
     if (!EMAIL_PATTERN.test(email)) {
       skipped.push(`Members row ${row}: "${email}" is not a valid email.`);
       continue;
@@ -246,8 +243,13 @@ export function parseProjectWorkbook(workbook: XLSX.WorkBook): ParsedProjectWork
       skipped.push(`Members row ${row}: role "${values['Role']}" must be Project Admin, Executive or Normal User.`);
       continue;
     }
+    // Project Admins administer the whole project; everyone else belongs to one organization.
+    if (role !== 'PROJECT_ADMIN' && !values['Organization']) {
+      skipped.push(`Members row ${row}: organization is required (except for Project Admins).`);
+      continue;
+    }
     members.push({
-      organization: values['Organization'],
+      organization: role === 'PROJECT_ADMIN' ? '' : values['Organization']!,
       email,
       role,
       ...(values['First name'] ? { firstName: values['First name'] } : {}),

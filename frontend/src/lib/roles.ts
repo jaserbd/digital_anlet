@@ -7,18 +7,14 @@ export const ROLE_LABELS: Record<Role, string> = {
   PROJECT_ADMIN: 'Project Admin',
 };
 
-/** Roles the current admin may assign when creating a user (the backend enforces the same
- * rules): Project Admins add Executives / Normal Users to their organization; Application Admins
- * also Project Admins; the super admin also Application Admins (ADMIN_MANAGEMENT_PLAN.md,
- * PROJECTS_PLAN.md). */
+/** Roles that can be chosen when creating a user (the backend enforces the same rules): Executive
+ * / Normal User for every admin, plus Application Admin for the super admin. Project Admins are
+ * picked per project on the Projects list (PROJECTS_V2_PLAN.md). */
 export function assignableRoles(caller: { role: Role; isSuperAdmin: boolean }): Role[] {
-  if (caller.role === 'PROJECT_ADMIN') return ['NORMAL_USER', 'EXECUTIVE'];
-  return caller.isSuperAdmin
-    ? ['NORMAL_USER', 'EXECUTIVE', 'PROJECT_ADMIN', 'ADMIN']
-    : ['NORMAL_USER', 'EXECUTIVE', 'PROJECT_ADMIN'];
+  return caller.role === 'ADMIN' && caller.isSuperAdmin ? ['NORMAL_USER', 'EXECUTIVE', 'ADMIN'] : ['NORMAL_USER', 'EXECUTIVE'];
 }
 
-/** Organization roles an admin may set on a membership (Admin is global, not a membership role). */
-export function assignableMembershipRoles(callerRole: Role): Role[] {
-  return callerRole === 'PROJECT_ADMIN' ? ['NORMAL_USER', 'EXECUTIVE'] : ['NORMAL_USER', 'EXECUTIVE', 'PROJECT_ADMIN'];
+/** Organization roles that can be set on a membership in the users table. */
+export function assignableMembershipRoles(): Role[] {
+  return ['NORMAL_USER', 'EXECUTIVE'];
 }

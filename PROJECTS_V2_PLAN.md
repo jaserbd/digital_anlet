@@ -1,6 +1,6 @@
 # Projects v2 — organizations in many projects, project-level Project Admins, answers per project
 
-**Status: planned** — branch `feature/projects-many-to-many`.
+**Status: steps 1–3 done** (backend 290 + frontend 36 tests, local smoke test) — branch `feature/projects-many-to-many`. Remaining: backup, deploy, live testing.
 
 Source: user feedback on 2026-10-13 (Detecon in every project; Mike is Project Admin of Project A but not B; add/remove
 Project Admins without Excel; a Project column in the users table; an organization in several projects), clarified in

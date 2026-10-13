@@ -29,6 +29,13 @@ export function CombinedBenchmarkTable({
     ...(hideOrganizationColumn
       ? []
       : [
+          // Rows are per project + organization (PROJECTS_V2_PLAN.md).
+          {
+            key: 'project',
+            header: 'Project',
+            getValue: (r: CombinedBenchmarkRowDto) => r.projectName ?? '—',
+            filterType: 'multiselect' as const,
+          },
           {
             key: 'organization',
             header: 'Organization',
@@ -82,13 +89,15 @@ export function CombinedBenchmarkTable({
         <SortableTable
           columns={columns}
           rows={rows}
-          rowKey={(r) => `${r.organizationId}:${r.opCoId ?? 'none'}`}
+          rowKey={(r) => `${r.projectId ?? 'none'}:${r.organizationId}:${r.opCoId ?? 'none'}`}
           emptyMessage="No data yet."
           onFilteredRowsChange={setVisibleRows}
         />
         <ScoreBarChart
           data={visibleRows.map((r) => ({
-            label: hideOrganizationColumn ? r.opCoName : `${r.organizationName} — ${r.opCoName}`,
+            label: hideOrganizationColumn
+              ? r.opCoName
+              : `${r.projectName ? `${r.projectName} · ` : ''}${r.organizationName} — ${r.opCoName}`,
             faultManagement: r.faultManagement.averageFinalScore,
             stability: r.stability.averageFinalScore,
             combined: r.combinedAverageFinalScore,

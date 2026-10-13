@@ -73,7 +73,12 @@ export function buildBenchmarkSheet(
   return {
     name: 'Benchmarking',
     columns: [
-      ...(hideOrganizationColumn ? [] : [{ header: 'Organization', key: 'organizationName' }]),
+      ...(hideOrganizationColumn
+        ? []
+        : [
+            { header: 'Project', key: 'projectName' },
+            { header: 'Organization', key: 'organizationName' },
+          ]),
       { header: 'NatCo', key: 'opCoName' },
       { header: 'Country', key: 'country' },
       { header: 'Respondents', key: 'respondentCount' },
@@ -84,6 +89,7 @@ export function buildBenchmarkSheet(
       ...subScenarios.map((s) => ({ header: formatSubScenarioLabel(s), key: `sub-${s.id}` })),
     ],
     rows: rows.map((r) => ({
+      projectName: r.projectName ?? '',
       organizationName: r.organizationName,
       opCoName: r.opCoName,
       country: r.country ?? '',
@@ -106,7 +112,12 @@ export function buildCombinedBenchmarkSheet(rows: CombinedBenchmarkRowDto[], hid
   return {
     name: 'Combined benchmarking',
     columns: [
-      ...(hideOrganizationColumn ? [] : [{ header: 'Organization', key: 'organizationName' }]),
+      ...(hideOrganizationColumn
+        ? []
+        : [
+            { header: 'Project', key: 'projectName' },
+            { header: 'Organization', key: 'organizationName' },
+          ]),
       { header: 'NatCo', key: 'opCoName' },
       { header: 'Country', key: 'country' },
       { header: 'Fault Mgmt avg', key: 'faultManagement' },
@@ -114,6 +125,7 @@ export function buildCombinedBenchmarkSheet(rows: CombinedBenchmarkRowDto[], hid
       { header: 'Combined avg', key: 'combined' },
     ],
     rows: rows.map((r) => ({
+      projectName: r.projectName ?? '',
       organizationName: r.organizationName,
       opCoName: r.opCoName,
       country: r.country ?? '',

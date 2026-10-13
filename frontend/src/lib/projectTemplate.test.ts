@@ -22,7 +22,7 @@ describe('project import template', () => {
       organizations: ['Client A'],
       natCos: [{ organization: 'Client A', name: 'Client A Germany', country: 'Germany' }],
       members: [
-        { organization: 'Client A', email: 'consultant@detecon.com', role: 'PROJECT_ADMIN', firstName: 'Jane', lastName: 'Consultant' },
+        { organization: '', email: 'consultant@detecon.com', role: 'PROJECT_ADMIN', firstName: 'Jane', lastName: 'Consultant' },
         { organization: 'Client A', email: 'cto@client-a.com', role: 'EXECUTIVE' },
         { organization: 'Client A', email: 'engineer@client-a.com', role: 'NORMAL_USER' },
       ],
@@ -100,5 +100,26 @@ describe('project import template', () => {
     expect(formula('NatCos', 'A2')).toBe('Project!$B$2:$B$100');
     expect(formula('NatCos', 'C2')).toBe('Lists!$C$2:$C$3');
     expect(formula('Questionnaires', 'A2')).toBe('Lists!$B$2:$B$2');
+  });
+
+  it('lets Project Admin rows leave the organization empty, but not other members', () => {
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['Project name', 'Organization'], ['P1', 'Org X']]), 'Project');
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.aoa_to_sheet([
+        ['Organization', 'Email', 'Role', 'First name', 'Last name'],
+        ['', 'mike@detecon.com', 'Project Admin', '', ''],
+        ['Org X', 'pa2@detecon.com', 'Project Admin', '', ''],
+        ['', 'eng@x.com', 'Normal User', '', ''],
+      ]),
+      'Members',
+    );
+    const parsed = parseProjectWorkbook(roundTrip(workbook));
+    expect(parsed.request?.members).toEqual([
+      { organization: '', email: 'mike@detecon.com', role: 'PROJECT_ADMIN' },
+      { organization: '', email: 'pa2@detecon.com', role: 'PROJECT_ADMIN' },
+    ]);
+    expect(parsed.skipped).toEqual(['Members row 4: organization is required (except for Project Admins).']);
   });
 });

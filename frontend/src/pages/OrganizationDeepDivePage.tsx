@@ -11,6 +11,7 @@ import ListItem from '@mui/material/ListItem';
 import ListItemText from '@mui/material/ListItemText';
 import Box from '@mui/material/Box';
 import { organizationsApi } from '../api/organizationsApi';
+import { projectsApi } from '../api/projectsApi';
 import { opCoApi } from '../api/opCoApi';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { insightsApi } from '../api/insightsApi';
@@ -49,19 +50,26 @@ export function OrganizationDeepDivePage() {
     queryFn: () => opCoApi.list(organizationId),
   });
 
+  // Answers are per project (PROJECTS_V2_PLAN.md): pick which of the organization's projects to
+  // look at — or its members outside projects.
+  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: projectsApi.list });
+  const orgProjects = (projectsQuery.data ?? []).filter((p) => p.organizations.some((o) => o.id === organizationId));
+  const [projectKey, setProjectKey] = useState<string | null>(null);
+  const projectId = projectKey === null ? (orgProjects[0]?.id ?? null) : projectKey === 'none' ? null : projectKey;
+
   const hvsEntriesQuery = useQuery({ queryKey: ['hvs-entries'], queryFn: questionnaireApi.listHvsEntries });
   const [hvsKey, setHvsKey] = useState('');
   const effectiveEntry = hvsEntriesQuery.data?.find((e) => e.key === hvsKey) ?? hvsEntriesQuery.data?.[0];
   const isGroup = effectiveEntry?.kind === 'group';
 
   const opCoBenchmarkQuery = useQuery({
-    queryKey: ['opco-benchmarking', organizationId, effectiveEntry?.key],
-    queryFn: () => insightsApi.getOpCoBenchmarkingSummary(organizationId, effectiveEntry!.key),
+    queryKey: ['opco-benchmarking', organizationId, effectiveEntry?.key, projectId],
+    queryFn: () => insightsApi.getOpCoBenchmarkingSummary(organizationId, effectiveEntry!.key, projectId),
     enabled: !!effectiveEntry && !isGroup,
   });
   const combinedQuery = useQuery({
-    queryKey: ['combined-opco-benchmarking', organizationId, effectiveEntry?.key],
-    queryFn: () => insightsApi.getCombinedOpCoBenchmarkingSummary(organizationId, effectiveEntry!.key),
+    queryKey: ['combined-opco-benchmarking', organizationId, effectiveEntry?.key, projectId],
+    queryFn: () => insightsApi.getCombinedOpCoBenchmarkingSummary(organizationId, effectiveEntry!.key, projectId),
     enabled: !!effectiveEntry && isGroup,
   });
   const questionnaireQuery = useQuery({
@@ -74,8 +82,8 @@ export function OrganizationDeepDivePage() {
   // undefined (queries disabled) outside the Core FM+Stability group case.
   const codeA = effectiveEntry?.questionnaireCodes[0];
   const codeB = effectiveEntry?.questionnaireCodes[1];
-  const detailA = useQuestionnaireExecutiveData(organizationId, codeA);
-  const detailB = useQuestionnaireExecutiveData(organizationId, isGroup ? codeB : undefined);
+  const detailA = useQuestionnaireExecutiveData(organizationId, codeA, projectId);
+  const detailB = useQuestionnaireExecutiveData(organizationId, isGroup ? codeB : undefined, projectId);
   const details = isGroup ? [detailA, detailB] : [detailA];
 
   const [selectedOpCoId, setSelectedOpCoId] = useState<string | null>(null);
@@ -135,7 +143,7 @@ export function OrganizationDeepDivePage() {
     }
   }
 
-  if (hvsEntriesQuery.isLoading || opCosQuery.isLoading) {
+  if (hvsEntriesQuery.isLoading || opCosQuery.isLoading || projectsQuery.isLoading) {
     return (
       <PageShell title="Organization" maxWidth={1400}>
         <Typography color="text.secondary">Loading…</Typography>
@@ -186,19 +194,35 @@ export function OrganizationDeepDivePage() {
 
       <SectionCard title="Comparison">
         <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 2, mb: 2 }}>
-          <TextField
-            select
-            label="Assessment"
-            value={effectiveEntry?.key ?? ''}
-            onChange={(e) => setHvsKey(e.target.value)}
-            sx={{ minWidth: 320 }}
-          >
-            {hvsEntriesQuery.data?.map((entry) => (
-              <MenuItem key={entry.key} value={entry.key}>
-                {entry.name}
-              </MenuItem>
-            ))}
-          </TextField>
+          <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', rowGap: 2 }}>
+            <TextField
+              select
+              label="Project"
+              value={projectId ?? 'none'}
+              onChange={(e) => setProjectKey(e.target.value)}
+              sx={{ minWidth: 220 }}
+            >
+              {orgProjects.map((p) => (
+                <MenuItem key={p.id} value={p.id}>
+                  {p.name}
+                </MenuItem>
+              ))}
+              <MenuItem value="none">Outside projects</MenuItem>
+            </TextField>
+            <TextField
+              select
+              label="Assessment"
+              value={effectiveEntry?.key ?? ''}
+              onChange={(e) => setHvsKey(e.target.value)}
+              sx={{ minWidth: 320 }}
+            >
+              {hvsEntriesQuery.data?.map((entry) => (
+                <MenuItem key={entry.key} value={entry.key}>
+                  {entry.name}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Stack>
           <Stack direction="row" spacing={1.5}>
             <Button variant="outlined" onClick={handleDownloadAll} disabled={!reportReady}>
               Download all (Excel)
@@ -278,6 +302,7 @@ export function OrganizationDeepDivePage() {
           <QuestionnaireExecutiveDetail
             organizationId={organizationId}
             questionnaireCode={code}
+            projectId={projectId}
             opCoScopeId={isGroup ? null : selectedOpCoId}
             organizationSwitcher={{
               organizations: organizationsQuery.data ?? [],

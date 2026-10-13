@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { MembershipDto, OrganizationDto, Role, UserDto } from '@anlet/shared';
+import type { MembershipDto, Role, UserDto } from '@anlet/shared';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
@@ -17,15 +17,15 @@ import { usersApi } from '../api/usersApi';
 import { ApiError } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { ROLE_LABELS, assignableMembershipRoles } from '../lib/roles';
-import { useManageableOrganizations } from '../lib/manageableOrganizations';
+import { type Placement, placementKey, placementLabel, usePlacements } from '../lib/placements';
 import { SectionCard } from './SectionCard';
 import { CollapsibleTable } from './CollapsibleTable';
 import { SortableTable, type SortableTableColumn } from './SortableTable';
 
-type MembershipRole = Extract<Role, 'NORMAL_USER' | 'EXECUTIVE' | 'PROJECT_ADMIN'>;
+type MembershipRole = Extract<Role, 'NORMAL_USER' | 'EXECUTIVE'>;
 
-// One table row per user + organization (USERS_TABLE_PLAN.md); a user without any organization
-// gets a single row with `membership: null`.
+// One table row per user + project + organization (USERS_TABLE_PLAN.md, PROJECTS_V2_PLAN.md); a
+// user without any organization gets a single row with `membership: null`.
 interface UserRowData {
   user: UserDto;
   membership: MembershipDto | null;
@@ -56,6 +56,7 @@ function usePermissions(user: UserDto) {
   return {
     callerIsProjectAdmin,
     isAdminAccount,
+    isProjectAdminAccount,
     canManageMemberships,
     // Moving between organizations is for Application Admins only.
     canMove: !callerIsProjectAdmin && canManageMemberships,
@@ -66,14 +67,16 @@ function usePermissions(user: UserDto) {
   };
 }
 
-// Existing users (MULTI_ORG_PLAN.md, USERS_TABLE_PLAN.md): one row per user + organization with
-// sortable/filterable columns. Per row: change the role, move to another organization (answers
-// move with it), remove. Per user ("User ▾"): temporary password, add organization, Admin role,
-// delete. A Project Admin sees only their organization's members.
+// Existing users (MULTI_ORG_PLAN.md, USERS_TABLE_PLAN.md, PROJECTS_V2_PLAN.md): one row per user +
+// project + organization with sortable/filterable columns — filter by Project to see who takes part
+// where. Per row: change the role, move to another project/organization (answers move with it),
+// remove. Per user ("User ▾"): temporary password, add to a project, Admin role, delete. Project
+// Admin rows are read-only here (managed on the Projects list). A Project Admin sees only their
+// organization + project's members.
 export function ManageUsersSection() {
   const queryClient = useQueryClient();
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: () => usersApi.list() });
-  const orgs = useManageableOrganizations();
+  const places = usePlacements();
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [temporaryPassword, setTemporaryPassword] = useState<{ email: string; password: string } | null>(null);
 
@@ -84,7 +87,7 @@ export function ManageUsersSection() {
     onError,
     onMessage: (text: string) => setMessage({ kind: 'success', text }),
     onTemporaryPassword: (email: string, password: string) => setTemporaryPassword({ email, password }),
-    organizations: orgs.organizations ?? [],
+    placements: places.placements ?? [],
   };
 
   const rows: UserRowData[] = (usersQuery.data ?? []).flatMap((user): UserRowData[] =>
@@ -104,6 +107,12 @@ export function ManageUsersSection() {
         ) : (
           '—'
         ),
+    },
+    {
+      key: 'project',
+      header: 'Project',
+      getValue: (r) => r.membership?.projectName ?? '—',
+      filterType: 'multiselect',
     },
     {
       key: 'organization',
@@ -130,17 +139,18 @@ export function ManageUsersSection() {
   return (
     <SectionCard title="Existing users">
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-        One row per user and organization — a person in two organizations has two rows. Moving a
-        user to another organization keeps their answers, which then count for the new organization.
+        One row per user, project and organization — filter by Project to see who takes part where.
+        Moving a user keeps their answers, which then count for the new project and organization.
+        Project Admins are added and removed on the Projects list.
       </Typography>
       {message && (
         <Alert severity={message.kind} onClose={() => setMessage(null)} sx={{ mb: 1 }}>
           {message.text}
         </Alert>
       )}
-      {usersQuery.isLoading || orgs.isLoading ? (
+      {usersQuery.isLoading || places.isLoading ? (
         <Typography color="text.secondary">Loading…</Typography>
-      ) : !usersQuery.data || !orgs.organizations ? (
+      ) : !usersQuery.data || !places.placements ? (
         <Typography color="text.secondary">Something went wrong loading users.</Typography>
       ) : (
         <CollapsibleTable label="Existing users" count={usersQuery.data.length}>
@@ -177,21 +187,30 @@ interface ActionProps {
   onError: (fallback: string) => (err: unknown) => void;
   onMessage: (text: string) => void;
   onTemporaryPassword: (email: string, password: string) => void;
-  organizations: OrganizationDto[];
+  placements: Placement[];
+}
+
+/** The project + organization pairs a user isn't in yet. */
+function freePlacements(user: UserDto, placements: Placement[]): Placement[] {
+  const taken = new Set(user.memberships.map((m) => placementKey(m)));
+  return placements.filter((p) => !taken.has(placementKey(p)));
 }
 
 function RoleCell({ user, membership, onSaved, onError }: { user: UserDto; membership: MembershipDto } & ActionProps) {
-  const { user: currentUser } = useAuth();
-  const { canManageMemberships, callerIsProjectAdmin } = usePermissions(user);
-  const roles = assignableMembershipRoles(currentUser!.role) as MembershipRole[];
+  const { canManageMemberships } = usePermissions(user);
+  const roles = assignableMembershipRoles() as MembershipRole[];
   const changeRole = useMutation({
     mutationFn: (role: MembershipRole) => usersApi.updateMembership(user.id, membership.id, { role }),
     onSuccess: onSaved,
     onError: onError('Failed to change the role'),
   });
-  // A Project Admin can't change another Project Admin membership.
-  const editable = canManageMemberships && !(callerIsProjectAdmin && membership.role === 'PROJECT_ADMIN');
-  if (!editable) return <>{ROLE_LABELS[membership.role]}</>;
+  // Project Admin memberships are managed on the Projects list (PROJECTS_V2_PLAN.md).
+  if (membership.role === 'PROJECT_ADMIN') {
+    return (
+      <span title="Added and removed on the Projects list">{ROLE_LABELS.PROJECT_ADMIN} (via project)</span>
+    );
+  }
+  if (!canManageMemberships) return <>{ROLE_LABELS[membership.role]}</>;
   return (
     <TextField
       select
@@ -212,16 +231,20 @@ function RoleCell({ user, membership, onSaved, onError }: { user: UserDto; membe
 
 function RowActions({ row, ...props }: { row: UserRowData } & ActionProps) {
   const { user, membership } = row;
-  const { onSaved, onError, onMessage, organizations } = props;
+  const { onSaved, onError, onMessage, placements } = props;
   const permissions = usePermissions(user);
   const [moveAnchor, setMoveAnchor] = useState<HTMLElement | null>(null);
+  const isProjectAdminRow = membership?.role === 'PROJECT_ADMIN';
 
-  const otherOrganizations = organizations.filter((o) => !user.memberships.some((m) => m.organizationId === o.id));
+  const targets = freePlacements(user, placements);
   const move = useMutation({
-    mutationFn: (organization: OrganizationDto) =>
-      usersApi.updateMembership(user.id, membership!.id, { organizationId: organization.id }),
-    onSuccess: (_data, organization) => {
-      onMessage(`Moved ${user.email} from ${membership!.organizationName} to ${organization.name}`);
+    mutationFn: (target: Placement) =>
+      usersApi.updateMembership(user.id, membership!.id, {
+        organizationId: target.organizationId,
+        projectId: target.projectId,
+      }),
+    onSuccess: (_data, target) => {
+      onMessage(`Moved ${user.email} from ${placementLabel(membership!)} to ${placementLabel(target)}`);
       onSaved();
     },
     onError: onError('Failed to move the user'),
@@ -235,28 +258,30 @@ function RowActions({ row, ...props }: { row: UserRowData } & ActionProps) {
 
   return (
     <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
-      {membership && permissions.canMove && (
+      {membership && permissions.canMove && !isProjectAdminRow && (
         <>
-          <Button size="small" disabled={otherOrganizations.length === 0 || move.isPending} onClick={(e) => setMoveAnchor(e.currentTarget)}>
+          <Button size="small" disabled={targets.length === 0 || move.isPending} onClick={(e) => setMoveAnchor(e.currentTarget)}>
             Move to…
           </Button>
           <Menu anchorEl={moveAnchor} open={!!moveAnchor} onClose={() => setMoveAnchor(null)}>
-            {otherOrganizations.map((o) => (
+            {targets.map((target) => (
               <MenuItem
-                key={o.id}
+                key={placementKey(target)}
                 onClick={() => {
                   setMoveAnchor(null);
-                  const answers = responses > 0 ? ` Their ${responses} response(s) move too and then count for ${o.name}.` : '';
-                  if (window.confirm(`Move ${user.email} from ${membership.organizationName} to ${o.name}?${answers} Their NatCo is cleared.`)) move.mutate(o);
+                  const to = placementLabel(target);
+                  const answers = responses > 0 ? ` Their ${responses} response(s) move too and then count for ${to}.` : '';
+                  const natCo = target.organizationId !== membership.organizationId ? ' Their NatCo is cleared.' : '';
+                  if (window.confirm(`Move ${user.email} from ${placementLabel(membership)} to ${to}?${answers}${natCo}`)) move.mutate(target);
                 }}
               >
-                {o.name}
+                {placementLabel(target)}
               </MenuItem>
             ))}
           </Menu>
         </>
       )}
-      {membership && permissions.canManageMemberships && !(permissions.callerIsProjectAdmin && membership.role === 'PROJECT_ADMIN') && (
+      {membership && permissions.canManageMemberships && !isProjectAdminRow && (
         <Button
           size="small"
           color="error"
@@ -267,7 +292,7 @@ function RowActions({ row, ...props }: { row: UserRowData } & ActionProps) {
               : undefined
           }
           onClick={() => {
-            if (window.confirm(`Remove ${user.email} from "${membership.organizationName}"?`)) remove.mutate();
+            if (window.confirm(`Remove ${user.email} from "${placementLabel(membership)}"?`)) remove.mutate();
           }}
         >
           Remove
@@ -283,7 +308,7 @@ function RowActions({ row, ...props }: { row: UserRowData } & ActionProps) {
   );
 }
 
-function UserMenu({ user, onSaved, onError, onTemporaryPassword, organizations }: { user: UserDto } & ActionProps) {
+function UserMenu({ user, onSaved, onError, onTemporaryPassword, placements }: { user: UserDto } & ActionProps) {
   const permissions = usePermissions(user);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -304,7 +329,7 @@ function UserMenu({ user, onSaved, onError, onTemporaryPassword, organizations }
     onError: onError('Failed to delete the user'),
   });
 
-  const addable = organizations.filter((o) => !user.memberships.some((m) => m.organizationId === o.id));
+  const addable = freePlacements(user, placements);
   const items = [
     permissions.canResetPassword && {
       label: 'Temporary password',
@@ -314,7 +339,7 @@ function UserMenu({ user, onSaved, onError, onTemporaryPassword, organizations }
         }
       },
     },
-    permissions.canManageMemberships && addable.length > 0 && { label: 'Add organization…', run: () => setAddOpen(true) },
+    permissions.canManageMemberships && addable.length > 0 && { label: 'Add to project / organization…', run: () => setAddOpen(true) },
     permissions.canGrantAdmin && {
       label: permissions.isAdminAccount ? 'Remove Application Admin' : 'Make Application Admin',
       run: () => updateAdmin.mutate(),
@@ -349,7 +374,7 @@ function UserMenu({ user, onSaved, onError, onTemporaryPassword, organizations }
       <AddMembershipDialog
         open={addOpen}
         user={user}
-        organizations={addable}
+        placements={addable}
         onClose={() => setAddOpen(false)}
         onSaved={onSaved}
         onError={onError}
@@ -361,26 +386,27 @@ function UserMenu({ user, onSaved, onError, onTemporaryPassword, organizations }
 function AddMembershipDialog({
   open,
   user,
-  organizations,
+  placements,
   onClose,
   onSaved,
   onError,
 }: {
   open: boolean;
   user: UserDto;
-  organizations: OrganizationDto[];
+  placements: Placement[];
   onClose: () => void;
   onSaved: () => void;
   onError: (fallback: string) => (err: unknown) => void;
 }) {
-  const { user: currentUser } = useAuth();
-  const roles = assignableMembershipRoles(currentUser!.role) as MembershipRole[];
-  const [organizationId, setOrganizationId] = useState('');
+  const roles = assignableMembershipRoles() as MembershipRole[];
+  const [key, setKey] = useState('');
   const [role, setRole] = useState<MembershipRole>('NORMAL_USER');
+  const target = placements.find((p) => placementKey(p) === key);
   const add = useMutation({
-    mutationFn: () => usersApi.addMembership(user.id, { organizationId, role }),
+    mutationFn: () =>
+      usersApi.addMembership(user.id, { organizationId: target!.organizationId, projectId: target!.projectId, role }),
     onSuccess: () => {
-      setOrganizationId('');
+      setKey('');
       onClose();
       onSaved();
     },
@@ -389,13 +415,13 @@ function AddMembershipDialog({
 
   return (
     <Dialog open={open} onClose={onClose}>
-      <DialogTitle>Add {user.email} to an organization</DialogTitle>
+      <DialogTitle>Add {user.email} to a project</DialogTitle>
       <DialogContent>
-        <Stack spacing={2} sx={{ pt: 1, minWidth: 320 }}>
-          <TextField select label="Organization" value={organizationId} onChange={(e) => setOrganizationId(e.target.value)}>
-            {organizations.map((o) => (
-              <MenuItem key={o.id} value={o.id}>
-                {o.name}
+        <Stack spacing={2} sx={{ pt: 1, minWidth: 360 }}>
+          <TextField select label="Project · Organization" value={key} onChange={(e) => setKey(e.target.value)}>
+            {placements.map((p) => (
+              <MenuItem key={placementKey(p)} value={placementKey(p)}>
+                {placementLabel(p)}
               </MenuItem>
             ))}
           </TextField>
@@ -410,7 +436,7 @@ function AddMembershipDialog({
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" disabled={!organizationId || add.isPending} onClick={() => add.mutate()}>
+        <Button variant="contained" disabled={!target || add.isPending} onClick={() => add.mutate()}>
           Add
         </Button>
       </DialogActions>

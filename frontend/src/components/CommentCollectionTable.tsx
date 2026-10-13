@@ -73,7 +73,10 @@ export function buildCrossOrgCommentCollectionRows(
   questions: QuestionDto[],
   subScenarios: SubScenarioDto[],
 ): CommentCollectionRow[] {
-  return flattenCommentRows(comments, questions, subScenarios, (c) => ({ organizationName: c.organizationName }));
+  // "Project · Organization" (PROJECTS_V2_PLAN.md — the same organization can be in several projects).
+  return flattenCommentRows(comments, questions, subScenarios, (c) => ({
+    organizationName: c.projectName ? `${c.projectName} · ${c.organizationName}` : c.organizationName,
+  }));
 }
 
 export function buildCommentCollectionSheet(

@@ -52,6 +52,13 @@ export function BenchmarkTable({
     ...(hideOrganizationColumn
       ? []
       : [
+          // Rows are per project + organization (PROJECTS_V2_PLAN.md).
+          {
+            key: 'project',
+            header: 'Project',
+            getValue: (r: BenchmarkRowDto) => r.projectName ?? '—',
+            filterType: 'multiselect' as const,
+          },
           {
             key: 'organization',
             header: 'Organization',
@@ -183,13 +190,15 @@ export function BenchmarkTable({
         <SortableTable
           columns={columns}
           rows={rows}
-          rowKey={(r) => `${r.organizationId}:${r.opCoId ?? 'none'}`}
+          rowKey={(r) => `${r.projectId ?? 'none'}:${r.organizationId}:${r.opCoId ?? 'none'}`}
           emptyMessage="No data yet."
           onFilteredRowsChange={setVisibleRows}
         />
         <ScoreBarChart
           data={visibleRows.map((r) => ({
-            label: hideOrganizationColumn ? r.opCoName : `${r.organizationName} — ${r.opCoName}`,
+            label: hideOrganizationColumn
+              ? r.opCoName
+              : `${r.projectName ? `${r.projectName} · ` : ''}${r.organizationName} — ${r.opCoName}`,
             score: r.averageFinalScore,
           }))}
           series={[{ key: 'score', name: 'Avg. final score' }]}

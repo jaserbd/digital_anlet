@@ -22,7 +22,6 @@ import { questionnaireApi } from '../api/questionnaireApi';
 import { ApiError } from '../api/client';
 import { PageShell } from '../components/PageShell';
 import { SectionCard } from '../components/SectionCard';
-import { OrganizationAutocomplete } from '../components/OrganizationAutocomplete';
 import { ManageUsersSection } from '../components/ManageUsersSection';
 import { ReferenceListSelect } from '../components/ReferenceListSelect';
 import { ManageReferenceListSection } from '../components/ManageReferenceListSection';
@@ -31,6 +30,7 @@ import { ProjectsSection } from '../components/ProjectsSection';
 import { useAuth } from '../context/AuthContext';
 import { ROLE_LABELS, assignableRoles } from '../lib/roles';
 import { useManageableOrganizations } from '../lib/manageableOrganizations';
+import { placementKey, placementLabel, usePlacements } from '../lib/placements';
 
 // Management Console (ADMIN.md item 1) — create/delete for Organization, OpCo, and User, on
 // its own route separate from /admin's Benchmarking/Organizations views. Delete is blocked
@@ -338,32 +338,30 @@ export function QuestionnaireSettingsSection() {
     queryKey: ['questionnaires'],
     queryFn: questionnaireApi.list,
   });
-  const orgs = useManageableOrganizations();
+  const places = usePlacements();
   const [questionnaireCode, setQuestionnaireCode] = useState('');
-  const [selectedOrganization, setOrganization] = useState<OrganizationDto | null>(null);
-  // A Project Admin manages exactly one organization — no need to pick it.
-  const singleOrganization = orgs.fixedOrganization;
-  const organization = selectedOrganization ?? singleOrganization;
+  const [selectedKey, setSelectedKey] = useState('');
+  // Open/close is per project + organization (PROJECTS_V2_PLAN.md); a Project Admin's is fixed.
+  const placement = places.fixed ?? places.placements?.find((p) => placementKey(p) === selectedKey) ?? null;
   const effectiveCode = questionnaireCode || questionnairesQuery.data?.[0]?.code || '';
+  const statusKey = ['accepting-status', effectiveCode, placement && placementKey(placement)];
 
   const statusQuery = useQuery({
-    queryKey: ['accepting-status', effectiveCode, organization?.id],
-    queryFn: () => questionnaireApi.getAcceptingStatus(effectiveCode, organization!.id),
-    enabled: !!effectiveCode && !!organization,
+    queryKey: statusKey,
+    queryFn: () => questionnaireApi.getAcceptingStatus(effectiveCode, placement!.organizationId, placement!.projectId),
+    enabled: !!effectiveCode && !!placement,
   });
 
   const toggleMutation = useMutation({
     mutationFn: (accepting: boolean) =>
-      questionnaireApi.setAcceptingResponses(effectiveCode, organization!.id, accepting),
+      questionnaireApi.setAcceptingResponses(effectiveCode, placement!.organizationId, accepting, placement!.projectId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: ['accepting-status', effectiveCode, organization?.id],
-      });
+      void queryClient.invalidateQueries({ queryKey: statusKey });
       void queryClient.invalidateQueries({ queryKey: ['questionnaire', effectiveCode] });
     },
   });
 
-  if (questionnairesQuery.isLoading || orgs.isLoading) {
+  if (questionnairesQuery.isLoading || places.isLoading) {
     return (
       <SectionCard title="Questionnaire settings">
         <Typography color="text.secondary">Loading…</Typography>
@@ -373,7 +371,7 @@ export function QuestionnaireSettingsSection() {
 
   return (
     <SectionCard title="Questionnaire settings">
-      <Stack spacing={2} sx={{ maxWidth: 360, mb: 2 }}>
+      <Stack spacing={2} sx={{ maxWidth: 420, mb: 2 }}>
         <TextField
           select
           label="Assessment"
@@ -386,19 +384,25 @@ export function QuestionnaireSettingsSection() {
             </MenuItem>
           ))}
         </TextField>
-        {!singleOrganization && (
-          <Stack spacing={0.5}>
-            <Typography variant="body2" color="text.secondary">
-              Organization
-            </Typography>
-            <OrganizationAutocomplete organizations={orgs.organizations ?? []} onSelect={setOrganization} />
-          </Stack>
+        {!places.fixed && (
+          <TextField
+            select
+            label="Project · Organization"
+            value={selectedKey}
+            onChange={(e) => setSelectedKey(e.target.value)}
+          >
+            {places.placements?.map((p) => (
+              <MenuItem key={placementKey(p)} value={placementKey(p)}>
+                {placementLabel(p)}
+              </MenuItem>
+            ))}
+          </TextField>
         )}
       </Stack>
-      {organization && statusQuery.data && (
+      {placement && statusQuery.data && (
         <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 2 }}>
           <Typography>
-            Status for <strong>{organization.name}</strong>:{' '}
+            Status for <strong>{placementLabel(placement)}</strong>:{' '}
             <strong>
               {statusQuery.data.acceptingResponses ? 'Accepting responses' : 'Closed'}
             </strong>
@@ -412,40 +416,45 @@ export function QuestionnaireSettingsSection() {
             {toggleMutation.isPending
               ? 'Saving…'
               : statusQuery.data.acceptingResponses
-                ? 'Close (lock all responses for this org)'
+                ? 'Close (lock all responses here)'
                 : 'Reopen'}
           </Button>
         </Stack>
       )}
       <Typography variant="body2" color="text.secondary">
-        Select an organization above to view/toggle its status for this assessment. While accepting,
-        users in that organization can edit and re-submit their responses at any time; once closed,
-        every response for that organization locks permanently — other organizations are unaffected.
+        Open/close is per project and organization. While accepting, its members can edit and
+        re-submit their responses at any time; once closed, every response there locks — other
+        projects and organizations are unaffected.
       </Typography>
     </SectionCard>
   );
 }
 
 export function CreateUserForm() {
-  const orgs = useManageableOrganizations();
-
+  const places = usePlacements();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const { user: currentUser } = useAuth();
   const [role, setRole] = useState<Role>('NORMAL_USER');
-  const [selectedOrganizationId, setOrganizationId] = useState('');
-  const organizationId =
-    selectedOrganizationId || (orgs.fixedOrganization?.id ?? '');
+  const [selectedKey, setSelectedKey] = useState('');
+  const placement = places.fixed ?? places.placements?.find((p) => placementKey(p) === selectedKey) ?? null;
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   const createUser = useMutation({
-    mutationFn: () => usersApi.create({ email, password, role, organizationId }),
+    mutationFn: () =>
+      usersApi.create({
+        email,
+        password,
+        role,
+        organizationId: placement!.organizationId,
+        projectId: role === 'ADMIN' ? null : placement!.projectId,
+      }),
     onSuccess: (result) => {
       setMessage({
         kind: 'success',
         text:
           result.status === 'membership-added'
-            ? `"${result.user.email}" already existed — added to this organization (password unchanged)`
+            ? `"${result.user.email}" already existed — added to ${placementLabel(placement!)} (password unchanged)`
             : `Created user "${result.user.email}"`,
       });
       setEmail('');
@@ -467,7 +476,12 @@ export function CreateUserForm() {
 
   return (
     <SectionCard title="Create user">
-      <Stack component="form" onSubmit={handleSubmit} spacing={2} sx={{ maxWidth: 360 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Adds one person to a project and organization (or an organization outside projects, e.g.
+        Detecon). An existing email is simply added there. Project Admins are chosen on the
+        Projects list.
+      </Typography>
+      <Stack component="form" onSubmit={handleSubmit} spacing={2} sx={{ maxWidth: 420 }}>
         <TextField
           label="Email"
           type="email"
@@ -495,27 +509,27 @@ export function CreateUserForm() {
             </MenuItem>
           ))}
         </TextField>
-        <TextField
-          select
-          label="Organization"
-          required
-          value={organizationId}
-          onChange={(e) => setOrganizationId(e.target.value)}
-        >
-          <MenuItem value="" disabled>
-            {orgs.isLoading ? 'Loading…' : 'Select an organization'}
-          </MenuItem>
-          {orgs.organizations?.map((org) => (
-            <MenuItem key={org.id} value={org.id}>
-              {org.name}
+        {places.fixed ? (
+          <TextField label="Project · Organization" value={placementLabel(places.fixed)} disabled />
+        ) : (
+          <TextField
+            select
+            label={role === 'ADMIN' ? 'Home organization' : 'Project · Organization'}
+            required
+            value={selectedKey}
+            onChange={(e) => setSelectedKey(e.target.value)}
+          >
+            <MenuItem value="" disabled>
+              {places.isLoading ? 'Loading…' : 'Select where to add the user'}
             </MenuItem>
-          ))}
-        </TextField>
-        <Button
-          type="submit"
-          variant="contained"
-          disabled={createUser.isPending || !organizationId}
-        >
+            {places.placements?.map((p) => (
+              <MenuItem key={placementKey(p)} value={placementKey(p)}>
+                {placementLabel(p)}
+              </MenuItem>
+            ))}
+          </TextField>
+        )}
+        <Button type="submit" variant="contained" disabled={createUser.isPending || !placement}>
           {createUser.isPending ? 'Creating…' : 'Create user'}
         </Button>
       </Stack>

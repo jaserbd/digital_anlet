@@ -23,10 +23,13 @@ export interface OrganizationSwitcher {
 export function AggregateCognitiveActivityRadar({
   organizationId,
   questionnaireCode,
+  projectId,
   organizationSwitcher,
 }: {
   organizationId: string;
   questionnaireCode: string;
+  // The project an Application Admin looks at (PROJECTS_V2_PLAN.md); see QuestionnaireExecutiveDetail.
+  projectId?: string | null;
   organizationSwitcher?: OrganizationSwitcher;
 }) {
   const [opCoId, setOpCoId] = useState('');
@@ -42,12 +45,14 @@ export function AggregateCognitiveActivityRadar({
   );
 
   const summaryQuery = useQuery({
-    queryKey: ['cognitive-activity-summary', organizationId, questionnaireCode, opCoId, country],
+    queryKey: ['cognitive-activity-summary', organizationId, questionnaireCode, opCoId, country, projectId ?? null],
     queryFn: () =>
-      insightsApi.getCognitiveActivitySummary(organizationId, questionnaireCode, {
-        opCoId: opCoId || undefined,
-        country: country || undefined,
-      }),
+      insightsApi.getCognitiveActivitySummary(
+        organizationId,
+        questionnaireCode,
+        { opCoId: opCoId || undefined, country: country || undefined },
+        projectId,
+      ),
   });
 
   return (

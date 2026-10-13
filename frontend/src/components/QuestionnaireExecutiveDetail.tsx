@@ -14,20 +14,26 @@ import { AggregateCognitiveActivityRadar, type OrganizationSwitcher } from './Ag
 // item 2's Executive-parity ask) — both call this with identical query keys per
 // (organizationId, questionnaireCode), so TanStack Query dedupes by key: one network request
 // per query no matter how many components ask for it.
-export function useQuestionnaireExecutiveData(organizationId: string, questionnaireCode: string | undefined) {
+// `projectId`: the project an Application Admin looks at (Deep-Dive, PROJECTS_V2_PLAN.md);
+// omitted for Executives / Project Admins, whose active project the server applies.
+export function useQuestionnaireExecutiveData(
+  organizationId: string,
+  questionnaireCode: string | undefined,
+  projectId?: string | null,
+) {
   const questionnaireQuery = useQuery({
     queryKey: ['questionnaire', questionnaireCode],
     queryFn: () => questionnaireApi.get(questionnaireCode!),
     enabled: !!questionnaireCode,
   });
   const summaryQuery = useQuery({
-    queryKey: ['organization-summary', organizationId, questionnaireCode],
-    queryFn: () => insightsApi.getOrganizationSummary(organizationId, questionnaireCode!),
+    queryKey: ['organization-summary', organizationId, questionnaireCode, projectId ?? null],
+    queryFn: () => insightsApi.getOrganizationSummary(organizationId, questionnaireCode!, projectId),
     enabled: !!questionnaireCode,
   });
   const drilldownQuery = useQuery({
-    queryKey: ['answer-drilldown', organizationId, questionnaireCode],
-    queryFn: () => insightsApi.getAnswerDrilldown(organizationId, questionnaireCode!),
+    queryKey: ['answer-drilldown', organizationId, questionnaireCode, projectId ?? null],
+    queryFn: () => insightsApi.getAnswerDrilldown(organizationId, questionnaireCode!, projectId),
     enabled: !!questionnaireCode,
   });
   return { questionnaireQuery, summaryQuery, drilldownQuery };
@@ -42,11 +48,14 @@ export function useQuestionnaireExecutiveData(organizationId: string, questionna
 export function QuestionnaireExecutiveDetail({
   organizationId,
   questionnaireCode,
+  projectId,
   opCoScopeId,
   organizationSwitcher,
 }: {
   organizationId: string;
   questionnaireCode: string;
+  // See useQuestionnaireExecutiveData.
+  projectId?: string | null;
   // Scopes the Answer distribution's respondent lists to one NatCo (OrganizationDeepDivePage's
   // admin-exclusive drill-down) — omitted by ExecutivePage, which has no need to scope within
   // its own single organization.
@@ -55,7 +64,7 @@ export function QuestionnaireExecutiveDetail({
   // NatCo/Country filters — omitted by ExecutivePage, which never switches organizations.
   organizationSwitcher?: OrganizationSwitcher;
 }) {
-  const { questionnaireQuery, summaryQuery, drilldownQuery } = useQuestionnaireExecutiveData(organizationId, questionnaireCode);
+  const { questionnaireQuery, summaryQuery, drilldownQuery } = useQuestionnaireExecutiveData(organizationId, questionnaireCode, projectId);
 
   if (questionnaireQuery.isLoading || summaryQuery.isLoading) {
     return <p>Loading…</p>;
@@ -73,6 +82,7 @@ export function QuestionnaireExecutiveDetail({
       <AggregateCognitiveActivityRadar
         organizationId={organizationId}
         questionnaireCode={questionnaireCode}
+        projectId={projectId}
         organizationSwitcher={organizationSwitcher}
       />
 

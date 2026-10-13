@@ -15,6 +15,8 @@ export interface CreateUserInput {
   // ADMIN is accepted only from the super admin (enforced server-side).
   role: Role;
   organizationId: string;
+  // Required when the organization is in projects (PROJECTS_V2_PLAN.md).
+  projectId?: string | null;
   firstName?: string;
   lastName?: string;
 }
