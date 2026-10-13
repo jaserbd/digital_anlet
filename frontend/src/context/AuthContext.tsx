@@ -61,9 +61,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } finally {
         // Always re-sync with the server, even if the request errored: the session cookie may
         // already have changed, and the screen must never show a different organization than
-        // the one the server is acting in.
-        queryClient.clear();
-        await queryClient.fetchQuery({ queryKey: ME_QUERY_KEY, queryFn: fetchMe });
+        // the one the server is acting in. Everything else cached belonged to the previous
+        // context and is dropped. The current user is *reset* rather than removed: removing it
+        // (queryClient.clear()) detached the mounted useQuery above from the cache, so the
+        // refetched user never reached the screen — the app kept the old role/organization
+        // while the server already acted in the new one (Home stuck on "Loading…", 403s).
+        queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== ME_QUERY_KEY[0] });
+        await queryClient.resetQueries({ queryKey: ME_QUERY_KEY });
       }
     },
   };
