@@ -55,28 +55,28 @@ organizationsRouter.get(
 organizationsRouter.get(
   '/:orgId/questionnaire-summary',
   authenticate,
-  requireRole('EXECUTIVE', 'ADMIN'),
+  requireRole('EXECUTIVE', 'PROJECT_ADMIN', 'ADMIN'),
   asyncHandler(getOrganizationQuestionnaireSummaryHandler),
 );
 
 organizationsRouter.get(
   '/:orgId/opco-benchmarking',
   authenticate,
-  requireRole('EXECUTIVE', 'ADMIN'),
+  requireRole('EXECUTIVE', 'PROJECT_ADMIN', 'ADMIN'),
   asyncHandler(getOpCoBenchmarkingSummaryHandler),
 );
 
 organizationsRouter.get(
   '/:orgId/opco-benchmarking/combined',
   authenticate,
-  requireRole('EXECUTIVE', 'ADMIN'),
+  requireRole('EXECUTIVE', 'PROJECT_ADMIN', 'ADMIN'),
   asyncHandler(getCombinedOpCoBenchmarkingSummaryHandler),
 );
 
 organizationsRouter.get(
   '/:orgId/answer-drilldown',
   authenticate,
-  requireRole('EXECUTIVE', 'ADMIN'),
+  requireRole('EXECUTIVE', 'PROJECT_ADMIN', 'ADMIN'),
   asyncHandler(getAnswerDrilldownHandler),
 );
 
@@ -84,6 +84,6 @@ organizationsRouter.get(
 organizationsRouter.get(
   '/:orgId/cognitive-activity-summary',
   authenticate,
-  requireRole('EXECUTIVE', 'ADMIN'),
+  requireRole('EXECUTIVE', 'PROJECT_ADMIN', 'ADMIN'),
   asyncHandler(getCognitiveActivitySummaryHandler),
 );

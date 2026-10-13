@@ -1,4 +1,5 @@
-export const ROLES = ['NORMAL_USER', 'EXECUTIVE', 'ADMIN'] as const;
+// PROJECT_ADMIN is a membership role only (PROJECTS_PLAN.md); ADMIN is the global Application Admin.
+export const ROLES = ['NORMAL_USER', 'EXECUTIVE', 'ADMIN', 'PROJECT_ADMIN'] as const;
 export type Role = (typeof ROLES)[number];
 
 export const ANSWER_OPTIONS = ['A', 'B', 'C', 'D'] as const;

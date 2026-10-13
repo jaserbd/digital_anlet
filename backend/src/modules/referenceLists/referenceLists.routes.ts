@@ -11,10 +11,16 @@ import {
 export const referenceListsRouter = Router();
 
 referenceListsRouter.get('/:category', authenticate, asyncHandler(listReferenceListEntriesHandler));
+// Project Admins: their own organization's NATCO_NAME entries only (checked in the handlers).
 referenceListsRouter.post(
   '/:category',
   authenticate,
-  requireRole('ADMIN'),
+  requireRole('ADMIN', 'PROJECT_ADMIN'),
   asyncHandler(createReferenceListEntryHandler),
 );
-referenceListsRouter.delete('/:id', authenticate, requireRole('ADMIN'), asyncHandler(deleteReferenceListEntryHandler));
+referenceListsRouter.delete(
+  '/:id',
+  authenticate,
+  requireRole('ADMIN', 'PROJECT_ADMIN'),
+  asyncHandler(deleteReferenceListEntryHandler),
+);

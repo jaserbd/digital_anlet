@@ -24,13 +24,14 @@ questionnaireRouter.get('/', asyncHandler(listQuestionnairesHandler));
 // documented for responses.routes.ts's /core-domain-summary — see CLAUDE.md).
 questionnaireRouter.get('/hvs-entries', asyncHandler(listHvsEntriesHandler));
 questionnaireRouter.get('/:code', asyncHandler(getQuestionnaireHandler));
+// Project Admins: their own organization only (checked in the handlers — PROJECTS_PLAN.md).
 questionnaireRouter.get(
   '/:code/accepting',
-  requireRole('ADMIN'),
+  requireRole('ADMIN', 'PROJECT_ADMIN'),
   asyncHandler(getAcceptingResponsesHandler),
 );
 questionnaireRouter.patch(
   '/:code/accepting',
-  requireRole('ADMIN'),
+  requireRole('ADMIN', 'PROJECT_ADMIN'),
   asyncHandler(setAcceptingResponsesHandler),
 );

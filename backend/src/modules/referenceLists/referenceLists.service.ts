@@ -63,9 +63,14 @@ export async function createReferenceListEntry(input: {
   });
 }
 
-export async function deleteReferenceListEntry(id: string): Promise<void> {
+// `scopeOrganizationId` (Project Admins): only that organization's NatCo names are deletable;
+// anything else is treated as missing.
+export async function deleteReferenceListEntry(id: string, scopeOrganizationId?: string): Promise<void> {
   const entry = await prisma.referenceListEntry.findUnique({ where: { id } });
-  if (!entry) {
+  if (
+    !entry ||
+    (scopeOrganizationId && (entry.category !== 'NATCO_NAME' || entry.organizationId !== scopeOrganizationId))
+  ) {
     throw new ReferenceListEntryNotFoundError();
   }
   // No dependents check: OpCo.name/country and User.workingDomain/designation copy the

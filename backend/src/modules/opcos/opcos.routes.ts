@@ -7,5 +7,6 @@ import { createOpCoHandler, deleteOpCoHandler, listOpCosHandler } from './opcos.
 export const opCosRouter = Router();
 
 opCosRouter.get('/', authenticate, asyncHandler(listOpCosHandler));
-opCosRouter.post('/', authenticate, requireRole('ADMIN'), asyncHandler(createOpCoHandler));
-opCosRouter.delete('/:id', authenticate, requireRole('ADMIN'), asyncHandler(deleteOpCoHandler));
+// Project Admins manage their own organization's NatCos (PROJECTS_PLAN.md) — checked in the handlers.
+opCosRouter.post('/', authenticate, requireRole('ADMIN', 'PROJECT_ADMIN'), asyncHandler(createOpCoHandler));
+opCosRouter.delete('/:id', authenticate, requireRole('ADMIN', 'PROJECT_ADMIN'), asyncHandler(deleteOpCoHandler));

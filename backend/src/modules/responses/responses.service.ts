@@ -31,6 +31,8 @@ export class ResultNotAvailableError extends Error {}
 // mutable (including re-submitting); once closed, every mutation is blocked regardless of
 // status.
 export class AcceptanceClosedError extends Error {}
+// Resetting a response is for Application Admins and Project Admins only (PROJECTS_PLAN.md).
+export class ResetNotAllowedError extends Error {}
 
 // Answering needs an organization membership (MULTI_ORG_PLAN.md) — the admin context, or a
 // user with no membership, can't start a response.
@@ -181,6 +183,24 @@ export async function getOrCreateResponse(
     include: RESPONSE_INCLUDE,
   });
   return toResponseDto(created);
+}
+
+/**
+ * "Reset my answers" (PROJECTS_PLAN.md): deletes the caller's own response — answers, comments,
+ * KEIs and score — so the next visit starts fresh. For testing only, so reserved for Application
+ * Admins and for responses given as a Project Admin; only while the questionnaire is accepting.
+ */
+export async function resetResponse(responseId: string, caller: { sub: string; isAdmin: boolean }): Promise<void> {
+  const response = await loadOwnedResponse(responseId, caller.sub);
+  const membership = await prisma.membership.findUnique({
+    where: { id: response.membershipId },
+    select: { role: true },
+  });
+  if (!caller.isAdmin && membership?.role !== 'PROJECT_ADMIN') {
+    throw new ResetNotAllowedError();
+  }
+  await assertAccepting(response.questionnaireId, response.membership.organizationId);
+  await prisma.questionnaireResponse.delete({ where: { id: responseId } });
 }
 
 export async function upsertAnswer(

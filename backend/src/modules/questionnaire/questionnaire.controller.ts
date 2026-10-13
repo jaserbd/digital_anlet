@@ -10,6 +10,7 @@ import {
   setAcceptingResponses,
 } from './questionnaire.service';
 import { prisma } from '../../lib/prisma';
+import { requireManageOrganization } from '../../lib/projectAccess';
 
 export async function listQuestionnairesHandler(_req: Request, res: Response) {
   res.json(await listQuestionnaires());
@@ -47,6 +48,7 @@ export async function getAcceptingResponsesHandler(req: Request, res: Response) 
     res.status(400).json({ error: 'organizationId query param is required' });
     return;
   }
+  if (!requireManageOrganization(req, res, organizationId)) return;
 
   try {
     const questionnaire = await prisma.questionnaire.findUnique({ where: { code } });
@@ -80,6 +82,7 @@ export async function setAcceptingResponsesHandler(req: Request, res: Response) 
     res.status(400).json({ error: 'Invalid request body' });
     return;
   }
+  if (!requireManageOrganization(req, res, parsed.data.organizationId)) return;
 
   try {
     await setAcceptingResponses(code, parsed.data.organizationId, parsed.data.acceptingResponses);

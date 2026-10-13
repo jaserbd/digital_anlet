@@ -11,6 +11,9 @@ enum Role {
   NORMAL_USER
   EXECUTIVE
   ADMIN
+  // Membership-only (PROJECTS_PLAN.md): a Detecon consultant administering one project's
+  // organizations. Never a global User.role.
+  PROJECT_ADMIN
 }
 
 enum AnswerOption {
@@ -25,11 +28,26 @@ enum ResponseStatus {
   SUBMITTED
 }
 
+// A client engagement grouping organizations (PROJECTS_PLAN.md) — normally exactly one. Its
+// Project Admins are the PROJECT_ADMIN memberships in its organizations.
+model Project {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizations Organization[]
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // At most one project per organization; null for the internal org and unassigned orgs.
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id])
 
   users                    User[]
   memberships              Membership[]
@@ -127,7 +145,7 @@ model User {
 // separate per organization.
 model Membership {
   id        String   @id @default(cuid())
-  role      Role // EXECUTIVE or NORMAL_USER — Admin is global, on User.role
+  role      Role // EXECUTIVE, NORMAL_USER or PROJECT_ADMIN — Admin is global, on User.role
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

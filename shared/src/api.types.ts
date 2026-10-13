@@ -198,6 +198,60 @@ export interface UncoveredSkipErrorDto {
 export interface OrganizationDto {
   id: string;
   name: string;
+  projectId: string | null;
+}
+
+// A client engagement grouping organizations (PROJECTS_PLAN.md) — normally one.
+export interface ProjectDto {
+  id: string;
+  name: string;
+  organizations: OrganizationDto[];
+  // Emails holding a PROJECT_ADMIN membership in any of the project's organizations.
+  projectAdmins: { userId: string; email: string }[];
+}
+
+export interface CreateProjectRequestDto {
+  name: string;
+}
+
+// Rename and/or replace the project's organizations (each must not belong to another project).
+export interface UpdateProjectRequestDto {
+  name?: string;
+  organizationIds?: string[];
+}
+
+// Excel project import (PROJECTS_PLAN.md) — parsed client-side from the template, validated
+// again server-side. One project per upload; organizations, NatCos and memberships are created
+// when missing and reused otherwise.
+export type ProjectMemberRole = Extract<Role, 'PROJECT_ADMIN' | 'EXECUTIVE' | 'NORMAL_USER'>;
+
+export interface ProjectImportRequestDto {
+  projectName: string;
+  organizations: string[];
+  natCos: { organization: string; name: string; country: string }[];
+  members: {
+    organization: string;
+    email: string;
+    role: ProjectMemberRole;
+    firstName?: string;
+    lastName?: string;
+  }[];
+}
+
+export interface ProjectImportResultRowDto {
+  sheet: 'Project' | 'NatCos' | 'Members';
+  row: number; // 1-based data row within its sheet
+  label: string; // organization / NatCo / email
+  status: 'created' | 'existing' | 'membership-added' | 'error';
+  role?: ProjectMemberRole;
+  organization?: string;
+  tempPassword?: string; // only for a newly created account
+  error?: string;
+}
+
+export interface ProjectImportResultDto {
+  project: ProjectDto;
+  rows: ProjectImportResultRowDto[];
 }
 
 export interface OpCoDto {
@@ -225,7 +279,7 @@ export interface MembershipDto {
   id: string;
   organizationId: string;
   organizationName: string;
-  role: Role; // EXECUTIVE or NORMAL_USER
+  role: Role; // EXECUTIVE, NORMAL_USER or PROJECT_ADMIN
   opCoId: string | null;
   opCoName: string | null;
   workingDomain: string | null;
@@ -255,7 +309,8 @@ export interface UpdateUserRequestDto {
 
 export interface AddMembershipRequestDto {
   organizationId: string;
-  role: Extract<Role, 'NORMAL_USER' | 'EXECUTIVE'>;
+  // PROJECT_ADMIN: Application Admins only.
+  role: Extract<Role, 'NORMAL_USER' | 'EXECUTIVE' | 'PROJECT_ADMIN'>;
 }
 
 export interface UpdateMembershipRequestDto {

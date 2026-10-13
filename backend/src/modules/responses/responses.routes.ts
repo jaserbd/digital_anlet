@@ -7,6 +7,7 @@ import {
   getCoreDomainSummaryHandler,
   getResponseHandler,
   getResultHandler,
+  resetResponseHandler,
   submitResponseHandler,
   upsertAnswerHandler,
   upsertCommentHandler,
@@ -20,6 +21,7 @@ responsesRouter.post('/', asyncHandler(createResponseHandler));
 // Registered before /:id — otherwise the :id wildcard would swallow this literal path.
 responsesRouter.get('/core-domain-summary', asyncHandler(getCoreDomainSummaryHandler));
 responsesRouter.get('/:id', asyncHandler(getResponseHandler));
+responsesRouter.delete('/:id', asyncHandler(resetResponseHandler));
 responsesRouter.put('/:id/answers', asyncHandler(upsertAnswerHandler));
 responsesRouter.delete('/:id/answers/:questionId/:subScenarioId', asyncHandler(deleteAnswerHandler));
 responsesRouter.put('/:id/comments', asyncHandler(upsertCommentHandler));

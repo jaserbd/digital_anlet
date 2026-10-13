@@ -2,7 +2,7 @@ import { prisma } from '../../lib/prisma';
 
 export function listOrganizations() {
   return prisma.organization.findMany({
-    select: { id: true, name: true },
+    select: { id: true, name: true, projectId: true },
     orderBy: { name: 'asc' },
   });
 }
@@ -20,7 +20,7 @@ export async function createOrganization(name: string) {
     throw new OrganizationNameTakenError();
   }
   return prisma.$transaction(async (tx) => {
-    const org = await tx.organization.create({ data: { name }, select: { id: true, name: true } });
+    const org = await tx.organization.create({ data: { name }, select: { id: true, name: true, projectId: true } });
     const questionnaires = await tx.questionnaire.findMany({ select: { id: true } });
     if (questionnaires.length > 0) {
       await tx.questionnaireOrgSetting.createMany({

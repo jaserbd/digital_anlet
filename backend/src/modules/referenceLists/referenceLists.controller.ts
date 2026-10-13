@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
+import { isProjectAdmin } from '../../lib/projectAccess';
 import {
   createReferenceListEntry,
   deleteReferenceListEntry,
@@ -59,6 +60,13 @@ export async function createReferenceListEntryHandler(req: Request, res: Respons
     res.status(400).json({ error: 'Invalid request body' });
     return;
   }
+  if (
+    isProjectAdmin(req.user!) &&
+    (categoryParsed.data !== 'NATCO_NAME' || bodyParsed.data.organizationId !== req.user!.organizationId)
+  ) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
 
   try {
     const entry = await createReferenceListEntry({ category: categoryParsed.data, ...bodyParsed.data });
@@ -92,7 +100,7 @@ export async function deleteReferenceListEntryHandler(req: Request, res: Respons
   }
 
   try {
-    await deleteReferenceListEntry(id);
+    await deleteReferenceListEntry(id, isProjectAdmin(req.user!) ? req.user!.organizationId : undefined);
     res.status(204).end();
   } catch (err) {
     if (err instanceof ReferenceListEntryNotFoundError) {

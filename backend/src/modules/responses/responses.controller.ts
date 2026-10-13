@@ -7,6 +7,7 @@ import {
   ForbiddenError,
   InvalidKeiError,
   NoMembershipError,
+  ResetNotAllowedError,
   ResponseNotFoundError,
   ResultNotAvailableError,
   UncoveredSkipError,
@@ -15,6 +16,7 @@ import {
   getOrCreateResponse,
   getResponse,
   getResult,
+  resetResponse,
   submitResponse,
   upsertAnswer,
   upsertComment,
@@ -74,6 +76,10 @@ function handleKnownErrors(err: unknown, res: Response): boolean {
     res.status(400).json({ error: 'Invalid effectiveness indicator or option' });
     return true;
   }
+  if (err instanceof ResetNotAllowedError) {
+    res.status(403).json({ error: 'Only Application Admins and Project Admins can reset their answers' });
+    return true;
+  }
   if (err instanceof ResultNotAvailableError) {
     res.status(404).json({ error: 'Result not available' });
     return true;
@@ -100,6 +106,15 @@ export async function getResponseHandler(req: Request, res: Response) {
   try {
     const response = await getResponse(requireParam(req, 'id'), req.user!.sub);
     res.json(response);
+  } catch (err) {
+    if (!handleKnownErrors(err, res)) throw err;
+  }
+}
+
+export async function resetResponseHandler(req: Request, res: Response) {
+  try {
+    await resetResponse(requireParam(req, 'id'), req.user!);
+    res.status(204).end();
   } catch (err) {
     if (!handleKnownErrors(err, res)) throw err;
   }

@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
+import { isProjectAdmin, requireManageOrganization } from '../../lib/projectAccess';
 import {
   CountryNotInCatalogError,
   createOpCo,
@@ -40,6 +41,7 @@ export async function createOpCoHandler(req: Request, res: Response) {
     res.status(400).json({ error: 'Invalid request body' });
     return;
   }
+  if (!requireManageOrganization(req, res, parsed.data.organizationId)) return;
 
   try {
     const opCo = await createOpCo(parsed.data);
@@ -73,7 +75,7 @@ export async function deleteOpCoHandler(req: Request, res: Response) {
   }
 
   try {
-    await deleteOpCo(id);
+    await deleteOpCo(id, isProjectAdmin(req.user!) ? req.user!.organizationId : undefined);
     res.status(204).end();
   } catch (err) {
     if (err instanceof OpCoNotFoundError) {

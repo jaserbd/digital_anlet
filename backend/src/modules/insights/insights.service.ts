@@ -33,8 +33,10 @@ export class QuestionnaireNotFoundError extends Error {}
 // An Executive can now also answer/submit a questionnaire personally (MANAGEMENT_VIEW.md
 // item 2) — that response merges into the same Respondents table / benchmarking averages a
 // Normal User's does, so every respondent-scoped query below counts both roles. Admin never
-// answers questionnaires and is excluded.
+// answers questionnaires and is excluded. Project Admins (PROJECTS_PLAN.md) may answer, but only
+// to test — their responses are excluded everywhere via COUNTED_MEMBERSHIP.
 const RESPONDENT_ROLES: Role[] = ['NORMAL_USER', 'EXECUTIVE'];
+const COUNTED_MEMBERSHIP = { role: { in: RESPONDENT_ROLES } };
 
 // Executives see participants anonymously (ANONYMOUS_EXECUTIVE_PLAN.md): no emails, names,
 // designations or user ids leave the server for them. Admins pass `anonymize: false`.
@@ -145,7 +147,7 @@ export async function getOrganizationQuestionnaireSummary(
   // are per membership, so a person in two organizations appears in each with that
   // organization's NatCo and answers.
   const memberships = await prisma.membership.findMany({
-    where: { organizationId, role: { in: RESPONDENT_ROLES } },
+    where: { organizationId, ...COUNTED_MEMBERSHIP },
     orderBy: { user: { email: 'asc' } },
     include: {
       user: { select: { id: true, email: true, firstName: true, lastName: true } },
@@ -179,7 +181,11 @@ export async function getOrganizationQuestionnaireSummary(
   const grouped = await prisma.answer.groupBy({
     by: ['questionId', 'subScenarioId', 'selectedOption'],
     where: {
-      response: { questionnaireId: questionnaire.id, status: 'SUBMITTED', membership: { organizationId } },
+      response: {
+        questionnaireId: questionnaire.id,
+        status: 'SUBMITTED',
+        membership: { organizationId, ...COUNTED_MEMBERSHIP },
+      },
     },
     _count: { _all: true },
   });
@@ -322,7 +328,11 @@ export async function getAnswerDrilldown(
     throw new QuestionnaireNotFoundError();
   }
 
-  const responseScope = { questionnaireId: questionnaire.id, status: 'SUBMITTED' as const, membership: { organizationId } };
+  const responseScope = {
+    questionnaireId: questionnaire.id,
+    status: 'SUBMITTED' as const,
+    membership: { organizationId, ...COUNTED_MEMBERSHIP },
+  };
 
   const [answers, comments, keis] = await Promise.all([
     prisma.answer.findMany({
@@ -446,6 +456,7 @@ export async function getCognitiveActivitySummary(
         status: 'SUBMITTED',
         membership: {
           organizationId,
+          ...COUNTED_MEMBERSHIP,
           ...(filters.opCoId ? { opCoId: filters.opCoId } : {}),
           ...(filters.country ? { opCo: { country: filters.country } } : {}),
         },
@@ -509,7 +520,7 @@ export async function getCrossOrgCommentCollection(questionnaireCode: string): P
   };
   const [comments, keiComments] = await Promise.all([
     prisma.questionComment.findMany({
-      where: { response: { questionnaireId: questionnaire.id, status: 'SUBMITTED' } },
+      where: { response: { questionnaireId: questionnaire.id, status: 'SUBMITTED', membership: COUNTED_MEMBERSHIP } },
       select: {
         questionId: true,
         commentText: true,
@@ -521,7 +532,7 @@ export async function getCrossOrgCommentCollection(questionnaireCode: string): P
     // KEI comments (NEW_HVS_PLAN.md Phase B) join the same collection.
     prisma.responseKei.findMany({
       where: {
-        response: { questionnaireId: questionnaire.id, status: 'SUBMITTED' },
+        response: { questionnaireId: questionnaire.id, status: 'SUBMITTED', membership: COUNTED_MEMBERSHIP },
         comment: { not: null },
       },
       orderBy: { indicator: { sortOrder: 'asc' } },
@@ -589,7 +600,7 @@ async function computeBenchmarkRows(
     (
       await prisma.membership.findMany({
         where: {
-          role: { in: RESPONDENT_ROLES },
+          ...COUNTED_MEMBERSHIP,
           opCoId: null,
           ...(scopeOrganizationId ? { organizationId: scopeOrganizationId } : {}),
         },
@@ -623,7 +634,7 @@ async function computeBenchmarkRows(
 
   const respondentCounts = await prisma.membership.groupBy({
     by: ['organizationId', 'opCoId'],
-    where: { role: { in: RESPONDENT_ROLES }, ...(scopeOrganizationId ? { organizationId: scopeOrganizationId } : {}) },
+    where: { ...COUNTED_MEMBERSHIP, ...(scopeOrganizationId ? { organizationId: scopeOrganizationId } : {}) },
     _count: { _all: true },
   });
   const respondentCountByKey = new Map(
@@ -634,7 +645,10 @@ async function computeBenchmarkRows(
     where: {
       questionnaireId: questionnaire.id,
       status: 'SUBMITTED',
-      ...(scopeOrganizationId ? { membership: { organizationId: scopeOrganizationId } } : {}),
+      membership: {
+        ...COUNTED_MEMBERSHIP,
+        ...(scopeOrganizationId ? { organizationId: scopeOrganizationId } : {}),
+      },
     },
     include: {
       membership: { select: { organizationId: true, opCoId: true } },

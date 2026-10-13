@@ -29,8 +29,50 @@ export class NoActiveMembershipError extends Error {}
 // account is reserved for the super admin (ADMIN_MANAGEMENT_PLAN.md).
 export class SuperAdminRequiredError extends Error {}
 export class CannotChangeOwnRoleError extends Error {}
+// A Project Admin acting outside their own organization, on another Project Admin or an admin
+// account, or assigning a role other than Executive / Normal User (PROJECTS_PLAN.md).
+export class OutsideProjectError extends Error {}
 
-type MembershipRole = Extract<Role, 'NORMAL_USER' | 'EXECUTIVE'>;
+type MembershipRole = Extract<Role, 'NORMAL_USER' | 'EXECUTIVE' | 'PROJECT_ADMIN'>;
+const PROJECT_ADMIN_ASSIGNABLE_ROLES: Role[] = ['NORMAL_USER', 'EXECUTIVE'];
+
+/** Project Admins may assign only Executive / Normal User, in their own organization. */
+export function assertProjectAdminMayAssign(scopeOrganizationId: string, organizationId: string, role: Role): void {
+  if (organizationId !== scopeOrganizationId || !PROJECT_ADMIN_ASSIGNABLE_ROLES.includes(role)) {
+    throw new OutsideProjectError();
+  }
+}
+
+/** A Project Admin may manage a user only if it is a non-admin client member whose every
+ * membership lies in the Project Admin's organization and none of them is a Project Admin one —
+ * so they can never affect another client or another consultant. */
+export async function assertProjectAdminMayManageUser(scopeOrganizationId: string, userId: string): Promise<void> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, memberships: { select: { organizationId: true, role: true } } },
+  });
+  if (!user) throw new UserNotFoundError();
+  const inScope =
+    user.role !== 'ADMIN' &&
+    user.memberships.length > 0 &&
+    user.memberships.every(
+      (m) => m.organizationId === scopeOrganizationId && PROJECT_ADMIN_ASSIGNABLE_ROLES.includes(m.role),
+    );
+  if (!inScope) throw new OutsideProjectError();
+}
+
+/** A Project Admin may change or remove an Executive / Normal User membership of their own organization. */
+export async function assertProjectAdminMayManageMembership(
+  scopeOrganizationId: string,
+  membershipId: string,
+): Promise<void> {
+  const membership = await prisma.membership.findUnique({
+    where: { id: membershipId },
+    select: { organizationId: true, role: true },
+  });
+  if (!membership) throw new MembershipNotFoundError();
+  assertProjectAdminMayAssign(scopeOrganizationId, membership.organizationId, membership.role);
+}
 
 // A response that holds something worth keeping: submitted, or with any answer, comment or KEI.
 // Opening a questionnaire or results page creates an empty IN_PROGRESS response, which must not
@@ -132,7 +174,11 @@ export interface CreateUserInput {
 export async function createUser(
   input: CreateUserInput,
   callerId?: string,
+  // Project Admins (PROJECTS_PLAN.md): Executive / Normal User in this organization only, and
+  // never a membership on an existing admin account.
+  scopeOrganizationId?: string,
 ): Promise<CreateUserResultDto> {
+  if (scopeOrganizationId) assertProjectAdminMayAssign(scopeOrganizationId, input.organizationId, input.role);
   if (input.role === 'ADMIN' && !(callerId && (await isCallerSuperAdmin(callerId)))) {
     throw new SuperAdminRequiredError();
   }
@@ -146,6 +192,7 @@ export async function createUser(
 
   if (existingUser) {
     if (input.role === 'ADMIN') throw new EmailTakenError();
+    if (scopeOrganizationId && existingUser.role === 'ADMIN') throw new OutsideProjectError();
     await addMembershipRow(existingUser.id, input.organizationId, input.role as MembershipRole);
     return { status: 'membership-added', user: await loadUserDto(existingUser.id) };
   }
@@ -191,7 +238,22 @@ async function addMembershipRow(
  * Admin-only: list existing users with their memberships, optionally narrowed to one
  * organization (users with a membership there, or whose home organization it is).
  */
-export async function listUsers(filter?: { organizationId?: string }): Promise<UserDto[]> {
+export async function listUsers(filter?: {
+  organizationId?: string;
+  // Project Admins: only members of this organization, and only their memberships here.
+  projectAdminOrganizationId?: string;
+}): Promise<UserDto[]> {
+  const scopeOrgId = filter?.projectAdminOrganizationId;
+  if (scopeOrgId) {
+    const users = await prisma.user.findMany({
+      where: { memberships: { some: { organizationId: scopeOrgId } } },
+      orderBy: { email: 'asc' },
+      select: USER_SELECT,
+    });
+    return users.map((u) =>
+      toUserDto({ ...u, memberships: u.memberships.filter((m) => m.organizationId === scopeOrgId) }),
+    );
+  }
   const users = await prisma.user.findMany({
     where: filter?.organizationId
       ? {
@@ -373,6 +435,8 @@ export interface BulkCreateUserRow {
  */
 export async function createUsersBulk(
   rows: BulkCreateUserRow[],
+  // Project Admins: rows for any other organization are rejected.
+  scopeOrganizationId?: string,
 ): Promise<BulkCreateUsersResultDto[]> {
   const organizations = await prisma.organization.findMany({ select: { id: true, name: true } });
   const orgIdByName = new Map(organizations.map((o) => [o.name.trim().toLowerCase(), o.id]));
@@ -402,6 +466,15 @@ export async function createUsersBulk(
       });
       continue;
     }
+    if (scopeOrganizationId && organizationId !== scopeOrganizationId) {
+      results.push({
+        row: rowNumber,
+        email: row.email,
+        status: 'error',
+        error: `Organization "${row.organization}" is not in your project`,
+      });
+      continue;
+    }
 
     const password = row.password ?? generatePassword();
     try {
@@ -410,7 +483,7 @@ export async function createUsersBulk(
         password,
         role: row.role,
         organizationId,
-      });
+      }, undefined, scopeOrganizationId);
       results.push(
         result.status === 'created'
           ? { row: rowNumber, email: result.user.email, status: 'created', tempPassword: password }
@@ -418,7 +491,9 @@ export async function createUsersBulk(
       );
     } catch (err) {
       const error =
-        err instanceof AlreadyMemberError
+        err instanceof OutsideProjectError
+          ? 'Not allowed for a Project Admin'
+          : err instanceof AlreadyMemberError
           ? 'Already a member of this organization'
           : err instanceof EmailTakenError
             ? 'A user with this email already exists'

@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { requireParam } from '../../lib/params';
+import { canViewOrganization } from '../../lib/projectAccess';
 import { findHvsGroupByCode, type HvsGroupDefinition } from '../questionnaire/hvsGroups';
 import {
   getAnswerDrilldown,
@@ -34,8 +35,8 @@ export async function getOrganizationQuestionnaireSummaryHandler(req: Request, r
     return;
   }
 
-  // Executive: own organization only. Admin: any organization.
-  if (req.user!.role === 'EXECUTIVE' && req.user!.organizationId !== orgId) {
+  // Executive / Project Admin: own organization only. Admin: any organization.
+  if (!canViewOrganization(req.user!, orgId)) {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }
@@ -81,8 +82,8 @@ export async function getOpCoBenchmarkingSummaryHandler(req: Request, res: Respo
     return;
   }
 
-  // Executive: own organization only. Admin: any organization.
-  if (req.user!.role === 'EXECUTIVE' && req.user!.organizationId !== orgId) {
+  // Executive / Project Admin: own organization only. Admin: any organization.
+  if (!canViewOrganization(req.user!, orgId)) {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }
@@ -107,8 +108,8 @@ export async function getAnswerDrilldownHandler(req: Request, res: Response) {
     return;
   }
 
-  // Executive: own organization only. Admin: any organization.
-  if (req.user!.role === 'EXECUTIVE' && req.user!.organizationId !== orgId) {
+  // Executive / Project Admin: own organization only. Admin: any organization.
+  if (!canViewOrganization(req.user!, orgId)) {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }
@@ -136,8 +137,8 @@ export async function getCognitiveActivitySummaryHandler(req: Request, res: Resp
   const opCoId = typeof req.query.opCoId === 'string' ? req.query.opCoId : undefined;
   const country = typeof req.query.country === 'string' ? req.query.country : undefined;
 
-  // Executive: own organization only. Admin: any organization.
-  if (req.user!.role === 'EXECUTIVE' && req.user!.organizationId !== orgId) {
+  // Executive / Project Admin: own organization only. Admin: any organization.
+  if (!canViewOrganization(req.user!, orgId)) {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }
@@ -194,8 +195,8 @@ export async function getCombinedOpCoBenchmarkingSummaryHandler(req: Request, re
   const group = requireHvsGroup(req, res);
   if (!group) return;
 
-  // Executive: own organization only. Admin: any organization.
-  if (req.user!.role === 'EXECUTIVE' && req.user!.organizationId !== orgId) {
+  // Executive / Project Admin: own organization only. Admin: any organization.
+  if (!canViewOrganization(req.user!, orgId)) {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }

@@ -55,9 +55,10 @@ export async function createOpCo(input: { name: string; country: string; organiz
 // Admin-only delete (ADMIN.md item 1). Blocked (not cascaded) if any membership is still
 // assigned to this OpCo — those respondents' NatCo would otherwise silently disappear from
 // their history.
-export async function deleteOpCo(id: string): Promise<void> {
+// `scopeOrganizationId` (Project Admins): an OpCo of any other organization is treated as missing.
+export async function deleteOpCo(id: string, scopeOrganizationId?: string): Promise<void> {
   const opCo = await prisma.opCo.findUnique({ where: { id } });
-  if (!opCo) {
+  if (!opCo || (scopeOrganizationId && opCo.organizationId !== scopeOrganizationId)) {
     throw new OpCoNotFoundError();
   }
 
