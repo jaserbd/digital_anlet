@@ -205,7 +205,11 @@ function handleUserAdminErrors(err: unknown, res: Response): boolean {
 
 const membershipRoleSchema = z.enum(['NORMAL_USER', 'EXECUTIVE', 'PROJECT_ADMIN']);
 const addMembershipSchema = z.object({ organizationId: z.string().min(1), role: membershipRoleSchema });
-const updateMembershipSchema = z.object({ role: membershipRoleSchema });
+// `organizationId` moves the membership (and its answers) to another organization —
+// Application Admins only (USERS_TABLE_PLAN.md).
+const updateMembershipSchema = z
+  .object({ role: membershipRoleSchema.optional(), organizationId: z.string().min(1).optional() })
+  .refine((v) => v.role !== undefined || v.organizationId !== undefined);
 
 export async function addMembershipHandler(req: Request, res: Response) {
   const userId = requireUserId(req, res);
@@ -237,7 +241,8 @@ export async function updateMembershipHandler(req: Request, res: Response) {
     const scope = projectAdminScope(req);
     if (scope) {
       await assertProjectAdminMayManageMembership(scope, membershipId);
-      assertProjectAdminMayAssign(scope, scope, parsed.data.role);
+      if (parsed.data.role) assertProjectAdminMayAssign(scope, scope, parsed.data.role);
+      if (parsed.data.organizationId && parsed.data.organizationId !== scope) throw new OutsideProjectError();
     }
     res.json(await updateMembership(req.user!.sub, userId, membershipId, parsed.data));
   } catch (err) {

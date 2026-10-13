@@ -230,6 +230,37 @@ describe('memberships (real DB)', () => {
     );
   });
 
+  it('moves a membership with its answers to another organization, clearing its NatCo', async () => {
+    const opCo = await prisma.opCo.create({ data: { name: '__integration-test-users-move__', country: 'X', organizationId: orgAId } });
+    const userId = await createRawUser('move-membership', {
+      organizationId: orgAId,
+      memberOf: [{ organizationId: orgAId, role: 'NORMAL_USER' }],
+    });
+    const membership = await prisma.membership.update({
+      where: { userId_organizationId: { userId, organizationId: orgAId } },
+      data: { opCoId: opCo.id, workingDomain: 'RAN' },
+    });
+    const response = await getOrCreateResponse({ sub: userId, membershipId: membership.id }, 'RAN_FM_GB1059A');
+
+    const user = await updateMembership(adminId, userId, membership.id, { organizationId: orgBId, role: 'EXECUTIVE' });
+    expect(user.memberships).toEqual([
+      expect.objectContaining({ id: membership.id, organizationId: orgBId, role: 'EXECUTIVE', opCoId: null, workingDomain: 'RAN' }),
+    ]);
+    expect(user.organizationId).toBe(orgBId); // home organization follows
+    const moved = await prisma.questionnaireResponse.findUniqueOrThrow({
+      where: { id: response.id },
+      include: { membership: true },
+    });
+    expect(moved.membership.organizationId).toBe(orgBId);
+
+    // Not into an organization the user already belongs to.
+    await addMembership(adminId, userId, { organizationId: orgAId, role: 'NORMAL_USER' });
+    await expect(updateMembership(adminId, userId, membership.id, { organizationId: orgAId })).rejects.toBeInstanceOf(
+      AlreadyMemberError,
+    );
+    await prisma.opCo.delete({ where: { id: opCo.id } });
+  });
+
   it('lists users with their memberships, narrowed to one organization', async () => {
     const memberOfB = await createRawUser('list-b', {
       organizationId: orgAId,

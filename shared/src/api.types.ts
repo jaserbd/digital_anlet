@@ -320,7 +320,9 @@ export interface AddMembershipRequestDto {
 }
 
 export interface UpdateMembershipRequestDto {
-  role: Extract<Role, 'NORMAL_USER' | 'EXECUTIVE' | 'PROJECT_ADMIN'>;
+  role?: Extract<Role, 'NORMAL_USER' | 'EXECUTIVE' | 'PROJECT_ADMIN'>;
+  // Moves the membership and its answers to another organization (USERS_TABLE_PLAN.md).
+  organizationId?: string;
 }
 
 // "Create user" with an email that already exists (and a non-admin role) adds a membership to

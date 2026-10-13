@@ -302,15 +302,48 @@ async function loadMembershipOfUser(userId: string, membershipId: string) {
   return membership;
 }
 
+/**
+ * Changes a membership's role and/or moves it to another organization (USERS_TABLE_PLAN.md). A
+ * move keeps the membership's responses — they then count for the new organization — and
+ * clears its NatCo, which belonged to the old organization (a Normal User completes the profile
+ * again). A non-admin whose home organization was the old one gets the new one as home, so the
+ * old organization isn't left holding them.
+ */
 export async function updateMembership(
   callerId: string,
   userId: string,
   membershipId: string,
-  input: { role: MembershipRole },
+  input: { role?: MembershipRole; organizationId?: string },
 ): Promise<UserDto> {
   await assertCanManageMemberships(callerId, userId);
   await loadMembershipOfUser(userId, membershipId);
-  await prisma.membership.update({ where: { id: membershipId }, data: { role: input.role } });
+  const membership = await prisma.membership.findUniqueOrThrow({ where: { id: membershipId } });
+
+  const moving = input.organizationId !== undefined && input.organizationId !== membership.organizationId;
+  if (moving) {
+    const organization = await prisma.organization.findUnique({ where: { id: input.organizationId } });
+    if (!organization) throw new OrganizationNotFoundError();
+    const existing = await prisma.membership.findUnique({
+      where: { userId_organizationId: { userId, organizationId: input.organizationId! } },
+    });
+    if (existing) throw new AlreadyMemberError();
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.membership.update({
+      where: { id: membershipId },
+      data: {
+        ...(input.role ? { role: input.role } : {}),
+        ...(moving ? { organizationId: input.organizationId, opCoId: null } : {}),
+      },
+    });
+    if (moving) {
+      const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { role: true, organizationId: true } });
+      if (user.role !== 'ADMIN' && user.organizationId === membership.organizationId) {
+        await tx.user.update({ where: { id: userId }, data: { organizationId: input.organizationId } });
+      }
+    }
+  });
   return loadUserDto(userId);
 }
 

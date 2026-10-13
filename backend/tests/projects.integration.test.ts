@@ -288,6 +288,10 @@ describe('Project Admin scoping over HTTP (real DB)', () => {
       role: 'PROJECT_ADMIN',
     });
     expect(toProjectAdmin.status).toBe(403);
+    const moveOut = await api('PATCH', `/users/${memberAId}/memberships/${memberA.id}`, asProjectAdmin(), {
+      organizationId: orgBId,
+    });
+    expect(moveOut.status).toBe(403);
     await api('PATCH', `/users/${memberAId}/memberships/${memberA.id}`, asProjectAdmin(), { role: 'NORMAL_USER' });
 
     const memberB = await prisma.membership.findFirstOrThrow({ where: { userId: memberBId } });
