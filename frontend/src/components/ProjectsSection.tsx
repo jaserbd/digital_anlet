@@ -1,10 +1,12 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { OrganizationDto, ProjectDto, ProjectImportResultDto } from '@anlet/shared';
+import type { HvsListItemDto, OrganizationDto, ProjectDto, ProjectImportResultDto } from '@anlet/shared';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Checkbox from '@mui/material/Checkbox';
 import Chip from '@mui/material/Chip';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import MenuItem from '@mui/material/MenuItem';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
@@ -19,6 +21,7 @@ import Typography from '@mui/material/Typography';
 import { projectsApi } from '../api/projectsApi';
 import { organizationsApi } from '../api/organizationsApi';
 import { referenceListsApi } from '../api/referenceListsApi';
+import { questionnaireApi } from '../api/questionnaireApi';
 import { ApiError } from '../api/client';
 import { exportRowsToXlsx } from '../lib/exportXlsx';
 import {
@@ -41,6 +44,8 @@ export function ProjectsSection() {
   const queryClient = useQueryClient();
   const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: projectsApi.list });
   const orgsQuery = useQuery({ queryKey: ['organizations'], queryFn: organizationsApi.list });
+  // The Application Admin context lists every questionnaire, grouped as HVS items.
+  const hvsQuery = useQuery({ queryKey: ['hvs-entries'], queryFn: questionnaireApi.listHvsEntries });
   const [name, setName] = useState('');
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
@@ -70,9 +75,10 @@ export function ProjectsSection() {
   return (
     <SectionCard title="Projects">
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        A project is a client engagement — normally one organization with its NatCos. Its Project
-        Admins (Detecon consultants) manage members, NatCos and open/close for that organization
-        only, see its dashboard and can test-answer questionnaires (not counted in any results).
+        A project is a client engagement — normally one organization with its NatCos. Its members
+        only see and answer the project&apos;s questionnaires. Its Project Admins (Detecon consultants)
+        manage members, NatCos and open/close for that organization only, see its dashboard and can
+        test-answer questionnaires (not counted in any results).
       </Typography>
       <Stack component="form" onSubmit={handleSubmit} direction="row" spacing={1.5} sx={{ mb: 2 }}>
         <TextField required size="small" placeholder="Project name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -92,24 +98,31 @@ export function ProjectsSection() {
               <TableRow>
                 <TableCell>Project</TableCell>
                 <TableCell>Organizations</TableCell>
+                <TableCell>Questionnaires</TableCell>
                 <TableCell>Project Admins</TableCell>
                 <TableCell />
               </TableRow>
             </TableHead>
             <TableBody>
               {projectsQuery.data?.map((project) => (
-                <ProjectRow key={project.id} project={project} unassigned={unassigned} onSaved={refresh} />
+                <ProjectRow
+                  key={project.id}
+                  project={project}
+                  unassigned={unassigned}
+                  hvsEntries={hvsQuery.data ?? []}
+                  onSaved={refresh}
+                />
               ))}
               {projectsQuery.data?.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4}>No projects yet.</TableCell>
+                  <TableCell colSpan={5}>No projects yet.</TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </TableContainer>
       </CollapsibleTable>
-      <ProjectImportForm onImported={refresh} />
+      <ProjectImportForm hvsNames={(hvsQuery.data ?? []).map((e) => e.name)} onImported={refresh} />
     </SectionCard>
   );
 }
@@ -117,10 +130,12 @@ export function ProjectsSection() {
 function ProjectRow({
   project,
   unassigned,
+  hvsEntries,
   onSaved,
 }: {
   project: ProjectDto;
   unassigned: OrganizationDto[];
+  hvsEntries: HvsListItemDto[];
   onSaved: () => void;
 }) {
   const [organizationId, setOrganizationId] = useState('');
@@ -197,6 +212,9 @@ function ProjectRow({
         </Stack>
       </TableCell>
       <TableCell>
+        <QuestionnaireSelection project={project} hvsEntries={hvsEntries} onSaved={onSaved} />
+      </TableCell>
+      <TableCell>
         {project.projectAdmins.length > 0 ? (
           project.projectAdmins.map((a) => (
             <Typography key={a.userId} variant="body2">
@@ -232,6 +250,98 @@ function ProjectRow({
   );
 }
 
+// The project's questionnaires (PROJECT_QUESTIONNAIRES_PLAN.md), chosen per HVS item — Core
+// Fault Management + Stability is one item, since the Core Domain score needs both halves.
+function QuestionnaireSelection({
+  project,
+  hvsEntries,
+  onSaved,
+}: {
+  project: ProjectDto;
+  hvsEntries: HvsListItemDto[];
+  onSaved: () => void;
+}) {
+  const isSelected = (entry: HvsListItemDto, codes: string[]) =>
+    entry.questionnaireCodes.every((code) => codes.includes(code));
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: () => projectsApi.update(project.id, { questionnaireCodes: draft }),
+    onSuccess: () => {
+      setEditing(false);
+      onSaved();
+    },
+    onError: (err) => setError(errorText(err, 'Failed to save questionnaires')),
+  });
+
+  const selected = hvsEntries.filter((e) => isSelected(e, project.questionnaireCodes));
+
+  if (!editing) {
+    return (
+      <Stack spacing={0.5} sx={{ alignItems: 'flex-start' }}>
+        <Typography variant="body2" color="text.secondary">
+          {selected.length === hvsEntries.length ? `All (${hvsEntries.length})` : `${selected.length} of ${hvsEntries.length}`}
+        </Typography>
+        {selected.length < hvsEntries.length && (
+          <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+            {selected.map((e) => (
+              <Chip key={e.key} size="small" label={e.name} />
+            ))}
+          </Stack>
+        )}
+        <Button
+          size="small"
+          onClick={() => {
+            setDraft(project.questionnaireCodes);
+            setError(null);
+            setEditing(true);
+          }}
+        >
+          Edit questionnaires
+        </Button>
+      </Stack>
+    );
+  }
+
+  return (
+    <Stack sx={{ alignItems: 'flex-start' }}>
+      {hvsEntries.map((entry) => (
+        <FormControlLabel
+          key={entry.key}
+          label={<Typography variant="body2">{entry.name}</Typography>}
+          control={
+            <Checkbox
+              size="small"
+              checked={isSelected(entry, draft)}
+              onChange={(e) =>
+                setDraft((current) =>
+                  e.target.checked
+                    ? [...new Set([...current, ...entry.questionnaireCodes])]
+                    : current.filter((code) => !entry.questionnaireCodes.includes(code)),
+                )
+              }
+            />
+          }
+        />
+      ))}
+      <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+        <Button size="small" variant="contained" disabled={draft.length === 0 || save.isPending} onClick={() => save.mutate()}>
+          {save.isPending ? 'Saving…' : 'Save'}
+        </Button>
+        <Button size="small" onClick={() => setEditing(false)}>
+          Cancel
+        </Button>
+      </Stack>
+      {error && (
+        <Typography variant="caption" color="error">
+          {error}
+        </Typography>
+      )}
+    </Stack>
+  );
+}
+
 const STATUS_LABELS: Record<ProjectImportResultDto['rows'][number]['status'], string> = {
   created: 'Created',
   existing: 'Already existed',
@@ -239,7 +349,14 @@ const STATUS_LABELS: Record<ProjectImportResultDto['rows'][number]['status'], st
   error: 'Error',
 };
 
-function ProjectImportForm({ onImported }: { onImported: () => void }) {
+function statusLabel(row: ProjectImportResultDto['rows'][number]): string {
+  if (row.sheet === 'Questionnaires' && row.status !== 'error') {
+    return row.status === 'created' ? 'Selected' : 'Already selected';
+  }
+  return STATUS_LABELS[row.status];
+}
+
+function ProjectImportForm({ hvsNames, onImported }: { hvsNames: string[]; onImported: () => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const countriesQuery = useQuery({
     queryKey: ['reference-lists', 'COUNTRY'],
@@ -298,7 +415,7 @@ function ProjectImportForm({ onImported }: { onImported: () => void }) {
         rows: result.rows.map((r) => ({
           ...r,
           role: r.role ? MEMBER_ROLE_LABELS[r.role] : '',
-          status: STATUS_LABELS[r.status],
+          status: statusLabel(r),
         })),
       },
     ]);
@@ -312,13 +429,18 @@ function ProjectImportForm({ onImported }: { onImported: () => void }) {
         Import a project from Excel
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-        Download the template, fill in the project, its organization(s), NatCos and members (Project
-        Admin, Executive or Normal User), then upload it. New accounts get a temporary password —
+        Download the template, fill in the project, its organization(s), questionnaires, NatCos and
+        members (Project Admin, Executive or Normal User), then upload it. New accounts get a temporary password —
         download the results afterwards to forward them.
       </Typography>
       <Button
         variant="text"
-        onClick={() => downloadProjectTemplate((countriesQuery.data ?? []).map((c) => c.name))}
+        onClick={() =>
+          downloadProjectTemplate(
+            (countriesQuery.data ?? []).map((c) => c.name),
+            hvsNames,
+          )
+        }
         sx={{ mb: 2, mr: 1 }}
       >
         Download Excel template
@@ -355,7 +477,11 @@ function ProjectImportForm({ onImported }: { onImported: () => void }) {
             <>
               <Typography variant="body2" sx={{ mb: 1 }}>
                 Project <strong>{request.projectName}</strong> — organization{request.organizations.length === 1 ? '' : 's'}{' '}
-                <strong>{request.organizations.join(', ')}</strong>, {request.natCos.length} NatCo
+                <strong>{request.organizations.join(', ')}</strong>,{' '}
+                {request.questionnaires
+                  ? `${request.questionnaires.length} questionnaire${request.questionnaires.length === 1 ? '' : 's'} (${request.questionnaires.join(', ')})`
+                  : 'all questionnaires (or the existing selection)'}
+                , {request.natCos.length} NatCo
                 {request.natCos.length === 1 ? '' : 's'}, {request.members.length} member
                 {request.members.length === 1 ? '' : 's'} (
                 {(Object.keys(MEMBER_ROLE_LABELS) as (keyof typeof MEMBER_ROLE_LABELS)[])
@@ -403,7 +529,7 @@ function ProjectImportForm({ onImported }: { onImported: () => void }) {
                     <TableCell>{r.label}</TableCell>
                     <TableCell>{r.role ? MEMBER_ROLE_LABELS[r.role] : ''}</TableCell>
                     <TableCell>
-                      <Chip size="small" label={STATUS_LABELS[r.status]} color={r.status === 'error' ? 'error' : 'success'} />
+                      <Chip size="small" label={statusLabel(r)} color={r.status === 'error' ? 'error' : 'success'} />
                     </TableCell>
                     <TableCell sx={{ fontFamily: r.tempPassword ? 'monospace' : undefined }}>
                       {r.tempPassword ?? r.error ?? ''}

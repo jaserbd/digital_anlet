@@ -1,7 +1,5 @@
 import type {
   AddMembershipRequestDto,
-  BulkCreateUsersResultDto,
-  BulkCreateUsersRowDto,
   CreateUserResultDto,
   Role,
   TemporaryPasswordDto,
@@ -25,8 +23,6 @@ export const usersApi = {
   // An existing email (non-admin role) adds the organization as a membership instead
   // (MULTI_ORG_PLAN.md) — see CreateUserResultDto.status.
   create: (input: CreateUserInput) => apiClient.post<CreateUserResultDto>('/users', input),
-  bulkCreate: (rows: BulkCreateUsersRowDto[]) =>
-    apiClient.post<BulkCreateUsersResultDto[]>('/users/bulk', { rows }),
   list: (organizationId?: string) =>
     apiClient.get<UserDto[]>(`/users${organizationId ? `?organizationId=${organizationId}` : ''}`),
   update: (userId: string, input: UpdateUserRequestDto) =>

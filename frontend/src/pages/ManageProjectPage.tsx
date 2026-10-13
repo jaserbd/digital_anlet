@@ -1,7 +1,6 @@
 import Typography from '@mui/material/Typography';
 import { PageShell } from '../components/PageShell';
 import { SectionCard } from '../components/SectionCard';
-import { BulkCreateUsersForm } from '../components/BulkCreateUsersForm';
 import { ManageUsersSection } from '../components/ManageUsersSection';
 import { useAuth } from '../context/AuthContext';
 import { CreateUserForm, ManageOpCosSection, QuestionnaireSettingsSection } from './AdminManagementPage';
@@ -23,9 +22,6 @@ export function ManageProjectPage() {
         </Typography>
       </SectionCard>
       <CreateUserForm />
-      <SectionCard title="Bulk-create users">
-        <BulkCreateUsersForm />
-      </SectionCard>
       <ManageUsersSection />
       <ManageOpCosSection />
       <QuestionnaireSettingsSection />

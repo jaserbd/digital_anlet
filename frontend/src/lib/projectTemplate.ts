@@ -7,11 +7,13 @@ import type { ProjectImportRequestDto, ProjectMemberRole } from '@anlet/shared';
 
 export const PROJECT_TEMPLATE_SHEETS = {
   project: 'Project',
+  questionnaires: 'Questionnaires',
   natCos: 'NatCos',
   members: 'Members',
 } as const;
 
 const PROJECT_HEADERS = ['Project name', 'Organization'];
+const QUESTIONNAIRE_HEADERS = ['Questionnaire'];
 const NATCO_HEADERS = ['Organization', 'NatCo', 'Country'];
 const MEMBER_HEADERS = ['Organization', 'Email', 'Role', 'First name', 'Last name'];
 
@@ -36,18 +38,25 @@ function sheetFromRows(rows: (string | number)[][], widths: number[]): XLSX.Work
   return sheet;
 }
 
-/** Builds the template workbook. `countries` (the Country list) is listed on a reference sheet,
- * since a NatCo's country must match one of them. */
-export function buildProjectTemplate(countries: string[], exampleCountry = countries[0] ?? 'Germany'): XLSX.WorkBook {
+/** Builds the template workbook. `countries` (the Country list) and `questionnaires` (the
+ * assessment names, Core FM + Stability as one item) are listed on a reference sheet, since a
+ * NatCo's country and a selected questionnaire must match one of them. */
+export function buildProjectTemplate(
+  countries: string[],
+  questionnaires: string[] = [],
+  exampleCountry = countries[0] ?? 'Germany',
+): XLSX.WorkBook {
   const workbook = XLSX.utils.book_new();
   const instructions = [
     ['ANLET — project import template'],
     [],
     ['1. Project: the project name in the first row, and one organization per row (normally just one).'],
     ['   Organizations are created when they do not exist yet; an organization can only belong to one project.'],
-    ['2. NatCos (optional): the organization\'s NatCos (OpCos) with their country — leave empty if it has none.'],
+    ['2. Questionnaires (optional): one assessment per row, named as on the "Lists" sheet — only these are'],
+    ['   available to the project\'s members. Leave it empty for all assessments (or, for an existing project, to keep its selection).'],
+    ['3. NatCos (optional): the organization\'s NatCos (OpCos) with their country — leave empty if it has none.'],
     ['   The country must be one of the values on the "Lists" sheet.'],
-    ['3. Members: one row per person — organization, email and role (Project Admin, Executive or Normal User).'],
+    ['4. Members: one row per person — organization, email and role (Project Admin, Executive or Normal User).'],
     ['   Project Admins are the Detecon consultants of the project; Executives and Normal Users are client members.'],
     ['   The same email can appear for several organizations. First and last name are optional.'],
     [],
@@ -60,6 +69,11 @@ export function buildProjectTemplate(countries: string[], exampleCountry = count
     workbook,
     sheetFromRows([PROJECT_HEADERS, ['Client A 2026 assessment', 'Client A']], [32, 32]),
     PROJECT_TEMPLATE_SHEETS.project,
+  );
+  XLSX.utils.book_append_sheet(
+    workbook,
+    sheetFromRows([QUESTIONNAIRE_HEADERS], [52]),
+    PROJECT_TEMPLATE_SHEETS.questionnaires,
   );
   XLSX.utils.book_append_sheet(
     workbook,
@@ -79,17 +93,17 @@ export function buildProjectTemplate(countries: string[], exampleCountry = count
     ),
     PROJECT_TEMPLATE_SHEETS.members,
   );
-  const listRows: string[][] = [['Role', 'Country']];
+  const listRows: string[][] = [['Role', 'Questionnaire', 'Country']];
   const roleLabels = Object.values(MEMBER_ROLE_LABELS);
-  for (let i = 0; i < Math.max(roleLabels.length, countries.length); i++) {
-    listRows.push([roleLabels[i] ?? '', countries[i] ?? '']);
+  for (let i = 0; i < Math.max(roleLabels.length, questionnaires.length, countries.length); i++) {
+    listRows.push([roleLabels[i] ?? '', questionnaires[i] ?? '', countries[i] ?? '']);
   }
-  XLSX.utils.book_append_sheet(workbook, sheetFromRows(listRows, [18, 28]), 'Lists');
+  XLSX.utils.book_append_sheet(workbook, sheetFromRows(listRows, [18, 52, 28]), 'Lists');
   return workbook;
 }
 
-export function downloadProjectTemplate(countries: string[]): void {
-  XLSX.writeFile(buildProjectTemplate(countries), 'anlet-project-template.xlsx');
+export function downloadProjectTemplate(countries: string[], questionnaires: string[]): void {
+  XLSX.writeFile(buildProjectTemplate(countries, questionnaires), 'anlet-project-template.xlsx');
 }
 
 export interface ParsedProjectWorkbook {
@@ -131,6 +145,7 @@ export function parseProjectWorkbook(workbook: XLSX.WorkBook): ParsedProjectWork
 
   const sheets = {
     project: findSheet(workbook, PROJECT_TEMPLATE_SHEETS.project),
+    questionnaires: findSheet(workbook, PROJECT_TEMPLATE_SHEETS.questionnaires),
     natCos: findSheet(workbook, PROJECT_TEMPLATE_SHEETS.natCos),
     members: findSheet(workbook, PROJECT_TEMPLATE_SHEETS.members),
   };
@@ -141,10 +156,17 @@ export function parseProjectWorkbook(workbook: XLSX.WorkBook): ParsedProjectWork
   const projectRows = readRows(sheets.project, PROJECT_HEADERS);
   const memberRows = readRows(sheets.members, MEMBER_HEADERS);
   const natCoRows = sheets.natCos ? readRows(sheets.natCos, NATCO_HEADERS) : [];
+  const questionnaireRows = sheets.questionnaires ? readRows(sheets.questionnaires, QUESTIONNAIRE_HEADERS) : [];
   if (typeof projectRows === 'string') errors.push(`Project sheet: ${projectRows}.`);
   if (typeof memberRows === 'string') errors.push(`Members sheet: ${memberRows}.`);
   if (typeof natCoRows === 'string') errors.push(`NatCos sheet: ${natCoRows}.`);
-  if (typeof projectRows === 'string' || typeof memberRows === 'string' || typeof natCoRows === 'string') {
+  if (typeof questionnaireRows === 'string') errors.push(`Questionnaires sheet: ${questionnaireRows}.`);
+  if (
+    typeof projectRows === 'string' ||
+    typeof memberRows === 'string' ||
+    typeof natCoRows === 'string' ||
+    typeof questionnaireRows === 'string'
+  ) {
     return { request: null, errors, skipped };
   }
 
@@ -191,8 +213,20 @@ export function parseProjectWorkbook(workbook: XLSX.WorkBook): ParsedProjectWork
     });
   }
 
+  const questionnaires = [...new Set(questionnaireRows.map((r) => r.values['Questionnaire']!).filter(Boolean))];
+
   if (errors.length > 0) return { request: null, errors, skipped };
-  return { request: { projectName: projectNames[0]!, organizations, natCos, members }, errors, skipped };
+  return {
+    request: {
+      projectName: projectNames[0]!,
+      organizations,
+      ...(questionnaires.length > 0 ? { questionnaires } : {}),
+      natCos,
+      members,
+    },
+    errors,
+    skipped,
+  };
 }
 
 export async function readProjectWorkbook(file: File): Promise<ParsedProjectWorkbook> {

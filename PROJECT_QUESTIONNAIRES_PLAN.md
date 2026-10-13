@@ -1,6 +1,6 @@
 # Questionnaires per project + retire bulk CSV user creation
 
-**Status: planned** — branch `feature/project-questionnaires`.
+**Status: steps 1–2 done** (backend 286 + frontend 34 tests) — branch `feature/project-questionnaires`. Remaining: merge, deploy, live testing.
 
 Source: `admin_management.md` line 22 (local notes), clarified in discussion on 2026-10-13. Builds on `PROJECTS_PLAN.md`.
 

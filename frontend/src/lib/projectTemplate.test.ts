@@ -62,4 +62,20 @@ describe('project import template', () => {
       'Project sheet: enter the project name in the "Project name" column.',
     ]);
   });
+
+  it('reads an optional questionnaire selection and lists the questionnaires on the Lists sheet', () => {
+    const workbook = buildProjectTemplate(['Germany'], ['RAN Fault Management', 'IP Network Fault Management']);
+    expect(XLSX.utils.sheet_to_json<string[]>(workbook.Sheets['Lists']!, { header: 1 })[1]).toEqual([
+      'Project Admin',
+      'RAN Fault Management',
+      'Germany',
+    ]);
+    XLSX.utils.sheet_add_aoa(workbook.Sheets['Questionnaires']!, [['RAN Fault Management'], [''], ['RAN Fault Management'], ['IP_FM_GB1523E']], {
+      origin: 'A2',
+    });
+    expect(parseProjectWorkbook(roundTrip(workbook)).request?.questionnaires).toEqual([
+      'RAN Fault Management',
+      'IP_FM_GB1523E',
+    ]);
+  });
 });

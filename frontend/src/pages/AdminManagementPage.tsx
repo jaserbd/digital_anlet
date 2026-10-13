@@ -23,7 +23,6 @@ import { ApiError } from '../api/client';
 import { PageShell } from '../components/PageShell';
 import { SectionCard } from '../components/SectionCard';
 import { OrganizationAutocomplete } from '../components/OrganizationAutocomplete';
-import { BulkCreateUsersForm } from '../components/BulkCreateUsersForm';
 import { ManageUsersSection } from '../components/ManageUsersSection';
 import { ReferenceListSelect } from '../components/ReferenceListSelect';
 import { ManageReferenceListSection } from '../components/ManageReferenceListSection';
@@ -54,7 +53,6 @@ export function AdminManagementPage() {
       <ManageOpCosSection />
       <QuestionnaireSettingsSection />
       <CreateUserForm />
-      <BulkCreateUsersForm />
       <ManageUsersSection />
     </PageShell>
   );
