@@ -179,7 +179,7 @@ export function ManageOpCosSection() {
 
   const [selectedOrganizationId, setOrganizationId] = useState('');
   const organizationId =
-    selectedOrganizationId || (orgs.organizations?.length === 1 ? orgs.organizations[0]!.id : '');
+    selectedOrganizationId || (orgs.fixedOrganization?.id ?? '');
   const [name, setName] = useState('');
   const [country, setCountry] = useState('');
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
@@ -344,7 +344,7 @@ export function QuestionnaireSettingsSection() {
   const [questionnaireCode, setQuestionnaireCode] = useState('');
   const [selectedOrganization, setOrganization] = useState<OrganizationDto | null>(null);
   // A Project Admin manages exactly one organization — no need to pick it.
-  const singleOrganization = orgs.organizations?.length === 1 ? orgs.organizations[0]! : null;
+  const singleOrganization = orgs.fixedOrganization;
   const organization = selectedOrganization ?? singleOrganization;
   const effectiveCode = questionnaireCode || questionnairesQuery.data?.[0]?.code || '';
 
@@ -437,7 +437,7 @@ export function CreateUserForm() {
   const [role, setRole] = useState<Role>('NORMAL_USER');
   const [selectedOrganizationId, setOrganizationId] = useState('');
   const organizationId =
-    selectedOrganizationId || (orgs.organizations?.length === 1 ? orgs.organizations[0]!.id : '');
+    selectedOrganizationId || (orgs.fixedOrganization?.id ?? '');
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   const createUser = useMutation({
