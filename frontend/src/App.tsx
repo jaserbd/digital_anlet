@@ -18,6 +18,7 @@ import { AdminPage } from './pages/AdminPage';
 import { AdminManagementPage } from './pages/AdminManagementPage';
 import { OrganizationDeepDivePage } from './pages/OrganizationDeepDivePage';
 import { ExecutivePage } from './pages/ExecutivePage';
+import { ManageProjectPage } from './pages/ManageProjectPage';
 
 // Forces QuestionnairePage to remount (resetting its local answer/step state) when the
 // questionnaire code in the URL changes, rather than reusing the same instance.
@@ -41,7 +42,7 @@ function App() {
             <Route path="/context" element={<ContextPickerPage />} />
           </Route>
 
-          <Route element={<ProtectedRoute allowedRoles={['NORMAL_USER', 'EXECUTIVE']} />}>
+          <Route element={<ProtectedRoute allowedRoles={['NORMAL_USER', 'EXECUTIVE', 'PROJECT_ADMIN']} />}>
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/domains" element={<DomainPickerPage />} />
             <Route path="/questionnaire/:code" element={<QuestionnaireRoute />} />
@@ -57,8 +58,12 @@ function App() {
             <Route path="/admin/organizations/:orgId" element={<OrganizationDeepDivePage />} />
           </Route>
 
-          <Route element={<ProtectedRoute allowedRoles={['EXECUTIVE']} requireProfile={false} />}>
+          <Route element={<ProtectedRoute allowedRoles={['EXECUTIVE', 'PROJECT_ADMIN']} requireProfile={false} />}>
             <Route path="/executive" element={<ExecutivePage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute allowedRoles={['PROJECT_ADMIN']} requireProfile={false} />}>
+            <Route path="/project" element={<ManageProjectPage />} />
           </Route>
         </Routes>
       </AuthProvider>

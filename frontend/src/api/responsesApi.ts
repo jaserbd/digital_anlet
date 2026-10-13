@@ -12,6 +12,8 @@ export const responsesApi = {
   getOrCreate: (questionnaireCode: string) =>
     apiClient.post<ResponseDto>('/responses', { questionnaireCode }),
   get: (responseId: string) => apiClient.get<ResponseDto>(`/responses/${responseId}`),
+  // "Reset my answers" — Application Admins and Project Admins only (PROJECTS_PLAN.md).
+  reset: (responseId: string) => apiClient.delete<void>(`/responses/${responseId}`),
   upsertAnswer: (
     responseId: string,
     answer: { questionId: string; subScenarioId: string; selectedOption: AnswerOption },

@@ -59,7 +59,12 @@ export function AppHeader({ title }: AppHeaderProps) {
           <Link component={RouterLink} to="/" underline="hover">
             Home
           </Link>
-          {user?.role === 'EXECUTIVE' && (
+          {user?.role === 'PROJECT_ADMIN' && (
+            <Link component={RouterLink} to="/project" underline="hover">
+              Manage project
+            </Link>
+          )}
+          {(user?.role === 'EXECUTIVE' || user?.role === 'PROJECT_ADMIN') && (
             <Link component={RouterLink} to="/domains" underline="hover">
               Answer as user
             </Link>

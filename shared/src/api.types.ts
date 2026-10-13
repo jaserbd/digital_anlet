@@ -198,7 +198,7 @@ export interface UncoveredSkipErrorDto {
 export interface OrganizationDto {
   id: string;
   name: string;
-  projectId: string | null;
+  projectId?: string | null; // set by GET /organizations; absent where only id/name are known
 }
 
 // A client engagement grouping organizations (PROJECTS_PLAN.md) — normally one.
@@ -314,7 +314,7 @@ export interface AddMembershipRequestDto {
 }
 
 export interface UpdateMembershipRequestDto {
-  role: Extract<Role, 'NORMAL_USER' | 'EXECUTIVE'>;
+  role: Extract<Role, 'NORMAL_USER' | 'EXECUTIVE' | 'PROJECT_ADMIN'>;
 }
 
 // "Create user" with an email that already exists (and a non-admin role) adds a membership to

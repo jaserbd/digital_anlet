@@ -22,7 +22,8 @@ export function HomePage() {
   if (user?.role === 'NORMAL_USER') {
     return <Navigate to="/domains" replace />;
   }
-  if (user?.role === 'EXECUTIVE') {
+  // Project Admins land on their organization's dashboard (PROJECTS_PLAN.md).
+  if (user?.role === 'EXECUTIVE' || user?.role === 'PROJECT_ADMIN') {
     return <Navigate to="/executive" replace />;
   }
   return <p>Signed in as {user?.email}.</p>;

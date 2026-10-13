@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import type { BulkCreateUsersResultDto, BulkCreateUsersRowDto } from '@anlet/shared';
 import Box from '@mui/material/Box';
@@ -14,7 +14,7 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Paper from '@mui/material/Paper';
 import Chip from '@mui/material/Chip';
-import { organizationsApi } from '../api/organizationsApi';
+import { useManageableOrganizations } from '../lib/manageableOrganizations';
 import { usersApi } from '../api/usersApi';
 import { ApiError } from '../api/client';
 import { exportRowsToXlsx } from '../lib/exportXlsx';
@@ -87,7 +87,7 @@ function downloadCsvTemplate(exampleOrganization: string) {
 // aborting the whole batch — see users.service.ts's createUsersBulk.
 export function BulkCreateUsersForm() {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const orgsQuery = useQuery({ queryKey: ['organizations'], queryFn: organizationsApi.list });
+  const orgs = useManageableOrganizations();
 
   const [fileName, setFileName] = useState<string | null>(null);
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
@@ -167,11 +167,11 @@ export function BulkCreateUsersForm() {
         match an existing organization's name exactly. An email that already exists is added to
         that organization (its password stays unchanged), so one person can be listed for
         several organizations.
-        {orgsQuery.data && orgsQuery.data.length > 0 && (
+        {orgs.organizations && orgs.organizations.length > 0 && (
           <>
             {' '}
             Existing organizations:{' '}
-            {orgsQuery.data.map((o) => (
+            {orgs.organizations.map((o) => (
               <Chip key={o.id} label={o.name} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
             ))}
           </>
@@ -180,7 +180,7 @@ export function BulkCreateUsersForm() {
 
       <Button
         variant="text"
-        onClick={() => downloadCsvTemplate(orgsQuery.data?.[0]?.name ?? 'Your Organization')}
+        onClick={() => downloadCsvTemplate(orgs.organizations?.[0]?.name ?? 'Your Organization')}
         sx={{ mb: 2, mr: 1 }}
       >
         Download CSV template

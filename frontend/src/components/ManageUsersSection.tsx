@@ -15,16 +15,20 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { organizationsApi } from '../api/organizationsApi';
 import { usersApi } from '../api/usersApi';
 import { ApiError } from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import { ROLE_LABELS } from '../lib/roles';
+import { ROLE_LABELS, assignableMembershipRoles } from '../lib/roles';
+import { useManageableOrganizations } from '../lib/manageableOrganizations';
 import { SectionCard } from './SectionCard';
 import { CollapsibleTable } from './CollapsibleTable';
 
-type MembershipRole = Extract<Role, 'NORMAL_USER' | 'EXECUTIVE'>;
-const MEMBERSHIP_ROLES: MembershipRole[] = ['NORMAL_USER', 'EXECUTIVE'];
+type MembershipRole = Extract<Role, 'NORMAL_USER' | 'EXECUTIVE' | 'PROJECT_ADMIN'>;
+
+function useMembershipRoles(): MembershipRole[] {
+  const { user } = useAuth();
+  return assignableMembershipRoles(user!.role) as MembershipRole[];
+}
 
 function errorText(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
@@ -32,12 +36,13 @@ function errorText(err: unknown, fallback: string): string {
 
 // Existing users (MULTI_ORG_PLAN.md): each user's organizations and roles (memberships) can be
 // added, changed and removed; the global Admin role is granted/removed by the super admin only;
-// any admin can generate a temporary password (admin_management.md line 12). The permission
-// rules mirror users.service.ts, which enforces them server-side.
+// any admin can generate a temporary password (admin_management.md line 12). A Project Admin
+// (PROJECTS_PLAN.md) sees only their organization's members and manages Executives / Normal
+// Users there. The permission rules mirror users.service.ts, which enforces them server-side.
 export function ManageUsersSection() {
   const queryClient = useQueryClient();
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: () => usersApi.list() });
-  const orgsQuery = useQuery({ queryKey: ['organizations'], queryFn: organizationsApi.list });
+  const orgs = useManageableOrganizations();
 
   return (
     <SectionCard title="Existing users">
@@ -45,9 +50,9 @@ export function ManageUsersSection() {
         A user can belong to several organizations, with one role in each. Users with more than
         one organization choose where to work after logging in.
       </Typography>
-      {usersQuery.isLoading || orgsQuery.isLoading ? (
+      {usersQuery.isLoading || orgs.isLoading ? (
         <Typography color="text.secondary">Loading…</Typography>
-      ) : !usersQuery.data || !orgsQuery.data ? (
+      ) : !usersQuery.data || !orgs.organizations ? (
         <Typography color="text.secondary">Something went wrong loading users.</Typography>
       ) : (
         <CollapsibleTable label="Existing users" count={usersQuery.data.length}>
@@ -66,7 +71,7 @@ export function ManageUsersSection() {
                   <UserRow
                     key={user.id}
                     user={user}
-                    organizations={orgsQuery.data!}
+                    organizations={orgs.organizations!}
                     onSaved={() => void queryClient.invalidateQueries({ queryKey: ['users'] })}
                   />
                 ))}
@@ -97,11 +102,17 @@ function UserRow({
   const isSuperAdmin = !!currentUser?.isSuperAdmin;
   const isSelf = user.id === currentUser?.id;
   const isAdminAccount = user.role === 'ADMIN';
+  const callerIsProjectAdmin = currentUser?.role === 'PROJECT_ADMIN';
+  const isProjectAdminAccount = user.memberships.some((m) => m.role === 'PROJECT_ADMIN');
   // Memberships of an admin account: super admin or that admin themself (users.service.ts).
-  const canManageMemberships = !isAdminAccount || isSuperAdmin || isSelf;
+  // Project Admins: only non-admin client members (never another Project Admin).
+  const canManageMemberships = callerIsProjectAdmin
+    ? !isAdminAccount && !isProjectAdminAccount
+    : !isAdminAccount || isSuperAdmin || isSelf;
   const canGrantAdmin = isSuperAdmin && !user.isSuperAdmin && !isSelf;
-  const canResetPassword = !user.isSuperAdmin && !isSelf && (!isAdminAccount || isSuperAdmin);
-  const canDelete = !user.isSuperAdmin && !isSelf && (!isAdminAccount || isSuperAdmin);
+  const canResetPassword =
+    !user.isSuperAdmin && !isSelf && (!isAdminAccount || isSuperAdmin) && !(callerIsProjectAdmin && isProjectAdminAccount);
+  const canDelete = !callerIsProjectAdmin && !user.isSuperAdmin && !isSelf && (!isAdminAccount || isSuperAdmin);
 
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
@@ -250,6 +261,7 @@ function MembershipLine({
     onError,
   });
   const hasResponses = membership.responseCount > 0;
+  const membershipRoles = useMembershipRoles();
 
   return (
     <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
@@ -265,7 +277,7 @@ function MembershipLine({
           onChange={(e) => changeRole.mutate(e.target.value as MembershipRole)}
           sx={{ minWidth: 140 }}
         >
-          {MEMBERSHIP_ROLES.map((r) => (
+          {membershipRoles.map((r) => (
             <MenuItem key={r} value={r}>
               {ROLE_LABELS[r]}
             </MenuItem>
@@ -309,6 +321,7 @@ function AddMembership({
 }) {
   const [organizationId, setOrganizationId] = useState('');
   const [role, setRole] = useState<MembershipRole>('NORMAL_USER');
+  const membershipRoles = useMembershipRoles();
   const add = useMutation({
     mutationFn: () => usersApi.addMembership(userId, { organizationId, role }),
     onSuccess: () => {
@@ -337,7 +350,7 @@ function AddMembership({
         ))}
       </TextField>
       <TextField select size="small" value={role} onChange={(e) => setRole(e.target.value as MembershipRole)} sx={{ minWidth: 140 }}>
-        {MEMBERSHIP_ROLES.map((r) => (
+        {membershipRoles.map((r) => (
           <MenuItem key={r} value={r}>
             {ROLE_LABELS[r]}
           </MenuItem>

@@ -4,7 +4,7 @@ import { ROLE_LABELS } from './roles';
 /** "Admin — all clients" or "Client A — Executive". */
 export function formatContextLabel(context: UserContextDto): string {
   return context.membershipId === null
-    ? 'Admin — all clients'
+    ? 'Application Admin — all projects'
     : `${context.organizationName} — ${ROLE_LABELS[context.role]}`;
 }
 

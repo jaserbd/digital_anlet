@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Link as RouterLink } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import Alert from '@mui/material/Alert';
@@ -9,9 +9,11 @@ import { responsesApi } from '../api/responsesApi';
 import { CoreDomainSummary } from '../components/CoreDomainSummary';
 import { PageShell } from '../components/PageShell';
 import { QuestionnaireResultDetail } from '../components/QuestionnaireResultDetail';
+import { ResetAnswersButton } from '../components/ResetAnswersButton';
 
 export function ResultsPage() {
   const { responseId } = useParams<{ responseId: string }>();
+  const navigate = useNavigate();
 
   const responseQuery = useQuery({
     queryKey: ['response-by-id', responseId],
@@ -56,7 +58,12 @@ export function ResultsPage() {
           <Link component={RouterLink} to={`/questionnaire/${questionnaire.code}`}>
             Review / edit your answers
           </Link>{' '}
-          — this assessment is still open; re-submitting recomputes your score.
+          — this assessment is still open; re-submitting recomputes your score.{' '}
+          <ResetAnswersButton
+            responseId={response.id}
+            questionnaireCode={questionnaire.code}
+            onReset={() => navigate(`/questionnaire/${questionnaire.code}`)}
+          />
         </Alert>
       )}
 

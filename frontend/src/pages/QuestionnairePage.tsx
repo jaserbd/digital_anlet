@@ -20,6 +20,8 @@ import { ReviewStep, type UncoveredGap, type UncoveredKei } from '../components/
 import { KeiStep } from '../components/KeiStep';
 import type { CommentEntry } from '../components/GroupedCommentsList';
 import { PageShell } from '../components/PageShell';
+import { ResetAnswersButton } from '../components/ResetAnswersButton';
+import { useAuth } from '../context/AuthContext';
 import { formatQuestionLabel } from '../lib/cognitiveActivity';
 import { isKeiCovered } from '../lib/kei';
 
@@ -29,6 +31,7 @@ function answerKey(questionId: string, subScenarioId: string) {
 
 export function QuestionnairePage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { code } = useParams<{ code: string }>();
   const questionnaireCode = code!;
   const [stepIndex, setStepIndex] = useState(0);
@@ -301,11 +304,32 @@ export function QuestionnairePage() {
       <Button onClick={() => navigate('/domains')} sx={{ mb: 2 }}>
         ← All assessments
       </Button>
-      {/* ANONYMOUS_EXECUTIVE_PLAN.md: tells participants what their management can see. */}
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Your organization&apos;s executives see your answers and comments without your name or email — only
-        your NatCo, country and working domain.
-      </Typography>
+      {user?.role === 'PROJECT_ADMIN' ? (
+        // PROJECTS_PLAN.md: a Project Admin's answers are test answers, excluded from every result.
+        <Alert severity="info" sx={{ mb: 2 }}>
+          You are answering as Project Admin: these are test answers — they are not counted in any
+          results of your organization — and you can reset them at any time.
+        </Alert>
+      ) : (
+        /* ANONYMOUS_EXECUTIVE_PLAN.md: tells participants what their management can see. */
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Your organization&apos;s executives see your answers and comments without your name or email — only
+          your NatCo, country and working domain.
+        </Typography>
+      )}
+      <Stack direction="row" sx={{ mb: 2, '&:empty': { display: 'none' } }}>
+        <ResetAnswersButton
+          responseId={responseQuery.data.id}
+          questionnaireCode={questionnaireCode}
+          onReset={() => {
+            setAnswers(new Map());
+            setComments(new Map());
+            setKeis(new Map());
+            setStepIndex(0);
+            setHydrated(false);
+          }}
+        />
+      </Stack>
       {isEditingSubmitted && (
         <Alert severity="info" sx={{ mb: 2 }}>
           You already submitted this response. You can keep editing and re-submit until an

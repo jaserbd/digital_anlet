@@ -28,8 +28,10 @@ import { ManageUsersSection } from '../components/ManageUsersSection';
 import { ReferenceListSelect } from '../components/ReferenceListSelect';
 import { ManageReferenceListSection } from '../components/ManageReferenceListSection';
 import { CollapsibleTable } from '../components/CollapsibleTable';
+import { ProjectsSection } from '../components/ProjectsSection';
 import { useAuth } from '../context/AuthContext';
 import { ROLE_LABELS, assignableRoles } from '../lib/roles';
+import { useManageableOrganizations } from '../lib/manageableOrganizations';
 
 // Management Console (ADMIN.md item 1) — create/delete for Organization, OpCo, and User, on
 // its own route separate from /admin's Benchmarking/Organizations views. Delete is blocked
@@ -44,6 +46,7 @@ export function AdminManagementPage() {
       <Button onClick={() => navigate('/admin')} sx={{ mb: 3 }}>
         ← Back to Admin
       </Button>
+      <ProjectsSection />
       <ManageOrganizationsSection />
       <ManageReferenceListSection title="Countries" category="COUNTRY" />
       <ManageReferenceListSection title="Working Domains" category="WORKING_DOMAIN" />
@@ -168,11 +171,15 @@ function ManageOrganizationsSection() {
   );
 }
 
-function ManageOpCosSection() {
+// Also rendered on the Project Admin's Manage project page (PROJECTS_PLAN.md), where the only
+// manageable organization is preselected.
+export function ManageOpCosSection() {
   const queryClient = useQueryClient();
-  const orgsQuery = useQuery({ queryKey: ['organizations'], queryFn: organizationsApi.list });
+  const orgs = useManageableOrganizations();
 
-  const [organizationId, setOrganizationId] = useState('');
+  const [selectedOrganizationId, setOrganizationId] = useState('');
+  const organizationId =
+    selectedOrganizationId || (orgs.organizations?.length === 1 ? orgs.organizations[0]!.id : '');
   const [name, setName] = useState('');
   const [country, setCountry] = useState('');
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
@@ -234,9 +241,9 @@ function ManageOpCosSection() {
           onChange={(e) => setOrganizationId(e.target.value)}
         >
           <MenuItem value="" disabled>
-            {orgsQuery.isLoading ? 'Loading…' : 'Select an organization'}
+            {orgs.isLoading ? 'Loading…' : 'Select an organization'}
           </MenuItem>
-          {orgsQuery.data?.map((org) => (
+          {orgs.organizations?.map((org) => (
             <MenuItem key={org.id} value={org.id}>
               {org.name}
             </MenuItem>
@@ -327,15 +334,18 @@ function ManageOpCosSection() {
 // that organization can edit and re-submit their responses at any time; once closed, every
 // response for that organization locks permanently (matches the app's original behavior),
 // independently of every other organization.
-function QuestionnaireSettingsSection() {
+export function QuestionnaireSettingsSection() {
   const queryClient = useQueryClient();
   const questionnairesQuery = useQuery({
     queryKey: ['questionnaires'],
     queryFn: questionnaireApi.list,
   });
-  const orgsQuery = useQuery({ queryKey: ['organizations'], queryFn: organizationsApi.list });
+  const orgs = useManageableOrganizations();
   const [questionnaireCode, setQuestionnaireCode] = useState('');
-  const [organization, setOrganization] = useState<OrganizationDto | null>(null);
+  const [selectedOrganization, setOrganization] = useState<OrganizationDto | null>(null);
+  // A Project Admin manages exactly one organization — no need to pick it.
+  const singleOrganization = orgs.organizations?.length === 1 ? orgs.organizations[0]! : null;
+  const organization = selectedOrganization ?? singleOrganization;
   const effectiveCode = questionnaireCode || questionnairesQuery.data?.[0]?.code || '';
 
   const statusQuery = useQuery({
@@ -355,7 +365,7 @@ function QuestionnaireSettingsSection() {
     },
   });
 
-  if (questionnairesQuery.isLoading || orgsQuery.isLoading) {
+  if (questionnairesQuery.isLoading || orgs.isLoading) {
     return (
       <SectionCard title="Questionnaire settings">
         <Typography color="text.secondary">Loading…</Typography>
@@ -378,15 +388,14 @@ function QuestionnaireSettingsSection() {
             </MenuItem>
           ))}
         </TextField>
-        <Stack spacing={0.5}>
-          <Typography variant="body2" color="text.secondary">
-            Organization
-          </Typography>
-          <OrganizationAutocomplete
-            organizations={orgsQuery.data ?? []}
-            onSelect={setOrganization}
-          />
-        </Stack>
+        {!singleOrganization && (
+          <Stack spacing={0.5}>
+            <Typography variant="body2" color="text.secondary">
+              Organization
+            </Typography>
+            <OrganizationAutocomplete organizations={orgs.organizations ?? []} onSelect={setOrganization} />
+          </Stack>
+        )}
       </Stack>
       {organization && statusQuery.data && (
         <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 2 }}>
@@ -419,14 +428,16 @@ function QuestionnaireSettingsSection() {
   );
 }
 
-function CreateUserForm() {
-  const orgsQuery = useQuery({ queryKey: ['organizations'], queryFn: organizationsApi.list });
+export function CreateUserForm() {
+  const orgs = useManageableOrganizations();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const { user: currentUser } = useAuth();
   const [role, setRole] = useState<Role>('NORMAL_USER');
-  const [organizationId, setOrganizationId] = useState('');
+  const [selectedOrganizationId, setOrganizationId] = useState('');
+  const organizationId =
+    selectedOrganizationId || (orgs.organizations?.length === 1 ? orgs.organizations[0]!.id : '');
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   const createUser = useMutation({
@@ -480,7 +491,7 @@ function CreateUserForm() {
           value={role}
           onChange={(e) => setRole(e.target.value as typeof role)}
         >
-          {assignableRoles(!!currentUser?.isSuperAdmin).map((r) => (
+          {assignableRoles({ role: currentUser!.role, isSuperAdmin: !!currentUser?.isSuperAdmin }).map((r) => (
             <MenuItem key={r} value={r}>
               {ROLE_LABELS[r]}
             </MenuItem>
@@ -494,9 +505,9 @@ function CreateUserForm() {
           onChange={(e) => setOrganizationId(e.target.value)}
         >
           <MenuItem value="" disabled>
-            {orgsQuery.isLoading ? 'Loading…' : 'Select an organization'}
+            {orgs.isLoading ? 'Loading…' : 'Select an organization'}
           </MenuItem>
-          {orgsQuery.data?.map((org) => (
+          {orgs.organizations?.map((org) => (
             <MenuItem key={org.id} value={org.id}>
               {org.name}
             </MenuItem>
