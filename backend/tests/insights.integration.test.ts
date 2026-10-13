@@ -93,7 +93,7 @@ describe('getOrganizationQuestionnaireSummary (real DB)', () => {
       option: 'C',
     });
 
-    const summary = await getOrganizationQuestionnaireSummary(orgAId, 'RAN_FM_GB1059A');
+    const summary = await getOrganizationQuestionnaireSummary({ organizationId: orgAId, projectId: null }, 'RAN_FM_GB1059A');
 
     const respondentsByEmail = Object.fromEntries(summary.respondents.map((r) => [r.email, r]));
     expect(Object.keys(respondentsByEmail)).toHaveLength(2); // only Org A's 2 users, not Org B's
@@ -156,7 +156,7 @@ describe('getAnswerDrilldown (real DB)', () => {
     const intentQuestion = questionnaire.questions.find((q) => q.serviceCapability === 'Intent-driven')!;
     const equipmentSubScenario = questionnaire.subScenarios.find((s) => s.code === 'EQUIPMENT')!;
 
-    const drilldown = await getAnswerDrilldown(orgAId, 'RAN_FM_GB1059A');
+    const drilldown = await getAnswerDrilldown({ organizationId: orgAId, projectId: null }, 'RAN_FM_GB1059A');
 
     const entryB = drilldown.entries.find(
       (e) => e.questionId === intentQuestion.id && e.subScenarioId === equipmentSubScenario.id && e.option === 'B',
@@ -203,7 +203,7 @@ describe('getAnswerDrilldown (real DB)', () => {
     // A different org's comment must not leak into Org A's drilldown.
     await answerAllAndSubmit(otherOrgCommenterId);
 
-    const drilldown = await getAnswerDrilldown(orgAId, 'RAN_FM_GB1059A');
+    const drilldown = await getAnswerDrilldown({ organizationId: orgAId, projectId: null }, 'RAN_FM_GB1059A');
 
     const answerEntry = drilldown.entries.find(
       (e) => e.questionId === intentQuestion.id && e.subScenarioId === equipmentSubScenario.id && e.option === 'A',
@@ -259,17 +259,17 @@ describe('getCognitiveActivitySummary (real DB)', () => {
     // unfiltered sampleSize isn't exactly 2 here — assert shape/bounds instead of an exact
     // count, and rely on the OpCo/Country-scoped assertions below (this test's own OpCo is
     // otherwise untouched) for a precise number.
-    const orgSummary = await getCognitiveActivitySummary(orgAId, 'RAN_FM_GB1059A', {});
+    const orgSummary = await getCognitiveActivitySummary({ organizationId: orgAId, projectId: null }, 'RAN_FM_GB1059A', {});
     const scoreA = await finalScoreOf(inOpCoUserId);
     expect(orgSummary.sampleSize).toBeGreaterThanOrEqual(2);
     expect(new Set(orgSummary.activities.map((a) => a.cognitiveActivity))).toEqual(distinctActivities);
     expect(orgSummary.activities.every((a) => a.averageScore == null || (a.averageScore >= 0 && a.averageScore <= 4))).toBe(true);
 
-    const opCoScoped = await getCognitiveActivitySummary(orgAId, 'RAN_FM_GB1059A', { opCoId: opCo.id });
+    const opCoScoped = await getCognitiveActivitySummary({ organizationId: orgAId, projectId: null }, 'RAN_FM_GB1059A', { opCoId: opCo.id });
     expect(opCoScoped.sampleSize).toBe(1);
     expect(opCoScoped.averageFinalScore).toBeCloseTo(scoreA, 4);
 
-    const countryScoped = await getCognitiveActivitySummary(orgAId, 'RAN_FM_GB1059A', { country: 'Testland' });
+    const countryScoped = await getCognitiveActivitySummary({ organizationId: orgAId, projectId: null }, 'RAN_FM_GB1059A', { country: 'Testland' });
     expect(countryScoped.sampleSize).toBe(1);
     expect(countryScoped.averageFinalScore).toBeCloseTo(scoreA, 4);
   });
@@ -325,8 +325,8 @@ describe('anonymized Executive view (real DB)', () => {
     await submitResponse(response.id, commenterId);
 
     const [drilldown, summary] = await Promise.all([
-      getAnswerDrilldown(orgCId, 'RAN_FM_GB1059A', { anonymize: true }),
-      getOrganizationQuestionnaireSummary(orgCId, 'RAN_FM_GB1059A', { anonymize: true }),
+      getAnswerDrilldown({ organizationId: orgCId, projectId: null }, 'RAN_FM_GB1059A', { anonymize: true }),
+      getOrganizationQuestionnaireSummary({ organizationId: orgCId, projectId: null }, 'RAN_FM_GB1059A', { anonymize: true }),
     ]);
 
     // Nothing identifying anywhere in the payloads.
@@ -360,10 +360,10 @@ describe('anonymized Executive view (real DB)', () => {
     expect(summary.natCoStatus[0]!.averageFinalScore).not.toBeNull();
 
     // Admin view keeps identities.
-    const adminDrilldown = await getAnswerDrilldown(orgCId, 'RAN_FM_GB1059A');
+    const adminDrilldown = await getAnswerDrilldown({ organizationId: orgCId, projectId: null }, 'RAN_FM_GB1059A');
     expect(adminDrilldown.anonymized).toBe(false);
     expect(adminDrilldown.comments[0]!.respondent.email).toBe('__integration-test-insights-anon-commenter__@example.com');
-    const adminSummary = await getOrganizationQuestionnaireSummary(orgCId, 'RAN_FM_GB1059A');
+    const adminSummary = await getOrganizationQuestionnaireSummary({ organizationId: orgCId, projectId: null }, 'RAN_FM_GB1059A');
     expect(adminSummary.respondents).toHaveLength(3);
   });
 });

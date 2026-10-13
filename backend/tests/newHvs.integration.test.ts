@@ -166,13 +166,13 @@ describe.each(NEW_QUESTIONNAIRES)('$code (real DB)', (expected) => {
     // Order-sensitive: persisted result must come back in computeScoreResult's order.
     expect(await getResult(response.id, userId)).toEqual(result);
 
-    const benchmark = await getOpCoBenchmarkingSummary(orgId, expected.code);
+    const benchmark = await getOpCoBenchmarkingSummary({ organizationId: orgId, projectId: null }, expected.code);
     const row = benchmark.rows.find((r) => r.submittedCount > 0)!;
     expect(row.averageFinalScore).toBe(4);
     expect(row.averageKeiScore).toBe(expected.keis > 0 ? 4 : null);
     expect(row.subScenarioAverages).toHaveLength(questionnaire.subScenarios.length);
 
-    const drilldown = await getAnswerDrilldown(orgId, expected.code);
+    const drilldown = await getAnswerDrilldown({ organizationId: orgId, projectId: null }, expected.code);
     const answeredCells = drilldown.entries.filter((e) => e.option === 'A');
     expect(answeredCells).toHaveLength(expected.subScenarios * expected.questions);
     expect(drilldown.keiResponses.filter((k) => k.selectedOption === 'A')).toHaveLength(
@@ -295,7 +295,7 @@ describe('Key Effectiveness Indicators (real DB)', () => {
         { indicatorId: automation!.id, selectedOption: 'C', indicatorValue: '55%', comment: null },
       ]),
     );
-    const drilldown = await getAnswerDrilldown(orgId, 'TRANSPORT_MW_FM_GB1523D');
+    const drilldown = await getAnswerDrilldown({ organizationId: orgId, projectId: null }, 'TRANSPORT_MW_FM_GB1523D');
     expect(
       drilldown.keiResponses.some(
         (k) => k.comment === 'Not measured yet.' && k.respondent.userId === userId,

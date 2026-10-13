@@ -7,6 +7,10 @@ export interface UserContextDto {
   membershipId: string | null;
   organizationId: string;
   organizationName: string;
+  // The membership's project (PROJECTS_V2_PLAN.md); null for the admin context and
+  // organizations outside projects.
+  projectId: string | null;
+  projectName: string | null;
   role: Role;
 }
 
@@ -18,6 +22,8 @@ export interface AuthenticatedUserDto {
   // membership's role and organization.
   role: Role;
   organizationId: string;
+  // The active membership's project (null in the admin context or outside projects).
+  projectId: string | null;
   activeMembershipId: string | null;
   // Global admin (independent of the active context) — admins can always switch to the
   // admin context.
@@ -198,18 +204,27 @@ export interface UncoveredSkipErrorDto {
 export interface OrganizationDto {
   id: string;
   name: string;
-  projectId?: string | null; // set by GET /organizations; absent where only id/name are known
 }
 
-// A client engagement grouping organizations (PROJECTS_PLAN.md) — normally one.
+// A client engagement (PROJECTS_PLAN.md, PROJECTS_V2_PLAN.md): organizations (an organization can
+// be in several projects), Project Admins and questionnaires. Members belong per project.
 export interface ProjectDto {
   id: string;
   name: string;
   organizations: OrganizationDto[];
-  // Emails holding a PROJECT_ADMIN membership in any of the project's organizations.
+  // People holding the Project Admin role in this project (added/removed per project).
   projectAdmins: { userId: string; email: string }[];
+  // Executives + Normal Users across the project's organizations.
+  memberCount: number;
   // The questionnaires its organizations work with (PROJECT_QUESTIONNAIRES_PLAN.md).
   questionnaireCodes: string[];
+}
+
+// Who can be picked as a Project Admin (PROJECTS_V2_PLAN.md): Application Admins and members of
+// the organization named "Detecon".
+export interface ProjectAdminCandidateDto {
+  userId: string;
+  email: string;
 }
 
 export interface CreateProjectRequestDto {
@@ -236,6 +251,7 @@ export interface ProjectImportRequestDto {
   questionnaires?: string[];
   natCos: { organization: string; name: string; country: string }[];
   members: {
+    // Ignored (may be empty) for Project Admins, who administer the whole project.
     organization: string;
     email: string;
     role: ProjectMemberRole;
@@ -286,6 +302,9 @@ export interface MembershipDto {
   organizationId: string;
   organizationName: string;
   role: Role; // EXECUTIVE, NORMAL_USER or PROJECT_ADMIN
+  // The project this membership takes part in; null outside projects (PROJECTS_V2_PLAN.md).
+  projectId: string | null;
+  projectName: string | null;
   opCoId: string | null;
   opCoName: string | null;
   workingDomain: string | null;
@@ -315,14 +334,18 @@ export interface UpdateUserRequestDto {
 
 export interface AddMembershipRequestDto {
   organizationId: string;
+  // Required when the organization is in projects (one of them); null/omitted otherwise.
+  projectId?: string | null;
   // PROJECT_ADMIN: Application Admins only.
   role: Extract<Role, 'NORMAL_USER' | 'EXECUTIVE' | 'PROJECT_ADMIN'>;
 }
 
 export interface UpdateMembershipRequestDto {
   role?: Extract<Role, 'NORMAL_USER' | 'EXECUTIVE' | 'PROJECT_ADMIN'>;
-  // Moves the membership and its answers to another organization (USERS_TABLE_PLAN.md).
+  // Moves the membership and its answers to another organization and/or project
+  // (USERS_TABLE_PLAN.md, PROJECTS_V2_PLAN.md) — given together.
   organizationId?: string;
+  projectId?: string | null;
 }
 
 // "Create user" with an email that already exists (and a non-admin role) adds a membership to
@@ -457,11 +480,13 @@ export interface AnswerDrilldownDto {
 export interface CrossOrgCommentEntryDto extends CommentDrilldownEntryDto {
   organizationId: string;
   organizationName: string;
+  projectName: string | null;
 }
 
 export interface CrossOrgKeiCommentEntryDto extends KeiDrilldownEntryDto {
   organizationId: string;
   organizationName: string;
+  projectName: string | null;
 }
 
 export interface CrossOrgCommentCollectionDto {
@@ -483,6 +508,9 @@ export interface SubScenarioAverageDto {
 // organizationName, matching the review's "NatCo and Organization will be the same") or has
 // at least one respondent who hasn't been assigned an OpCo yet.
 export interface BenchmarkRowDto {
+  // Rows are per project + organization + NatCo (PROJECTS_V2_PLAN.md); null outside projects.
+  projectId: string | null;
+  projectName: string | null;
   organizationId: string;
   organizationName: string;
   opCoId: string | null;
@@ -543,6 +571,8 @@ export interface HvsListItemDto {
 // member questionnaire) 50/50 per CORE_FM.xlsx's Guideline point 7 — the org/OpCo-wide
 // analogue of CoreDomainSummaryDto, which is per-user only.
 export interface CombinedBenchmarkRowDto {
+  projectId: string | null;
+  projectName: string | null;
   organizationId: string;
   organizationName: string;
   opCoId: string | null;

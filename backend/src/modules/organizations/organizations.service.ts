@@ -2,7 +2,7 @@ import { prisma } from '../../lib/prisma';
 
 export function listOrganizations() {
   return prisma.organization.findMany({
-    select: { id: true, name: true, projectId: true },
+    select: { id: true, name: true },
     orderBy: { name: 'asc' },
   });
 }
@@ -20,7 +20,7 @@ export async function createOrganization(name: string) {
     throw new OrganizationNameTakenError();
   }
   return prisma.$transaction(async (tx) => {
-    const org = await tx.organization.create({ data: { name }, select: { id: true, name: true, projectId: true } });
+    const org = await tx.organization.create({ data: { name }, select: { id: true, name: true } });
     const questionnaires = await tx.questionnaire.findMany({ select: { id: true } });
     if (questionnaires.length > 0) {
       await tx.questionnaireOrgSetting.createMany({
@@ -46,15 +46,19 @@ export async function deleteOrganization(id: string): Promise<void> {
     throw new OrganizationNotFoundError();
   }
 
-  const [opCoCount, userCount] = await Promise.all([
+  const [opCoCount, userCount, membershipCount] = await Promise.all([
     prisma.opCo.count({ where: { organizationId: id } }),
     prisma.user.count({ where: { organizationId: id } }),
+    prisma.membership.count({ where: { organizationId: id } }),
   ]);
-  if (opCoCount > 0 || userCount > 0) {
+  if (opCoCount > 0 || userCount > 0 || membershipCount > 0) {
     throw new OrganizationHasDependentsError();
   }
 
+  // Project links and per-project settings (PROJECTS_V2_PLAN.md) go with it.
   await prisma.$transaction([
+    prisma.projectOrganization.deleteMany({ where: { organizationId: id } }),
+    prisma.questionnaireProjectSetting.deleteMany({ where: { organizationId: id } }),
     prisma.questionnaireOrgSetting.deleteMany({ where: { organizationId: id } }),
     prisma.organization.delete({ where: { id } }),
   ]);

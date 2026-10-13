@@ -1,4 +1,5 @@
 import type {
+  ProjectAdminCandidateDto,
   ProjectDto,
   ProjectImportRequestDto,
   ProjectImportResultDto,
@@ -10,33 +11,46 @@ import { createOrganization } from '../organizations/organizations.service';
 import { HVS_GROUPS } from '../questionnaire/hvsGroups';
 import { AlreadyMemberError, EmailTakenError, SuperAdminRequiredError, createUser } from '../users/users.service';
 
-// Projects (PROJECTS_PLAN.md): a client engagement grouping organizations — normally one. Its
-// Project Admins are simply the PROJECT_ADMIN memberships in its organizations, so nothing here
-// stores admins separately. Application-Admin-only module.
+// Projects (PROJECTS_PLAN.md, PROJECTS_V2_PLAN.md): a client engagement with linked organizations
+// (an organization can be in several projects), a questionnaire selection and memberships that
+// belong to the project — so answers are separate per project. A Project Admin of a project holds
+// a PROJECT_ADMIN membership in each of its organizations; they are added and removed here, as a
+// whole. Application-Admin-only module.
 
 export class ProjectNotFoundError extends Error {}
 export class ProjectNameTakenError extends Error {}
 export class ProjectNotEmptyError extends Error {}
 export class OrganizationNotFoundError extends Error {}
-export class OrganizationInOtherProjectError extends Error {}
 export class InvalidQuestionnaireSelectionError extends Error {}
+// Removing an organization from a project whose members there already hold answers.
+export class ProjectOrganizationHasAnswersError extends Error {}
+export class NotProjectAdminCandidateError extends Error {}
+export class ProjectHasNoOrganizationsError extends Error {}
+// The person already takes part in the project with another role.
+export class ProjectRoleConflictError extends Error {}
+
+// Project Admins come from the consultancy: Application Admins and members of this organization.
+export const CONSULTANCY_ORGANIZATION_NAME = 'Detecon';
+
+// Same rule as users.service.ts: a response with something worth keeping.
+const RESPONSE_WITH_DATA = {
+  OR: [
+    { status: 'SUBMITTED' as const },
+    { answers: { some: {} } },
+    { comments: { some: {} } },
+    { keis: { some: {} } },
+  ],
+};
 
 const PROJECT_SELECT = {
   id: true,
   name: true,
   questionnaires: { select: { questionnaire: { select: { code: true } } } },
   organizations: {
-    select: {
-      id: true,
-      name: true,
-      projectId: true,
-      memberships: {
-        where: { role: 'PROJECT_ADMIN' as const },
-        select: { user: { select: { id: true, email: true } } },
-      },
-    },
-    orderBy: { name: 'asc' as const },
+    select: { organization: { select: { id: true, name: true } } },
+    orderBy: { organization: { name: 'asc' as const } },
   },
+  memberships: { select: { role: true, user: { select: { id: true, email: true } } } },
 } as const;
 
 type ProjectRow = NonNullable<Awaited<ReturnType<typeof findProjectRow>>>;
@@ -47,16 +61,17 @@ function findProjectRow(id: string) {
 
 function toProjectDto(project: ProjectRow): ProjectDto {
   const admins = new Map<string, string>();
-  for (const org of project.organizations) {
-    for (const m of org.memberships) admins.set(m.user.id, m.user.email);
+  for (const m of project.memberships) {
+    if (m.role === 'PROJECT_ADMIN') admins.set(m.user.id, m.user.email);
   }
   return {
     id: project.id,
     name: project.name,
-    organizations: project.organizations.map((o) => ({ id: o.id, name: o.name, projectId: o.projectId })),
+    organizations: project.organizations.map((o) => o.organization),
     projectAdmins: [...admins]
       .map(([userId, email]) => ({ userId, email }))
       .sort((a, b) => a.email.localeCompare(b.email)),
+    memberCount: project.memberships.filter((m) => m.role !== 'PROJECT_ADMIN').length,
     questionnaireCodes: project.questionnaires.map((q) => q.questionnaire.code).sort(),
   };
 }
@@ -112,13 +127,53 @@ export async function createProject(name: string): Promise<ProjectDto> {
   return loadProjectDto(project.id);
 }
 
-/** Renames the project and/or replaces its organizations. An organization already in another
- * project must be removed from it first; organizations dropped here become project-less. */
+async function projectAdminIds(projectId: string): Promise<string[]> {
+  const rows = await prisma.membership.findMany({
+    where: { projectId, role: 'PROJECT_ADMIN' },
+    select: { userId: true },
+    distinct: ['userId'],
+  });
+  return rows.map((r) => r.userId);
+}
+
+/** Links an organization to a project; the project's Project Admins get the Project Admin role
+ * there too. Idempotent. */
+async function linkOrganization(projectId: string, organizationId: string): Promise<void> {
+  const admins = await projectAdminIds(projectId);
+  await prisma.$transaction([
+    prisma.projectOrganization.createMany({ data: [{ projectId, organizationId }], skipDuplicates: true }),
+    prisma.membership.createMany({
+      data: admins.map((userId) => ({ userId, organizationId, projectId, role: 'PROJECT_ADMIN' as const })),
+      skipDuplicates: true,
+    }),
+  ]);
+}
+
+/** Unlinks an organization from a project. Refused while its members in this project hold answers;
+ * otherwise their memberships (with empty responses) and the per-project settings go too. */
+async function unlinkOrganization(projectId: string, organizationId: string): Promise<void> {
+  const scope = { projectId, organizationId };
+  const withAnswers = await prisma.questionnaireResponse.count({
+    where: { membership: scope, ...RESPONSE_WITH_DATA },
+  });
+  if (withAnswers > 0) throw new ProjectOrganizationHasAnswersError();
+  await prisma.$transaction([
+    prisma.questionnaireResponse.deleteMany({ where: { membership: scope } }),
+    prisma.membership.deleteMany({ where: scope }),
+    prisma.questionnaireProjectSetting.deleteMany({ where: scope }),
+    prisma.projectOrganization.deleteMany({ where: scope }),
+  ]);
+}
+
+/** Renames the project and/or replaces its organizations and questionnaire selection. */
 export async function updateProject(
   id: string,
   input: { name?: string; organizationIds?: string[]; questionnaireCodes?: string[] },
 ): Promise<ProjectDto> {
-  const project = await prisma.project.findUnique({ where: { id } });
+  const project = await prisma.project.findUnique({
+    where: { id },
+    select: { name: true, organizations: { select: { organizationId: true } } },
+  });
   if (!project) throw new ProjectNotFoundError();
 
   if (input.name !== undefined && input.name.toLowerCase() !== project.name.toLowerCase()) {
@@ -126,19 +181,24 @@ export async function updateProject(
   }
 
   if (input.organizationIds) {
-    const organizations = await prisma.organization.findMany({
-      where: { id: { in: input.organizationIds } },
-      select: { id: true, projectId: true },
-    });
-    if (organizations.length !== new Set(input.organizationIds).size) throw new OrganizationNotFoundError();
-    if (organizations.some((o) => o.projectId !== null && o.projectId !== id)) {
-      throw new OrganizationInOtherProjectError();
-    }
+    const wanted = [...new Set(input.organizationIds)];
+    const found = await prisma.organization.count({ where: { id: { in: wanted } } });
+    if (found !== wanted.length) throw new OrganizationNotFoundError();
   }
 
   const questionnaireIds = input.questionnaireCodes
     ? await resolveQuestionnaireSelection(input.questionnaireCodes)
     : undefined;
+
+  if (input.organizationIds) {
+    const current = project.organizations.map((o) => o.organizationId);
+    for (const organizationId of current.filter((o) => !input.organizationIds!.includes(o))) {
+      await unlinkOrganization(id, organizationId);
+    }
+    for (const organizationId of input.organizationIds.filter((o) => !current.includes(o))) {
+      await linkOrganization(id, organizationId);
+    }
+  }
 
   await prisma.$transaction(async (tx) => {
     if (questionnaireIds) {
@@ -150,35 +210,84 @@ export async function updateProject(
     if (input.name !== undefined) {
       await tx.project.update({ where: { id }, data: { name: input.name } });
     }
-    if (input.organizationIds) {
-      await tx.organization.updateMany({
-        where: { projectId: id, id: { notIn: input.organizationIds } },
-        data: { projectId: null },
-      });
-      await tx.organization.updateMany({ where: { id: { in: input.organizationIds } }, data: { projectId: id } });
-    }
   });
   return loadProjectDto(id);
 }
 
-/** Only an empty project (no organizations) can be deleted — organizations are never deleted with it. */
+/** Only an empty project (no organizations, hence no members) can be deleted. */
 export async function deleteProject(id: string): Promise<void> {
   const project = await prisma.project.findUnique({
     where: { id },
-    select: { _count: { select: { organizations: true } } },
+    select: { _count: { select: { organizations: true, memberships: true } } },
   });
   if (!project) throw new ProjectNotFoundError();
-  if (project._count.organizations > 0) throw new ProjectNotEmptyError();
+  if (project._count.organizations > 0 || project._count.memberships > 0) throw new ProjectNotEmptyError();
   await prisma.project.delete({ where: { id } });
+}
+
+/** Who can be picked as a Project Admin: Application Admins and members of Detecon. */
+export async function listProjectAdminCandidates(): Promise<ProjectAdminCandidateDto[]> {
+  const users = await prisma.user.findMany({
+    where: {
+      isActive: true,
+      OR: [{ role: 'ADMIN' }, { memberships: { some: { organization: { name: CONSULTANCY_ORGANIZATION_NAME } } } }],
+    },
+    select: { id: true, email: true },
+    orderBy: { email: 'asc' },
+  });
+  return users.map((u) => ({ userId: u.id, email: u.email }));
+}
+
+/**
+ * Makes someone Project Admin of a project: the Project Admin role in each of its organizations
+ * (and, via linkOrganization, in organizations added later). Refused for people who aren't
+ * Application Admins or Detecon members, for a project without organizations yet, and for someone
+ * already taking part in the project with another role.
+ */
+export async function addProjectAdmin(projectId: string, userId: string): Promise<ProjectDto> {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { organizations: { select: { organizationId: true } } },
+  });
+  if (!project) throw new ProjectNotFoundError();
+  if (project.organizations.length === 0) throw new ProjectHasNoOrganizationsError();
+  if (!(await listProjectAdminCandidates()).some((c) => c.userId === userId)) {
+    throw new NotProjectAdminCandidateError();
+  }
+  const otherRole = await prisma.membership.count({
+    where: { userId, projectId, role: { not: 'PROJECT_ADMIN' } },
+  });
+  if (otherRole > 0) throw new ProjectRoleConflictError();
+  await prisma.membership.createMany({
+    data: project.organizations.map((o) => ({
+      userId,
+      organizationId: o.organizationId,
+      projectId,
+      role: 'PROJECT_ADMIN' as const,
+    })),
+    skipDuplicates: true,
+  });
+  return loadProjectDto(projectId);
+}
+
+/** Removes someone as Project Admin of a project, with their test answers there (never counted). */
+export async function removeProjectAdmin(projectId: string, userId: string): Promise<ProjectDto> {
+  const scope = { projectId, userId, role: 'PROJECT_ADMIN' as const };
+  await prisma.$transaction([
+    prisma.questionnaireResponse.deleteMany({ where: { membership: scope } }),
+    prisma.membership.deleteMany({ where: scope }),
+  ]);
+  return loadProjectDto(projectId);
 }
 
 const normalize = (value: string) => value.trim().toLowerCase();
 
 /**
- * Excel project import (PROJECTS_PLAN.md): creates the project, its organizations, their
- * NatCos and member accounts in one go, reusing anything that already exists. Processed row by
- * row so one bad row (unknown country, organization in another project, ...) is reported
- * without aborting the rest; new accounts get a generated temporary password, returned once.
+ * Excel project import (PROJECTS_PLAN.md): creates or reuses the project, links its organizations
+ * (creating missing ones), their NatCos and members of the project, reusing anything that already
+ * exists. Project Admin rows make the person Project Admin of the whole project (a new person is
+ * created as a Detecon member first). Processed row by row so one bad row is reported without
+ * aborting the rest; new accounts get a generated temporary password, returned once.
  */
 export async function importProject(
   input: ProjectImportRequestDto,
@@ -224,7 +333,11 @@ export async function importProject(
     }
   }
 
-  // Organizations (sheet "Project") — the only organizations NatCos and members may refer to.
+  // Organizations (sheet "Project") — linked to the project (an organization can be in several
+  // projects); the only organizations NatCos and members may refer to.
+  const linked = new Set(
+    (await prisma.projectOrganization.findMany({ where: { projectId: project.id } })).map((l) => l.organizationId),
+  );
   const orgIdByName = new Map<string, { id: string; name: string }>();
   for (const [index, rawName] of input.organizations.entries()) {
     const name = rawName.trim();
@@ -235,16 +348,12 @@ export async function importProject(
     }
     const existing = await prisma.organization.findFirst({
       where: { name: { equals: name, mode: 'insensitive' } },
-      select: { id: true, name: true, projectId: true },
+      select: { id: true, name: true },
     });
-    if (existing && existing.projectId !== null && existing.projectId !== project.id) {
-      rows.push({ ...base, status: 'error', error: 'Organization already belongs to another project' });
-      continue;
-    }
     const organization = existing ?? (await createOrganization(name));
-    await prisma.organization.update({ where: { id: organization.id }, data: { projectId: project.id } });
+    await linkOrganization(project.id, organization.id);
     orgIdByName.set(normalize(name), { id: organization.id, name: organization.name });
-    rows.push({ ...base, label: organization.name, status: existing ? 'existing' : 'created' });
+    rows.push({ ...base, label: organization.name, status: existing && linked.has(existing.id) ? 'existing' : 'created' });
   }
 
   const resolveOrganization = (name: string) => orgIdByName.get(normalize(name));
@@ -288,19 +397,24 @@ export async function importProject(
     rows.push({ ...base, label: natCoName, organization: organization.name, status: existing ? 'existing' : 'created' });
   }
 
-  // Members — Project Admin / Executive / Normal User memberships.
+  // Members — Executives / Normal Users of an organization in this project, and Project Admins of
+  // the whole project.
+  const consultancy = await prisma.organization.findFirst({
+    where: { name: CONSULTANCY_ORGANIZATION_NAME },
+    select: { id: true },
+  });
   for (const [index, member] of input.members.entries()) {
     const email = member.email.trim();
-    const base = {
-      sheet: 'Members' as const,
-      row: index + 1,
-      label: email,
-      role: member.role,
-      organization: member.organization,
-    };
+    const base = { sheet: 'Members' as const, row: index + 1, label: email, role: member.role };
+
+    if (member.role === 'PROJECT_ADMIN') {
+      rows.push({ ...base, organization: input.projectName, ...(await importProjectAdmin(project.id, email, consultancy?.id, callerId)) });
+      continue;
+    }
+
     const organization = resolveOrganization(member.organization);
     if (!organization) {
-      rows.push({ ...base, status: 'error', error: unknownOrganization(member.organization) });
+      rows.push({ ...base, organization: member.organization, status: 'error', error: unknownOrganization(member.organization) });
       continue;
     }
     const password = generatePassword();
@@ -311,6 +425,7 @@ export async function importProject(
           password,
           role: member.role,
           organizationId: organization.id,
+          projectId: project.id,
           firstName: member.firstName?.trim() || undefined,
           lastName: member.lastName?.trim() || undefined,
         },
@@ -325,7 +440,7 @@ export async function importProject(
     } catch (err) {
       if (err instanceof AlreadyMemberError) {
         const membership = await prisma.membership.findFirst({
-          where: { organizationId: organization.id, user: { email } },
+          where: { organizationId: organization.id, projectId: project.id, user: { email } },
           select: { role: true },
         });
         rows.push(
@@ -335,7 +450,7 @@ export async function importProject(
                 ...base,
                 organization: organization.name,
                 status: 'error',
-                error: `Already a member with another role (${membership?.role ?? 'unknown'}) — change it under Manage users`,
+                error: `Already in this project with another role (${membership?.role ?? 'unknown'}) — change it under Existing users`,
               },
         );
         continue;
@@ -349,4 +464,43 @@ export async function importProject(
   }
 
   return { project: await loadProjectDto(project.id), rows };
+}
+
+/** One Project Admin row of an import: creates the person as a Detecon member when new, then
+ * makes them Project Admin of the project. */
+async function importProjectAdmin(
+  projectId: string,
+  email: string,
+  consultancyId: string | undefined,
+  callerId: string,
+): Promise<Pick<ProjectImportResultRowDto, 'status' | 'tempPassword' | 'error'>> {
+  let user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  let tempPassword: string | undefined;
+  if (!user) {
+    if (!consultancyId) {
+      return { status: 'error', error: `Create the "${CONSULTANCY_ORGANIZATION_NAME}" organization first` };
+    }
+    tempPassword = generatePassword();
+    const created = await createUser(
+      { email, password: tempPassword, role: 'EXECUTIVE', organizationId: consultancyId, projectId: null },
+      callerId,
+    );
+    user = { id: created.user.id };
+  }
+  const alreadyAdmin = await prisma.membership.count({ where: { userId: user.id, projectId, role: 'PROJECT_ADMIN' } });
+  try {
+    await addProjectAdmin(projectId, user.id);
+  } catch (err) {
+    const error =
+      err instanceof NotProjectAdminCandidateError
+        ? `Only Application Admins and ${CONSULTANCY_ORGANIZATION_NAME} members can be Project Admins`
+        : err instanceof ProjectRoleConflictError
+          ? 'Already in this project with another role'
+          : err instanceof ProjectHasNoOrganizationsError
+            ? 'The project has no organization yet'
+            : 'Failed to add the Project Admin';
+    return { status: 'error', error, tempPassword };
+  }
+  if (tempPassword) return { status: 'created', tempPassword };
+  return { status: alreadyAdmin > 0 ? 'existing' : 'membership-added' };
 }

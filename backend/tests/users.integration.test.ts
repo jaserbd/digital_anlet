@@ -237,7 +237,7 @@ describe('memberships (real DB)', () => {
       memberOf: [{ organizationId: orgAId, role: 'NORMAL_USER' }],
     });
     const membership = await prisma.membership.update({
-      where: { userId_organizationId: { userId, organizationId: orgAId } },
+      where: { id: (await prisma.membership.findFirstOrThrow({ where: { userId, organizationId: orgAId } })).id },
       data: { opCoId: opCo.id, workingDomain: 'RAN' },
     });
     const response = await getOrCreateResponse({ sub: userId, membershipId: membership.id }, 'RAN_FM_GB1059A');

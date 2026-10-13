@@ -6,67 +6,78 @@ import { signToken } from '../src/lib/jwt';
 import { createApp } from '../src/app';
 import { AUTH_COOKIE_NAME } from '../src/middleware/auth';
 import { getOrCreateResponse, submitResponse, upsertAnswer } from '../src/modules/responses/responses.service';
+import { getBenchmarkingSummary, getOrganizationQuestionnaireSummary } from '../src/modules/insights/insights.service';
+import { getAcceptingResponses, setAcceptingResponses } from '../src/modules/questionnaire/questionnaire.service';
 import {
+  OrganizationNotInProjectError,
+  ProjectRequiredError,
+  addMembership,
+} from '../src/modules/users/users.service';
+import {
+  CONSULTANCY_ORGANIZATION_NAME,
   InvalidQuestionnaireSelectionError,
-  OrganizationInOtherProjectError,
+  NotProjectAdminCandidateError,
+  ProjectHasNoOrganizationsError,
   ProjectNotEmptyError,
+  ProjectOrganizationHasAnswersError,
+  addProjectAdmin,
   createProject,
   deleteProject,
   importProject,
+  listProjectAdminCandidates,
   listProjects,
+  removeProjectAdmin,
   updateProject,
 } from '../src/modules/projects/projects.service';
 
-// Integration test against the real local Postgres for PROJECTS_PLAN.md: projects and the Excel
-// import (service level), and Project Admin scoping through the real HTTP routes — most of that
-// scoping lives in the controllers, so it's exercised end to end with signed session cookies.
+// Integration test against the real local Postgres for PROJECTS_PLAN.md / PROJECTS_V2_PLAN.md:
+// organizations in several projects, memberships (and answers) per project, project-level Project
+// Admins, per-project open/close and benchmarking, the Excel import — plus Project Admin scoping
+// through the real HTTP routes (most of it lives in the controllers), with signed session cookies.
 
 const PREFIX = '__integration-test-projects';
 const ORG_A = `${PREFIX}-org-a__`;
 const ORG_B = `${PREFIX}-org-b__`;
-const ORG_IMPORT = `${PREFIX}-org-import__`;
-const PROJECT_A = `${PREFIX}-project-a__`;
-const PROJECT_IMPORT = `${PREFIX}-project-import__`;
 const COUNTRY = `${PREFIX}-country__`;
 const QUESTIONNAIRE = 'CORE_STABILITY_GB1059B'; // 7 questions, one synthetic sub-scenario, no KEIs
+const RAN = 'RAN_FM_GB1059A';
+const CORE_FM = 'CORE_FM_GB1059B';
 
 let server: Server;
 let baseUrl: string;
 let orgAId: string;
 let orgBId: string;
-let projectAId: string;
+let consultancyId: string;
+let createdConsultancy = false;
+let projectAId: string; // orgA (+ orgB later)
+let projectBId: string; // orgA too: a second assessment round of the same organization
 let adminId: string;
-let projectAdminId: string;
-let projectAdminMembershipId: string;
-let executiveId: string;
-let executiveMembershipId: string;
-let memberAId: string; // Normal User in org A
-let memberBId: string; // Normal User in org B
-const userIds: string[] = [];
-const projectIds: string[] = [];
+let consultantId: string; // Detecon member → Project Admin of A
+let outsiderId: string; // not a Project Admin candidate
+let executiveId: string; // Executive of orgA in project A
+let memberAId: string; // Normal User of orgA in project A
+let memberBId: string; // Normal User of orgB outside projects (until orgB joins A)
 
 const email = (label: string) => `${PREFIX}-${label}__@example.com`;
 
-async function createRawUser(
-  label: string,
-  opts: { organizationId: string; role?: 'ADMIN' | 'NORMAL_USER'; membership?: 'NORMAL_USER' | 'EXECUTIVE' | 'PROJECT_ADMIN' },
-) {
+async function createRawUser(label: string, opts: { organizationId: string; role?: 'ADMIN' | 'NORMAL_USER' }) {
   const user = await prisma.user.create({
-    data: {
-      email: email(label),
-      passwordHash: 'not-a-real-hash',
-      role: opts.role ?? 'NORMAL_USER',
-      organizationId: opts.organizationId,
-      memberships: opts.membership ? { create: { organizationId: opts.organizationId, role: opts.membership } } : undefined,
-    },
-    include: { memberships: true },
+    data: { email: email(label), passwordHash: 'x', role: opts.role ?? 'NORMAL_USER', organizationId: opts.organizationId },
   });
-  userIds.push(user.id);
-  return { id: user.id, membershipId: user.memberships[0]?.id ?? null };
+  return user.id;
 }
 
-function cookieFor(userId: string, membershipId: string | null) {
-  return `${AUTH_COOKIE_NAME}=${signToken({ sub: userId, email: 'x', membershipId })}`;
+async function addRawMembership(
+  userId: string,
+  organizationId: string,
+  projectId: string | null,
+  role: 'NORMAL_USER' | 'EXECUTIVE' | 'PROJECT_ADMIN',
+) {
+  return (await prisma.membership.create({ data: { userId, organizationId, projectId, role } })).id;
+}
+
+function membershipOf(userId: string, organizationId: string, projectId: string | null) {
+  return prisma.membership.findFirstOrThrow({ where: { userId, organizationId, projectId } });
 }
 
 async function api(
@@ -74,20 +85,17 @@ async function api(
   path: string,
   as: { userId: string; membershipId: string | null },
   body?: unknown,
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- loosely-typed JSON assertions in tests
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- loosely-typed JSON assertions in tests
 ): Promise<{ status: number; json: any }> {
+  const cookie = `${AUTH_COOKIE_NAME}=${signToken({ sub: as.userId, email: 'x', membershipId: as.membershipId })}`;
   const res = await fetch(`${baseUrl}/api${path}`, {
     method,
-    headers: { cookie: cookieFor(as.userId, as.membershipId), 'content-type': 'application/json' },
+    headers: { cookie, 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await res.text();
   return { status: res.status, json: text ? JSON.parse(text) : null };
 }
-
-const asAdmin = () => ({ userId: adminId, membershipId: null });
-const asProjectAdmin = () => ({ userId: projectAdminId, membershipId: projectAdminMembershipId });
-const asExecutive = () => ({ userId: executiveId, membershipId: executiveMembershipId });
 
 async function answerAllAndSubmit(userId: string, membershipId: string, option: 'A' | 'C') {
   const response = await getOrCreateResponse({ sub: userId, membershipId }, QUESTIONNAIRE);
@@ -107,28 +115,26 @@ async function answerAllAndSubmit(userId: string, membershipId: string, option: 
 beforeAll(async () => {
   orgAId = (await prisma.organization.create({ data: { name: ORG_A } })).id;
   orgBId = (await prisma.organization.create({ data: { name: ORG_B } })).id;
-  const questionnaires = await prisma.questionnaire.findMany({ where: { isActive: true }, select: { id: true } });
-  projectAId = (
-    await prisma.project.create({
-      data: {
-        name: PROJECT_A,
-        organizations: { connect: { id: orgAId } },
-        questionnaires: { create: questionnaires.map((q) => ({ questionnaireId: q.id })) },
-      },
-    })
-  ).id;
-  projectIds.push(projectAId);
+  const existingConsultancy = await prisma.organization.findFirst({ where: { name: CONSULTANCY_ORGANIZATION_NAME } });
+  createdConsultancy = !existingConsultancy;
+  consultancyId = (existingConsultancy ?? (await prisma.organization.create({ data: { name: CONSULTANCY_ORGANIZATION_NAME } }))).id;
   await prisma.referenceListEntry.create({ data: { category: 'COUNTRY', name: COUNTRY } });
 
-  adminId = (await createRawUser('admin', { organizationId: orgAId, role: 'ADMIN' })).id;
-  const projectAdmin = await createRawUser('project-admin', { organizationId: orgAId, membership: 'PROJECT_ADMIN' });
-  projectAdminId = projectAdmin.id;
-  projectAdminMembershipId = projectAdmin.membershipId!;
-  const executive = await createRawUser('executive', { organizationId: orgAId, membership: 'EXECUTIVE' });
-  executiveId = executive.id;
-  executiveMembershipId = executive.membershipId!;
-  memberAId = (await createRawUser('member-a', { organizationId: orgAId, membership: 'NORMAL_USER' })).id;
-  memberBId = (await createRawUser('member-b', { organizationId: orgBId, membership: 'NORMAL_USER' })).id;
+  projectAId = (await createProject(`${PREFIX}-project-a__`)).id;
+  projectBId = (await createProject(`${PREFIX}-project-b__`)).id;
+  await updateProject(projectAId, { organizationIds: [orgAId] });
+  await updateProject(projectBId, { organizationIds: [orgAId] });
+
+  adminId = await createRawUser('admin', { organizationId: orgAId, role: 'ADMIN' });
+  consultantId = await createRawUser('consultant', { organizationId: consultancyId });
+  await addRawMembership(consultantId, consultancyId, null, 'EXECUTIVE');
+  outsiderId = await createRawUser('outsider', { organizationId: orgAId });
+  executiveId = await createRawUser('executive', { organizationId: orgAId });
+  await addRawMembership(executiveId, orgAId, projectAId, 'EXECUTIVE');
+  memberAId = await createRawUser('member-a', { organizationId: orgAId });
+  await addRawMembership(memberAId, orgAId, projectAId, 'NORMAL_USER');
+  memberBId = await createRawUser('member-b', { organizationId: orgBId });
+  await addRawMembership(memberBId, orgBId, null, 'NORMAL_USER');
 
   server = createApp().listen(0);
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -136,311 +142,265 @@ beforeAll(async () => {
 
 afterAll(async () => {
   server.close();
-  const testUsers = await prisma.user.findMany({ where: { email: { startsWith: PREFIX } }, select: { id: true } });
-  const ids = [...new Set([...userIds, ...testUsers.map((u) => u.id)])];
-  await prisma.questionnaireResponse.deleteMany({ where: { userId: { in: ids } } });
-  await prisma.user.deleteMany({ where: { id: { in: ids } } });
+  const users = await prisma.user.findMany({ where: { email: { startsWith: PREFIX } }, select: { id: true } });
+  const userIds = users.map((u) => u.id);
+  await prisma.questionnaireResponse.deleteMany({ where: { userId: { in: userIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   const orgs = await prisma.organization.findMany({ where: { name: { startsWith: PREFIX } }, select: { id: true } });
   const orgIds = orgs.map((o) => o.id);
+  if (createdConsultancy) orgIds.push(consultancyId);
+  await prisma.membership.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.opCo.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.referenceListEntry.deleteMany({
-    where: { OR: [{ organizationId: { in: orgIds } }, { name: COUNTRY }] },
-  });
+  await prisma.referenceListEntry.deleteMany({ where: { OR: [{ organizationId: { in: orgIds } }, { name: COUNTRY }] } });
   await prisma.questionnaireOrgSetting.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.questionnaireProjectSetting.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.projectOrganization.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
   await prisma.project.deleteMany({ where: { name: { startsWith: PREFIX } } });
   await prisma.$disconnect();
 });
 
-describe('projects (real DB)', () => {
-  it('lists a project with its organizations and Project Admins', async () => {
-    const project = (await listProjects()).find((p) => p.id === projectAId)!;
-    expect(project.organizations.map((o) => o.name)).toEqual([ORG_A]);
-    expect(project.projectAdmins.map((a) => a.email)).toEqual([email('project-admin')]);
-  });
+describe('projects and organizations (real DB)', () => {
+  it('lets an organization be in several projects, with members placed per project', async () => {
+    const projects = (await listProjects()).filter((p) => p.name.startsWith(PREFIX));
+    expect(projects.map((p) => p.organizations.map((o) => o.name))).toEqual([[ORG_A], [ORG_A]]);
+    expect(projects.find((p) => p.id === projectAId)!.memberCount).toBe(2);
 
-  it('keeps an organization in at most one project and deletes only empty projects', async () => {
-    const other = await createProject(`${PREFIX}-project-other__`);
-    await expect(updateProject(other.id, { organizationIds: [orgAId] })).rejects.toBeInstanceOf(
-      OrganizationInOtherProjectError,
+    // An organization in projects needs one of them; a project it isn't in is refused.
+    await expect(addMembership(adminId, outsiderId, { organizationId: orgAId, role: 'NORMAL_USER' })).rejects.toBeInstanceOf(
+      ProjectRequiredError,
     );
-    const withB = await updateProject(other.id, { organizationIds: [orgBId] });
-    expect(withB.organizations.map((o) => o.id)).toEqual([orgBId]);
-    await expect(deleteProject(other.id)).rejects.toBeInstanceOf(ProjectNotEmptyError);
-    await updateProject(other.id, { organizationIds: [] });
-    expect((await prisma.organization.findUniqueOrThrow({ where: { id: orgBId } })).projectId).toBeNull();
-    await deleteProject(other.id);
+    await expect(
+      addMembership(adminId, memberBId, { organizationId: orgBId, projectId: projectAId, role: 'NORMAL_USER' }),
+    ).rejects.toBeInstanceOf(OrganizationNotInProjectError);
+
+    // The same person can take part in both rounds of organization A.
+    await addMembership(adminId, memberAId, { organizationId: orgAId, projectId: projectBId, role: 'EXECUTIVE' });
+    const memberships = await prisma.membership.findMany({ where: { userId: memberAId }, orderBy: { createdAt: 'asc' } });
+    expect(memberships.map((m) => [m.projectId, m.role])).toEqual([
+      [projectAId, 'NORMAL_USER'],
+      [projectBId, 'EXECUTIVE'],
+    ]);
   });
 
-  it('imports a project with organizations, NatCos and members, and reuses them on a re-import', async () => {
-    await createRawUser('existing', { organizationId: orgBId, membership: 'NORMAL_USER' });
-    const input = {
-      projectName: PROJECT_IMPORT,
-      organizations: [ORG_IMPORT],
-      natCos: [
-        { organization: ORG_IMPORT, name: 'NatCo One', country: COUNTRY.toUpperCase() },
-        { organization: ORG_IMPORT, name: 'NatCo Two', country: 'Atlantis-not-a-country' },
-        { organization: 'Unlisted Org', name: 'NatCo Three', country: COUNTRY },
-      ],
-      members: [
-        { organization: ORG_IMPORT, email: email('imp-pa'), role: 'PROJECT_ADMIN' as const },
-        { organization: ORG_IMPORT, email: email('imp-exec'), role: 'EXECUTIVE' as const, firstName: 'Exa' },
-        { organization: ORG_IMPORT, email: email('existing'), role: 'NORMAL_USER' as const }, // existing account
-        { organization: ORG_IMPORT, email: email('admin'), role: 'NORMAL_USER' as const },
-      ],
-    };
-    const first = await importProject(input, adminId);
-    expect(first.project.name).toBe(PROJECT_IMPORT);
-    expect(first.project.projectAdmins.map((a) => a.email)).toEqual([email('imp-pa')]);
-    const byLabel = new Map(first.rows.map((r) => [`${r.sheet}:${r.label}`, r]));
-    expect(byLabel.get(`Project:${ORG_IMPORT}`)?.status).toBe('created');
-    expect(byLabel.get('NatCos:NatCo One')?.status).toBe('created');
-    expect(byLabel.get('NatCos:NatCo Two')?.status).toBe('error');
-    expect(byLabel.get('NatCos:NatCo Three')?.error).toMatch(/not listed on the Project sheet/);
-    expect(byLabel.get(`Members:${email('imp-pa')}`)?.status).toBe('created');
-    expect(byLabel.get(`Members:${email('imp-pa')}`)?.tempPassword).toBeTruthy();
-    expect(byLabel.get(`Members:${email('existing')}`)?.status).toBe('membership-added');
-    expect(byLabel.get(`Members:${email('existing')}`)?.tempPassword).toBeUndefined();
-    expect(byLabel.get(`Members:${email('admin')}`)?.status).toBe('membership-added');
+  it('keeps answers, dashboards and open/close separate per project', async () => {
+    const inA = await membershipOf(memberAId, orgAId, projectAId);
+    const inB = await membershipOf(memberAId, orgAId, projectBId);
+    const responseA = await answerAllAndSubmit(memberAId, inA.id, 'A');
+    const responseB = await getOrCreateResponse({ sub: memberAId, membershipId: inB.id }, QUESTIONNAIRE);
+    expect(responseB.id).not.toBe(responseA);
 
-    const org = await prisma.organization.findFirstOrThrow({ where: { name: ORG_IMPORT }, include: { opCos: true } });
-    expect(org.projectId).toBe(first.project.id);
-    expect(org.opCos).toEqual([expect.objectContaining({ name: 'NatCo One', country: COUNTRY })]);
-    // New organizations accept every questionnaire, like any other new organization.
-    expect(await prisma.questionnaireOrgSetting.count({ where: { organizationId: org.id } })).toBeGreaterThan(0);
+    const summaryA = await getOrganizationQuestionnaireSummary({ organizationId: orgAId, projectId: projectAId }, QUESTIONNAIRE);
+    const summaryB = await getOrganizationQuestionnaireSummary({ organizationId: orgAId, projectId: projectBId }, QUESTIONNAIRE);
+    expect(summaryA.respondents.find((r) => r.email === email('member-a'))?.status).toBe('SUBMITTED');
+    expect(summaryB.respondents.find((r) => r.email === email('member-a'))?.status).toBe('IN_PROGRESS');
+    expect(summaryB.respondents.map((r) => r.email)).not.toContain(email('executive'));
 
-    const second = await importProject(
-      { ...input, members: [...input.members, { organization: ORG_IMPORT, email: email('imp-exec'), role: 'NORMAL_USER' as const }] },
-      adminId,
+    const questionnaire = await prisma.questionnaire.findUniqueOrThrow({ where: { code: QUESTIONNAIRE } });
+    await setAcceptingResponses(QUESTIONNAIRE, orgAId, false, projectAId);
+    expect(await getAcceptingResponses(questionnaire.id, orgAId, projectAId)).toBe(false);
+    expect(await getAcceptingResponses(questionnaire.id, orgAId, projectBId)).toBe(true);
+    await setAcceptingResponses(QUESTIONNAIRE, orgAId, true, projectAId);
+
+    // Benchmark rows are per project + organization.
+    const rows = (await getBenchmarkingSummary(QUESTIONNAIRE)).rows.filter((r) => r.organizationName === ORG_A);
+    expect(rows.map((r) => [r.projectName, r.submittedCount])).toEqual([
+      [`${PREFIX}-project-a__`, 1],
+      [`${PREFIX}-project-b__`, 0],
+    ]);
+  });
+
+  it('refuses to unlink an organization whose members hold answers in the project', async () => {
+    await expect(updateProject(projectAId, { organizationIds: [] })).rejects.toBeInstanceOf(ProjectOrganizationHasAnswersError);
+    await expect(deleteProject(projectAId)).rejects.toBeInstanceOf(ProjectNotEmptyError);
+  });
+});
+
+describe('project-level Project Admins (real DB)', () => {
+  it('offers Application Admins and Detecon members as candidates only', async () => {
+    const candidates = (await listProjectAdminCandidates()).map((c) => c.email);
+    expect(candidates).toContain(email('admin'));
+    expect(candidates).toContain(email('consultant'));
+    expect(candidates).not.toContain(email('outsider'));
+    await expect(addProjectAdmin(projectAId, outsiderId)).rejects.toBeInstanceOf(NotProjectAdminCandidateError);
+    const empty = await createProject(`${PREFIX}-project-empty__`);
+    await expect(addProjectAdmin(empty.id, consultantId)).rejects.toBeInstanceOf(ProjectHasNoOrganizationsError);
+    await deleteProject(empty.id);
+  });
+
+  it('adds a Project Admin to every organization of one project only, including organizations added later', async () => {
+    const project = await addProjectAdmin(projectAId, consultantId);
+    expect(project.projectAdmins.map((a) => a.email)).toEqual([email('consultant')]);
+    expect((await listProjects()).find((p) => p.id === projectBId)!.projectAdmins).toEqual([]);
+
+    // Organization B joins project A: its members move in, and the Project Admin covers it too.
+    const memberB = await membershipOf(memberBId, orgBId, null);
+    await updateProject(projectAId, { organizationIds: [orgAId, orgBId] });
+    await prisma.membership.update({ where: { id: memberB.id }, data: { projectId: projectAId } });
+    const adminMemberships = await prisma.membership.findMany({ where: { userId: consultantId, role: 'PROJECT_ADMIN' } });
+    expect(adminMemberships.map((m) => [m.organizationId, m.projectId]).sort()).toEqual(
+      [
+        [orgAId, projectAId],
+        [orgBId, projectAId],
+      ].sort(),
     );
-    const statuses = second.rows.filter((r) => r.status !== 'error').map((r) => r.status);
-    expect(statuses.every((s) => s === 'existing')).toBe(true);
-    const roleClash = second.rows.filter((r) => r.label === email('imp-exec'));
-    expect(roleClash.map((r) => r.status)).toEqual(['existing', 'error']);
-    expect(await prisma.project.count({ where: { name: PROJECT_IMPORT } })).toBe(1);
   });
 
-  it('refuses to move an organization that belongs to another project', async () => {
+  it('removes a Project Admin from the project, with their test answers', async () => {
+    const extra = await addProjectAdmin(projectAId, adminId);
+    expect(extra.projectAdmins).toHaveLength(2);
+    const membership = await membershipOf(adminId, orgAId, projectAId);
+    const response = await getOrCreateResponse({ sub: adminId, membershipId: membership.id }, QUESTIONNAIRE);
+    const after = await removeProjectAdmin(projectAId, adminId);
+    expect(after.projectAdmins.map((a) => a.email)).toEqual([email('consultant')]);
+    expect(await prisma.questionnaireResponse.findUnique({ where: { id: response.id } })).toBeNull();
+  });
+
+  it('imports a project with an existing organization, a new Project Admin (as a Detecon member) and members', async () => {
     const result = await importProject(
-      { projectName: `${PREFIX}-project-thief__`, organizations: [ORG_A], natCos: [], members: [] },
+      {
+        projectName: `${PREFIX}-project-import__`,
+        organizations: [ORG_A, `${PREFIX}-org-import__`],
+        questionnaires: ['ran fault management', 'Core Network Stability', 'Not a questionnaire'],
+        natCos: [{ organization: `${PREFIX}-org-import__`, name: 'NatCo One', country: COUNTRY.toUpperCase() }],
+        members: [
+          { organization: '', email: email('new-consultant'), role: 'PROJECT_ADMIN' },
+          { organization: '', email: email('consultant'), role: 'PROJECT_ADMIN' },
+          { organization: '', email: email('outsider'), role: 'PROJECT_ADMIN' },
+          { organization: ORG_A, email: email('member-a'), role: 'NORMAL_USER' },
+          { organization: `${PREFIX}-org-import__`, email: email('imp-exec'), role: 'EXECUTIVE' },
+        ],
+      },
       adminId,
     );
-    expect(result.rows[0]).toMatchObject({ status: 'error', error: 'Organization already belongs to another project' });
-    expect((await prisma.organization.findUniqueOrThrow({ where: { id: orgAId } })).projectId).toBe(projectAId);
+    expect(result.project.organizations.map((o) => o.name).sort()).toEqual([ORG_A, `${PREFIX}-org-import__`].sort());
+    expect(result.project.questionnaireCodes).toEqual([CORE_FM, QUESTIONNAIRE, RAN].sort());
+    expect(result.project.projectAdmins.map((a) => a.email).sort()).toEqual([email('consultant'), email('new-consultant')].sort());
+    const byLabel = new Map(result.rows.filter((r) => r.sheet === 'Members').map((r) => [r.label, r]));
+    expect(byLabel.get(email('new-consultant'))).toMatchObject({ status: 'created', tempPassword: expect.any(String) });
+    expect(byLabel.get(email('consultant'))?.status).toBe('membership-added');
+    expect(byLabel.get(email('outsider'))?.status).toBe('error');
+    expect(byLabel.get(email('member-a'))?.status).toBe('membership-added'); // a third project for member A
+    expect(byLabel.get(email('imp-exec'))?.status).toBe('created');
+    const newConsultant = await prisma.user.findUniqueOrThrow({ where: { email: email('new-consultant') }, include: { memberships: true } });
+    expect(newConsultant.memberships.some((m) => m.organizationId === consultancyId && m.projectId === null)).toBe(true);
+    expect(result.rows.filter((r) => r.sheet === 'Questionnaires').map((r) => r.status)).toEqual(['created', 'created', 'error']);
+
+    // Re-import without a Questionnaires sheet leaves the selection unchanged.
+    const again = await importProject(
+      { projectName: `${PREFIX}-project-import__`, organizations: [ORG_A], natCos: [], members: [] },
+      adminId,
+    );
+    expect(again.project.questionnaireCodes).toEqual(result.project.questionnaireCodes);
+  });
+
+  it('rejects an invalid questionnaire selection', async () => {
+    for (const codes of [[CORE_FM], [], ['NOT_A_CODE']]) {
+      await expect(updateProject(projectBId, { questionnaireCodes: codes })).rejects.toBeInstanceOf(
+        InvalidQuestionnaireSelectionError,
+      );
+    }
   });
 });
 
 describe('Project Admin scoping over HTTP (real DB)', () => {
-  it('keeps project management Application-Admin-only', async () => {
-    expect((await api('GET', '/projects', asProjectAdmin())).status).toBe(403);
-    expect((await api('GET', '/projects', asAdmin())).status).toBe(200);
+  const asAdmin = () => ({ userId: adminId, membershipId: null });
+  let asProjectAdmin: { userId: string; membershipId: string };
+  let asExecutive: { userId: string; membershipId: string };
+
+  beforeAll(async () => {
+    asProjectAdmin = { userId: consultantId, membershipId: (await membershipOf(consultantId, orgAId, projectAId)).id };
+    asExecutive = { userId: executiveId, membershipId: (await membershipOf(executiveId, orgAId, projectAId)).id };
   });
 
-  it('lists only members of the own organization, with only their memberships there', async () => {
-    await prisma.membership.create({ data: { userId: memberBId, organizationId: orgAId, role: 'NORMAL_USER' } });
-    const { status, json } = await api('GET', '/users', asProjectAdmin());
+  it('keeps project management Application-Admin-only', async () => {
+    expect((await api('GET', '/projects', asProjectAdmin)).status).toBe(403);
+    expect((await api('POST', `/projects/${projectAId}/project-admins`, asProjectAdmin, { userId: consultantId })).status).toBe(403);
+    expect((await api('GET', '/projects/project-admin-candidates', asAdmin())).status).toBe(200);
+  });
+
+  it('lists only members of the own organization and project', async () => {
+    const { status, json } = await api('GET', '/users', asProjectAdmin);
     expect(status).toBe(200);
     const emails = json.map((u: { email: string }) => u.email);
+    expect(emails).toContain(email('executive'));
     expect(emails).toContain(email('member-a'));
-    expect(emails).toContain(email('member-b'));
-    expect(emails).not.toContain(email('admin'));
-    const memberB = json.find((u: { email: string }) => u.email === email('member-b'));
-    expect(memberB.memberships.map((m: { organizationId: string }) => m.organizationId)).toEqual([orgAId]);
-    await prisma.membership.deleteMany({ where: { userId: memberBId, organizationId: orgAId } });
+    const memberA = json.find((u: { email: string }) => u.email === email('member-a'));
+    expect(memberA.memberships.map((m: { projectId: string }) => m.projectId)).toEqual([projectAId]);
   });
 
-  it('adds Executives and Normal Users to the own organization only', async () => {
-    const ok = await api('POST', '/users', asProjectAdmin(), {
-      email: email('pa-created'),
-      password: 'password123',
-      role: 'EXECUTIVE',
-      organizationId: orgAId,
-    });
-    expect(ok.status).toBe(201);
-    const otherOrg = await api('POST', '/users', asProjectAdmin(), {
-      email: email('pa-created-b'),
-      password: 'password123',
-      role: 'NORMAL_USER',
-      organizationId: orgBId,
-    });
-    expect(otherOrg.status).toBe(403);
-    const projectAdminRole = await api('POST', '/users', asProjectAdmin(), {
-      email: email('pa-created-pa'),
-      password: 'password123',
-      role: 'PROJECT_ADMIN',
-      organizationId: orgAId,
-    });
-    expect(projectAdminRole.status).toBe(403);
-    const adminAccount = await api('POST', '/users', asProjectAdmin(), {
-      email: email('admin'),
-      password: 'password123',
-      role: 'NORMAL_USER',
-      organizationId: orgAId,
-    });
-    expect(adminAccount.status).toBe(403);
+  it('adds Executives and Normal Users to the own organization + project only', async () => {
+    const add = (projectId: string, role = 'EXECUTIVE', label = 'pa-created') =>
+      api('POST', '/users', asProjectAdmin, { email: email(label), password: 'password123', role, organizationId: orgAId, projectId });
+    expect((await add(projectAId)).status).toBe(201);
+    expect((await add(projectBId, 'EXECUTIVE', 'pa-created-b')).status).toBe(403);
+    expect((await add(projectAId, 'ADMIN', 'pa-created-admin')).status).toBe(403);
   });
 
-  it('changes roles, removes memberships and generates temporary passwords only inside the project', async () => {
-    const memberA = await prisma.membership.findFirstOrThrow({ where: { userId: memberAId, organizationId: orgAId } });
-    const promote = await api('PATCH', `/users/${memberAId}/memberships/${memberA.id}`, asProjectAdmin(), { role: 'EXECUTIVE' });
-    expect(promote.status).toBe(200);
-    const toProjectAdmin = await api('PATCH', `/users/${memberAId}/memberships/${memberA.id}`, asProjectAdmin(), {
-      role: 'PROJECT_ADMIN',
-    });
-    expect(toProjectAdmin.status).toBe(403);
-    const moveOut = await api('PATCH', `/users/${memberAId}/memberships/${memberA.id}`, asProjectAdmin(), {
-      organizationId: orgBId,
-    });
-    expect(moveOut.status).toBe(403);
-    await api('PATCH', `/users/${memberAId}/memberships/${memberA.id}`, asProjectAdmin(), { role: 'NORMAL_USER' });
-
-    const memberB = await prisma.membership.findFirstOrThrow({ where: { userId: memberBId } });
-    expect((await api('DELETE', `/users/${memberBId}/memberships/${memberB.id}`, asProjectAdmin())).status).toBe(403);
-
-    const temp = await api('POST', `/users/${memberAId}/temporary-password`, asProjectAdmin());
-    expect(temp.status).toBe(200);
-    expect(temp.json.temporaryPassword).toBeTruthy();
-    expect((await api('POST', `/users/${memberBId}/temporary-password`, asProjectAdmin())).status).toBe(403);
-
-    // Granting Admin and deleting accounts stay Application-Admin-only.
-    expect((await api('PATCH', `/users/${memberAId}`, asProjectAdmin(), { role: 'ADMIN' })).status).toBe(403);
-    expect((await api('DELETE', `/users/${memberAId}`, asProjectAdmin())).status).toBe(403);
-  });
-
-  it('manages NatCos and the accepting toggle of the own organization only', async () => {
-    const natCoName = await api('POST', '/reference-lists/NATCO_NAME', asProjectAdmin(), {
-      name: 'PA NatCo',
-      organizationId: orgAId,
-    });
-    expect(natCoName.status).toBe(201);
+  it('manages members and temporary passwords only inside the project, and never moves them', async () => {
+    const memberA = await membershipOf(executiveId, orgAId, projectAId);
+    expect((await api('PATCH', `/users/${executiveId}/memberships/${memberA.id}`, asProjectAdmin, { role: 'NORMAL_USER' })).status).toBe(200);
+    expect((await api('PATCH', `/users/${executiveId}/memberships/${memberA.id}`, asProjectAdmin, { role: 'EXECUTIVE' })).status).toBe(200);
     expect(
-      (await api('POST', '/reference-lists/COUNTRY', asProjectAdmin(), { name: `${PREFIX}-x__` })).status,
+      (await api('PATCH', `/users/${executiveId}/memberships/${memberA.id}`, asProjectAdmin, { organizationId: orgAId, projectId: projectBId })).status,
     ).toBe(403);
-    const opCo = await api('POST', '/opcos', asProjectAdmin(), { name: 'PA NatCo', country: COUNTRY, organizationId: orgAId });
-    expect(opCo.status).toBe(201);
-    expect(
-      (await api('POST', '/opcos', asProjectAdmin(), { name: 'PA NatCo', country: COUNTRY, organizationId: orgBId })).status,
-    ).toBe(403);
-    const opCoB = await prisma.opCo.create({ data: { name: 'B NatCo', country: COUNTRY, organizationId: orgBId } });
-    expect((await api('DELETE', `/opcos/${opCoB.id}`, asProjectAdmin())).status).toBe(404);
-    expect((await api('DELETE', `/opcos/${opCo.json.id}`, asProjectAdmin())).status).toBe(204);
-
-    const close = await api('PATCH', `/questionnaires/${QUESTIONNAIRE}/accepting`, asProjectAdmin(), {
-      organizationId: orgAId,
-      acceptingResponses: false,
-    });
-    expect(close.status).toBe(204);
-    await api('PATCH', `/questionnaires/${QUESTIONNAIRE}/accepting`, asProjectAdmin(), {
-      organizationId: orgAId,
-      acceptingResponses: true,
-    });
-    const otherOrg = await api('PATCH', `/questionnaires/${QUESTIONNAIRE}/accepting`, asProjectAdmin(), {
-      organizationId: orgBId,
-      acceptingResponses: false,
-    });
-    expect(otherOrg.status).toBe(403);
+    // Member A also takes part in project B (and the import project) — outside this Project Admin's scope.
+    expect((await api('POST', `/users/${memberAId}/temporary-password`, asProjectAdmin)).status).toBe(403);
+    expect((await api('POST', `/users/${executiveId}/temporary-password`, asProjectAdmin)).status).toBe(200);
+    // Project Admin memberships are managed on the project, not in the users table.
+    const consultantInA = await membershipOf(consultantId, orgAId, projectAId);
+    expect((await api('DELETE', `/users/${consultantId}/memberships/${consultantInA.id}`, asAdmin())).status).toBe(400);
   });
 
-  it('sees the own organization with identities, excludes their own test answers, and resets them', async () => {
-    await answerAllAndSubmit(memberAId, (await prisma.membership.findFirstOrThrow({ where: { userId: memberAId, organizationId: orgAId } })).id, 'A');
-    const projectAdminResponseId = await answerAllAndSubmit(projectAdminId, projectAdminMembershipId, 'C');
+  it('toggles open/close for the own organization + project only', async () => {
+    const toggle = (projectId: string) =>
+      api('PATCH', `/questionnaires/${QUESTIONNAIRE}/accepting`, asProjectAdmin, { organizationId: orgAId, projectId, acceptingResponses: true });
+    expect((await toggle(projectAId)).status).toBe(204);
+    expect((await toggle(projectBId)).status).toBe(403);
+  });
 
-    const summary = await api('GET', `/organizations/${orgAId}/questionnaire-summary?questionnaireCode=${QUESTIONNAIRE}`, asProjectAdmin());
+  it('shows dashboards for the active project only, with identities, excluding Project Admin answers', async () => {
+    await answerAllAndSubmit(consultantId, asProjectAdmin.membershipId, 'C');
+    // The projectId query param is ignored for non-admins: the active membership decides.
+    const summary = await api(
+      'GET',
+      `/organizations/${orgAId}/questionnaire-summary?questionnaireCode=${QUESTIONNAIRE}&projectId=${projectBId}`,
+      asProjectAdmin,
+    );
     expect(summary.status).toBe(200);
     expect(summary.json.anonymized).toBe(false);
-    const respondentEmails = summary.json.respondents.map((r: { email: string }) => r.email);
-    expect(respondentEmails).toContain(email('member-a'));
-    expect(respondentEmails).not.toContain(email('project-admin'));
-
-    // Only member A's all-A answers count: the org average is their score, not a blend.
-    const benchmark = await api('GET', `/organizations/${orgAId}/opco-benchmarking?questionnaireCode=${QUESTIONNAIRE}`, asProjectAdmin());
-    const submitted = benchmark.json.rows.reduce((n: number, r: { submittedCount: number }) => n + r.submittedCount, 0);
-    expect(submitted).toBe(1);
-    const drilldown = await api('GET', `/organizations/${orgAId}/answer-drilldown?questionnaireCode=${QUESTIONNAIRE}`, asProjectAdmin());
-    expect(JSON.stringify(drilldown.json)).not.toContain(email('project-admin'));
-    expect(drilldown.json.entries.some((e: { option: string; respondents: unknown[] }) => e.option === 'C' && e.respondents.length > 0)).toBe(false);
-
-    expect((await api('GET', `/organizations/${orgBId}/questionnaire-summary?questionnaireCode=${QUESTIONNAIRE}`, asProjectAdmin())).status).toBe(403);
-    const executiveView = await api('GET', `/organizations/${orgAId}/questionnaire-summary?questionnaireCode=${QUESTIONNAIRE}`, asExecutive());
+    const statusOf = (who: string) => summary.json.respondents.find((r: { email: string }) => r.email === email(who))?.status;
+    expect(statusOf('member-a')).toBe('SUBMITTED'); // project A's answer, not project B's in-progress one
+    expect(statusOf('consultant')).toBeUndefined();
+    const executiveView = await api('GET', `/organizations/${orgAId}/questionnaire-summary?questionnaireCode=${QUESTIONNAIRE}`, asExecutive);
     expect(executiveView.json.anonymized).toBe(true);
 
-    // Reset: Normal Users can't; the Project Admin can, and the response is gone.
-    const memberAResponse = await prisma.questionnaireResponse.findFirstOrThrow({ where: { userId: memberAId } });
-    const memberAMembership = await prisma.membership.findFirstOrThrow({ where: { userId: memberAId, organizationId: orgAId } });
-    expect((await api('DELETE', `/responses/${memberAResponse.id}`, { userId: memberAId, membershipId: memberAMembership.id })).status).toBe(403);
-    expect((await api('DELETE', `/responses/${projectAdminResponseId}`, { userId: memberAId, membershipId: memberAMembership.id })).status).toBe(403);
-    expect((await api('DELETE', `/responses/${projectAdminResponseId}`, asProjectAdmin())).status).toBe(204);
-    expect(await prisma.questionnaireResponse.findUnique({ where: { id: projectAdminResponseId } })).toBeNull();
-  });
-});
-
-describe('questionnaires per project (real DB)', () => {
-  const RAN = 'RAN_FM_GB1059A';
-  const CORE_FM = 'CORE_FM_GB1059B';
-
-  it('starts a new project with every questionnaire and rejects an invalid selection', async () => {
-    const project = await createProject(`${PREFIX}-project-q__`);
-    const activeCount = await prisma.questionnaire.count({ where: { isActive: true } });
-    expect(project.questionnaireCodes).toHaveLength(activeCount);
-    // Core FM without Core Stability splits the HVS group; empty and unknown are invalid too.
-    for (const codes of [[CORE_FM], [], ['NOT_A_CODE']]) {
-      await expect(updateProject(project.id, { questionnaireCodes: codes })).rejects.toBeInstanceOf(
-        InvalidQuestionnaireSelectionError,
-      );
-    }
-    const narrowed = await updateProject(project.id, { questionnaireCodes: [RAN, CORE_FM, QUESTIONNAIRE] });
-    expect(narrowed.questionnaireCodes).toEqual([CORE_FM, QUESTIONNAIRE, RAN].sort());
-    await deleteProject(project.id);
+    const adminViewB = await api(
+      'GET',
+      `/organizations/${orgAId}/questionnaire-summary?questionnaireCode=${QUESTIONNAIRE}&projectId=${projectBId}`,
+      asAdmin(),
+    );
+    expect(adminViewB.json.respondents.find((r: { email: string }) => r.email === email('member-a'))?.status).toBe('IN_PROGRESS');
   });
 
-  it('limits listings and new responses to the project questionnaires, keeping existing responses reachable', async () => {
-    const existing = await api('POST', '/responses', asProjectAdmin(), { questionnaireCode: QUESTIONNAIRE });
+  it('limits questionnaires to the project selection, keeping existing responses reachable', async () => {
+    const existing = await api('POST', '/responses', asProjectAdmin, { questionnaireCode: QUESTIONNAIRE });
     expect(existing.status).toBe(200);
     await updateProject(projectAId, { questionnaireCodes: [RAN] });
-
-    const list = await api('GET', '/questionnaires', asProjectAdmin());
-    expect(list.json.map((q: { code: string }) => q.code)).toEqual([RAN]);
-    const hvs = await api('GET', '/questionnaires/hvs-entries', asExecutive());
-    expect(hvs.json.map((h: { key: string }) => h.key)).toEqual([RAN]);
-    const adminList = await api('GET', '/questionnaires', asAdmin());
-    expect(adminList.json.length).toBeGreaterThan(1);
-    // Organization B has no project: unrestricted.
-    const memberB = await prisma.membership.findFirstOrThrow({ where: { userId: memberBId } });
-    const listB = await api('GET', '/questionnaires', { userId: memberBId, membershipId: memberB.id });
-    expect(listB.json.length).toBe(adminList.json.length);
-
-    const refused = await api('POST', '/responses', asExecutive(), { questionnaireCode: CORE_FM });
-    expect(refused.status).toBe(403);
-    expect((await api('POST', '/responses', asExecutive(), { questionnaireCode: RAN })).status).toBe(200);
-    const stillThere = await api('POST', '/responses', asProjectAdmin(), { questionnaireCode: QUESTIONNAIRE });
-    expect(stillThere.json.id).toBe(existing.json.id);
-
+    expect((await api('GET', '/questionnaires', asProjectAdmin)).json.map((q: { code: string }) => q.code)).toEqual([RAN]);
+    expect((await api('GET', '/questionnaires/hvs-entries', asExecutive)).json.map((h: { key: string }) => h.key)).toEqual([RAN]);
+    expect((await api('GET', '/questionnaires', asAdmin())).json.length).toBeGreaterThan(1);
+    expect((await api('POST', '/responses', asExecutive, { questionnaireCode: CORE_FM })).status).toBe(403);
+    expect((await api('POST', '/responses', asProjectAdmin, { questionnaireCode: QUESTIONNAIRE })).json.id).toBe(existing.json.id);
     const all = await prisma.questionnaire.findMany({ where: { isActive: true }, select: { code: true } });
     await updateProject(projectAId, { questionnaireCodes: all.map((q) => q.code) });
   });
 
-  it('imports a questionnaire selection by name, code or HVS group, expanding group members', async () => {
-    const result = await importProject(
-      {
-        projectName: `${PREFIX}-project-qimport__`,
-        organizations: [`${PREFIX}-org-qimport__`],
-        questionnaires: ['ran fault management', 'Core Network Stability', 'Not a questionnaire'],
-        natCos: [],
-        members: [],
-      },
-      adminId,
-    );
-    const ranName = (await prisma.questionnaire.findUniqueOrThrow({ where: { code: RAN } })).name;
-    expect(result.project.questionnaireCodes).toEqual([CORE_FM, QUESTIONNAIRE, RAN].sort());
-    const qRows = result.rows.filter((r) => r.sheet === 'Questionnaires');
-    expect(qRows.map((r) => r.status)).toEqual(['created', 'created', 'error']);
-    expect(qRows[0]!.label).toBe(ranName);
-
-    // Re-import without a Questionnaires sheet leaves the selection unchanged.
-    const again = await importProject(
-      { projectName: `${PREFIX}-project-qimport__`, organizations: [`${PREFIX}-org-qimport__`], natCos: [], members: [] },
-      adminId,
-    );
-    expect(again.project.questionnaireCodes).toEqual(result.project.questionnaireCodes);
+  it('lets only Application Admins and Project Admins reset their own answers', async () => {
+    const memberAInA = await membershipOf(memberAId, orgAId, projectAId);
+    const memberResponse = await prisma.questionnaireResponse.findFirstOrThrow({ where: { membershipId: memberAInA.id } });
+    expect((await api('DELETE', `/responses/${memberResponse.id}`, { userId: memberAId, membershipId: memberAInA.id })).status).toBe(403);
+    const ownResponse = await prisma.questionnaireResponse.findFirstOrThrow({ where: { membershipId: asProjectAdmin.membershipId } });
+    expect((await api('DELETE', `/responses/${ownResponse.id}`, asProjectAdmin)).status).toBe(204);
   });
 });

@@ -90,7 +90,7 @@ describe('getCombinedBenchmarkingSummary (real DB)', () => {
   });
 
   it('scopes to a single organization when one is provided', async () => {
-    const summary = await getCombinedBenchmarkingSummary(CORE_GROUP, orgBothId);
+    const summary = await getCombinedBenchmarkingSummary(CORE_GROUP, { organizationId: orgBothId, projectId: null });
     expect(summary.rows.every((r) => r.organizationId === orgBothId)).toBe(true);
   });
 });

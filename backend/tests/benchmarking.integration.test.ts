@@ -203,7 +203,7 @@ describe('getBenchmarkingSummary NatCo/country rows and getOpCoBenchmarkingSumma
   });
 
   it('benchmarks OpCos within one organization, including a synthetic row for unassigned respondents', async () => {
-    const summary = await getOpCoBenchmarkingSummary(orgAId, 'RAN_FM_GB1059A');
+    const summary = await getOpCoBenchmarkingSummary({ organizationId: orgAId, projectId: null }, 'RAN_FM_GB1059A');
     expect(summary.organizationId).toBe(orgAId);
     const byName = Object.fromEntries(summary.rows.map((o) => [o.opCoName, o]));
 

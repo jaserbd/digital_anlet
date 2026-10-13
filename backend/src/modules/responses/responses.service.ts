@@ -123,7 +123,7 @@ function toResponseDto(response: {
 const RESPONSE_INCLUDE = {
   questionnaire: true,
   // The organization the response counts toward — its open/closed setting governs edits.
-  membership: { select: { organizationId: true } },
+  membership: { select: { organizationId: true, projectId: true } },
   answers: true,
   comments: { include: { subScenarios: true } },
   keis: true,
@@ -143,12 +143,15 @@ async function loadOwnedResponse(responseId: string, userId: string) {
   return response;
 }
 
-// Resolves the accepting-responses flag of the organization this response counts toward
-// (THIRD_REVIEW.md item 7). It's the response's own membership organization, not the caller's
+// Resolves the accepting-responses flag of the organization (and project — PROJECTS_V2_PLAN.md)
+// this response counts toward (THIRD_REVIEW.md item 7). It's the response's own membership, not the caller's
 // active context (MULTI_ORG_PLAN.md) — otherwise switching to another organization could
 // edit a response whose own organization has closed. Shared by all mutation guards below.
-async function assertAccepting(questionnaireId: string, organizationId: string): Promise<void> {
-  if (!(await getAcceptingResponses(questionnaireId, organizationId))) {
+async function assertAccepting(
+  questionnaireId: string,
+  membership: { organizationId: string; projectId: string | null },
+): Promise<void> {
+  if (!(await getAcceptingResponses(questionnaireId, membership.organizationId, membership.projectId))) {
     throw new AcceptanceClosedError();
   }
 }
@@ -188,9 +191,9 @@ export async function getOrCreateResponse(
   // removed from the project; only starting a new one is refused.
   const membership = await prisma.membership.findUniqueOrThrow({
     where: { id: membershipId },
-    select: { organizationId: true },
+    select: { projectId: true },
   });
-  const allowed = await getAllowedQuestionnaireIds(membership.organizationId);
+  const allowed = await getAllowedQuestionnaireIds(membership.projectId);
   if (allowed && !allowed.has(questionnaire.id)) {
     throw new QuestionnaireNotInProjectError();
   }
@@ -216,7 +219,7 @@ export async function resetResponse(responseId: string, caller: { sub: string; i
   if (!caller.isAdmin && membership?.role !== 'PROJECT_ADMIN') {
     throw new ResetNotAllowedError();
   }
-  await assertAccepting(response.questionnaireId, response.membership.organizationId);
+  await assertAccepting(response.questionnaireId, response.membership);
   await prisma.questionnaireResponse.delete({ where: { id: responseId } });
 }
 
@@ -226,7 +229,7 @@ export async function upsertAnswer(
   input: { questionId: string; subScenarioId: string; selectedOption: AnswerOption },
 ): Promise<void> {
   const response = await loadOwnedResponse(responseId, userId);
-  await assertAccepting(response.questionnaireId, response.membership.organizationId);
+  await assertAccepting(response.questionnaireId, response.membership);
 
   await prisma.answer.upsert({
     where: {
@@ -255,7 +258,7 @@ export async function deleteAnswer(
   input: { questionId: string; subScenarioId: string },
 ): Promise<void> {
   const response = await loadOwnedResponse(responseId, userId);
-  await assertAccepting(response.questionnaireId, response.membership.organizationId);
+  await assertAccepting(response.questionnaireId, response.membership);
 
   await prisma.answer.deleteMany({
     where: { responseId, questionId: input.questionId, subScenarioId: input.subScenarioId },
@@ -273,7 +276,7 @@ export async function upsertComment(
   },
 ): Promise<void> {
   const response = await loadOwnedResponse(responseId, userId);
-  await assertAccepting(response.questionnaireId, response.membership.organizationId);
+  await assertAccepting(response.questionnaireId, response.membership);
 
   await prisma.$transaction(async (tx) => {
     const comment = await tx.questionComment.upsert({
@@ -313,7 +316,7 @@ export async function upsertKei(
   input: KeiAnswerDto,
 ): Promise<void> {
   const response = await loadOwnedResponse(responseId, userId);
-  await assertAccepting(response.questionnaireId, response.membership.organizationId);
+  await assertAccepting(response.questionnaireId, response.membership);
 
   const indicator = await prisma.effectivenessIndicator.findUnique({ where: { id: input.indicatorId } });
   if (!indicator || indicator.questionnaireId !== response.questionnaireId) {
@@ -357,7 +360,7 @@ export async function submitResponse(
   userId: string,
 ): Promise<ScoreResultDto> {
   const response = await loadOwnedResponse(responseId, userId);
-  await assertAccepting(response.questionnaireId, response.membership.organizationId);
+  await assertAccepting(response.questionnaireId, response.membership);
 
   const questionnaire = await prisma.questionnaire.findUniqueOrThrow({
     where: { id: response.questionnaireId },

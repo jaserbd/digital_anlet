@@ -10,6 +10,9 @@ export interface RequestUser {
   email: string;
   role: Role;
   organizationId: string;
+  // The active membership's project (PROJECTS_V2_PLAN.md) — dashboards, questionnaires and
+  // open/close are scoped to it. Null in the admin context and outside projects.
+  projectId: string | null;
   membershipId: string | null;
   isAdmin: boolean;
 }
@@ -33,7 +36,7 @@ export async function resolveRequestUser(
       isActive: true,
       organizationId: true,
       memberships: {
-        select: { id: true, role: true, organizationId: true },
+        select: { id: true, role: true, organizationId: true, projectId: true },
         orderBy: { createdAt: 'asc' },
       },
     },
@@ -52,6 +55,7 @@ export async function resolveRequestUser(
       email: user.email,
       role: membership.role,
       organizationId: membership.organizationId,
+      projectId: membership.projectId,
       membershipId: membership.id,
       isAdmin,
     };
@@ -63,13 +67,14 @@ export async function resolveRequestUser(
     email: user.email,
     role: isAdmin ? 'ADMIN' : 'NORMAL_USER',
     organizationId: user.organizationId,
+    projectId: null,
     membershipId: null,
     isAdmin,
   };
 }
 
 /** The contexts shown in the switcher: the admin context first (admins only), then each
- * membership ordered by organization name. */
+ * membership ordered by project and organization name (project-less ones last). */
 export async function listUserContexts(userId: string): Promise<UserContextDto[]> {
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
@@ -83,8 +88,10 @@ export async function listUserContexts(userId: string): Promise<UserContextDto[]
           role: true,
           organizationId: true,
           organization: { select: { name: true } },
+          projectId: true,
+          project: { select: { name: true } },
         },
-        orderBy: { organization: { name: 'asc' } },
+        orderBy: [{ project: { name: 'asc' } }, { organization: { name: 'asc' } }],
       },
     },
   });
@@ -92,6 +99,8 @@ export async function listUserContexts(userId: string): Promise<UserContextDto[]
     membershipId: m.id,
     organizationId: m.organizationId,
     organizationName: m.organization.name,
+    projectId: m.projectId,
+    projectName: m.project?.name ?? null,
     role: m.role,
   }));
   if (user.role === 'ADMIN') {
@@ -99,6 +108,8 @@ export async function listUserContexts(userId: string): Promise<UserContextDto[]
       membershipId: null,
       organizationId: user.organizationId,
       organizationName: user.organization.name,
+      projectId: null,
+      projectName: null,
       role: 'ADMIN',
     });
   }

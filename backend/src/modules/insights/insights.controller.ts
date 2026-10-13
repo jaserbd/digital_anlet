@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { requireParam } from '../../lib/params';
-import { canViewOrganization } from '../../lib/projectAccess';
+import { canViewOrganization, optionalProjectId } from '../../lib/projectAccess';
 import { findHvsGroupByCode, type HvsGroupDefinition } from '../questionnaire/hvsGroups';
 import {
   getAnswerDrilldown,
@@ -11,7 +11,16 @@ import {
   getOpCoBenchmarkingSummary,
   getOrganizationQuestionnaireSummary,
   QuestionnaireNotFoundError,
+  type InsightsScope,
 } from './insights.service';
+
+// The (organization, project) a dashboard request looks at (PROJECTS_V2_PLAN.md): Executives and
+// Project Admins always see their active membership's project; Application Admins choose it with
+// the `projectId` query param (absent = the organization's memberships outside projects).
+function insightsScope(req: Request, organizationId: string): InsightsScope {
+  const projectId = req.user!.role === 'ADMIN' ? optionalProjectId(req.query.projectId) : req.user!.projectId;
+  return { organizationId, projectId };
+}
 
 function requireHvsGroup(req: Request, res: Response): HvsGroupDefinition | null {
   const groupCode = req.query.groupCode;
@@ -42,7 +51,7 @@ export async function getOrganizationQuestionnaireSummaryHandler(req: Request, r
   }
 
   try {
-    const summary = await getOrganizationQuestionnaireSummary(orgId, questionnaireCode, {
+    const summary = await getOrganizationQuestionnaireSummary(insightsScope(req, orgId), questionnaireCode, {
       anonymize: req.user!.role === 'EXECUTIVE',
     });
     res.json(summary);
@@ -89,7 +98,7 @@ export async function getOpCoBenchmarkingSummaryHandler(req: Request, res: Respo
   }
 
   try {
-    const summary = await getOpCoBenchmarkingSummary(orgId, questionnaireCode);
+    const summary = await getOpCoBenchmarkingSummary(insightsScope(req, orgId), questionnaireCode);
     res.json(summary);
   } catch (err) {
     if (err instanceof QuestionnaireNotFoundError) {
@@ -116,7 +125,7 @@ export async function getAnswerDrilldownHandler(req: Request, res: Response) {
 
   try {
     // Executives see participants as pseudonyms (ANONYMOUS_EXECUTIVE_PLAN.md); Admins see identities.
-    const drilldown = await getAnswerDrilldown(orgId, questionnaireCode, { anonymize: req.user!.role === 'EXECUTIVE' });
+    const drilldown = await getAnswerDrilldown(insightsScope(req, orgId), questionnaireCode, { anonymize: req.user!.role === 'EXECUTIVE' });
     res.json(drilldown);
   } catch (err) {
     if (err instanceof QuestionnaireNotFoundError) {
@@ -144,7 +153,7 @@ export async function getCognitiveActivitySummaryHandler(req: Request, res: Resp
   }
 
   try {
-    const summary = await getCognitiveActivitySummary(orgId, questionnaireCode, { opCoId, country });
+    const summary = await getCognitiveActivitySummary(insightsScope(req, orgId), questionnaireCode, { opCoId, country });
     res.json(summary);
   } catch (err) {
     if (err instanceof QuestionnaireNotFoundError) {
@@ -202,7 +211,7 @@ export async function getCombinedOpCoBenchmarkingSummaryHandler(req: Request, re
   }
 
   try {
-    const summary = await getCombinedBenchmarkingSummary(group, orgId);
+    const summary = await getCombinedBenchmarkingSummary(group, insightsScope(req, orgId));
     res.json(summary);
   } catch (err) {
     if (err instanceof QuestionnaireNotFoundError) {

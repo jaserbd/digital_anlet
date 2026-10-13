@@ -47,22 +47,19 @@ function toOptionDtos(row: OptionColumns): QuestionOptionDto[] {
 }
 
 /**
- * The questionnaire ids an organization works with (PROJECT_QUESTIONNAIRES_PLAN.md): its
- * project's selection, or null (= every questionnaire) when it has no project.
+ * The questionnaire ids a project works with (PROJECT_QUESTIONNAIRES_PLAN.md), or null (= every
+ * questionnaire) for no project — a membership outside projects, or the admin context.
  */
-export async function getAllowedQuestionnaireIds(organizationId: string): Promise<Set<string> | null> {
-  const organization = await prisma.organization.findUnique({
-    where: { id: organizationId },
-    select: { project: { select: { questionnaires: { select: { questionnaireId: true } } } } },
-  });
-  if (!organization?.project) return null;
-  return new Set(organization.project.questionnaires.map((q) => q.questionnaireId));
+export async function getAllowedQuestionnaireIds(projectId: string | null): Promise<Set<string> | null> {
+  if (!projectId) return null;
+  const rows = await prisma.projectQuestionnaire.findMany({ where: { projectId }, select: { questionnaireId: true } });
+  return new Set(rows.map((q) => q.questionnaireId));
 }
 
-// `organizationId`: limit the listing to that organization's project questionnaires; omitted
-// for the Application Admin context, which sees every questionnaire.
-export async function listQuestionnaires(organizationId?: string): Promise<QuestionnaireSummaryDto[]> {
-  const allowed = organizationId ? await getAllowedQuestionnaireIds(organizationId) : null;
+// `projectId`: limit the listing to that project's questionnaires (the caller's active
+// membership's project); null for the admin context and project-less memberships.
+export async function listQuestionnaires(projectId: string | null = null): Promise<QuestionnaireSummaryDto[]> {
+  const allowed = await getAllowedQuestionnaireIds(projectId);
   const questionnaires = await prisma.questionnaire.findMany({
     where: { isActive: true, ...(allowed ? { id: { in: [...allowed] } } : {}) },
     orderBy: [{ networkType: 'asc' }, { hvsCategory: 'asc' }],
@@ -82,8 +79,8 @@ export async function listQuestionnaires(organizationId?: string): Promise<Quest
  * there. This is for results-viewing/benchmarking contexts, where the two should present as
  * one "Core Network Fault Management & Stability Assessment" HVS entry.
  */
-export async function listHvsEntries(organizationId?: string): Promise<HvsListItemDto[]> {
-  const questionnaires = await listQuestionnaires(organizationId);
+export async function listHvsEntries(projectId: string | null = null): Promise<HvsListItemDto[]> {
+  const questionnaires = await listQuestionnaires(projectId);
   const available = new Set(questionnaires.map((q) => q.code));
   const grouped = new Set(HVS_GROUPS.flatMap((g) => g.questionnaireCodes));
   // A group is selected for a project as a whole (both halves), so it's listed only when all of
@@ -104,18 +101,22 @@ export async function listHvsEntries(organizationId?: string): Promise<HvsListIt
 }
 
 /**
- * Per-(questionnaire, organization) accepting-responses flag (THIRD_REVIEW.md item 7) —
- * defaults to true when no QuestionnaireOrgSetting row exists (shouldn't normally happen,
- * every org/questionnaire pair is backfilled on creation — see organizations.service.ts and
- * seed.ts — but this keeps the read defensive rather than throwing).
+ * Accepting-responses flag (THIRD_REVIEW.md item 7) — per project + organization for memberships
+ * in a project (QuestionnaireProjectSetting, PROJECTS_V2_PLAN.md), per organization otherwise
+ * (QuestionnaireOrgSetting). Defaults to true when no row exists.
  */
 export async function getAcceptingResponses(
   questionnaireId: string,
   organizationId: string,
+  projectId: string | null = null,
 ): Promise<boolean> {
-  const setting = await prisma.questionnaireOrgSetting.findUnique({
-    where: { questionnaireId_organizationId: { questionnaireId, organizationId } },
-  });
+  const setting = projectId
+    ? await prisma.questionnaireProjectSetting.findUnique({
+        where: { projectId_organizationId_questionnaireId: { projectId, organizationId, questionnaireId } },
+      })
+    : await prisma.questionnaireOrgSetting.findUnique({
+        where: { questionnaireId_organizationId: { questionnaireId, organizationId } },
+      });
   return setting?.acceptingResponses ?? true;
 }
 
@@ -125,6 +126,7 @@ export async function setAcceptingResponses(
   code: string,
   organizationId: string,
   acceptingResponses: boolean,
+  projectId: string | null = null,
 ): Promise<void> {
   const questionnaire = await prisma.questionnaire.findUnique({ where: { code } });
   if (!questionnaire) {
@@ -134,6 +136,16 @@ export async function setAcceptingResponses(
   if (!organization) {
     throw new OrganizationNotFoundError();
   }
+  if (projectId) {
+    await prisma.questionnaireProjectSetting.upsert({
+      where: {
+        projectId_organizationId_questionnaireId: { projectId, organizationId, questionnaireId: questionnaire.id },
+      },
+      update: { acceptingResponses },
+      create: { projectId, organizationId, questionnaireId: questionnaire.id, acceptingResponses },
+    });
+    return;
+  }
   await prisma.questionnaireOrgSetting.upsert({
     where: { questionnaireId_organizationId: { questionnaireId: questionnaire.id, organizationId } },
     update: { acceptingResponses },
@@ -141,7 +153,11 @@ export async function setAcceptingResponses(
   });
 }
 
-export async function getQuestionnaireByCode(code: string, organizationId: string): Promise<QuestionnaireDto> {
+export async function getQuestionnaireByCode(
+  code: string,
+  organizationId: string,
+  projectId: string | null = null,
+): Promise<QuestionnaireDto> {
   const questionnaire = await prisma.questionnaire.findUnique({
     where: { code },
     include: {
@@ -155,7 +171,7 @@ export async function getQuestionnaireByCode(code: string, organizationId: strin
     throw new QuestionnaireNotFoundError();
   }
 
-  const acceptingResponses = await getAcceptingResponses(questionnaire.id, organizationId);
+  const acceptingResponses = await getAcceptingResponses(questionnaire.id, organizationId, projectId);
 
   const questions: QuestionDto[] = questionnaire.questions.map((q) => {
     const options = toOptionDtos(q);

@@ -28,16 +28,45 @@ enum ResponseStatus {
   SUBMITTED
 }
 
-// A client engagement grouping organizations (PROJECTS_PLAN.md) — normally exactly one. Its
-// Project Admins are the PROJECT_ADMIN memberships in its organizations.
+// A client engagement (PROJECTS_PLAN.md, PROJECTS_V2_PLAN.md): organizations (an organization
+// can be in several projects), the questionnaires they work with, and memberships — which are
+// per project, so answers are separate per project. Its Project Admins are the PROJECT_ADMIN
+// memberships of the project.
 model Project {
   id        String   @id @default(cuid())
   name      String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organizations  Organization[]
+  organizations  ProjectOrganization[]
   questionnaires ProjectQuestionnaire[]
+  memberships    Membership[]
+  settings       QuestionnaireProjectSetting[]
+}
+
+model ProjectOrganization {
+  projectId      String
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@id([projectId, organizationId])
+}
+
+// Per-(project, organization, questionnaire) open/close (PROJECTS_V2_PLAN.md) — the project-scoped
+// counterpart of QuestionnaireOrgSetting, which keeps serving project-less memberships. A missing
+// row means accepting.
+model QuestionnaireProjectSetting {
+  projectId          String
+  project            Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organizationId     String
+  organization       Organization  @relation(fields: [organizationId], references: [id])
+  questionnaireId    String
+  questionnaire      Questionnaire @relation(fields: [questionnaireId], references: [id])
+  acceptingResponses Boolean       @default(true)
+  updatedAt          DateTime      @updatedAt
+
+  @@id([projectId, organizationId, questionnaireId])
 }
 
 // The questionnaires a project's organizations work with (PROJECT_QUESTIONNAIRES_PLAN.md) —
@@ -57,9 +86,8 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // At most one project per organization; null for the internal org and unassigned orgs.
-  projectId String?
-  project   Project? @relation(fields: [projectId], references: [id])
+  projects                 ProjectOrganization[]
+  projectSettings          QuestionnaireProjectSetting[]
 
   users                    User[]
   memberships              Membership[]
@@ -167,6 +195,13 @@ model Membership {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
 
+  // The project this membership takes part in (PROJECTS_V2_PLAN.md); null for organizations
+  // outside projects (Anlet (Internal), Detecon). One membership per user, organization and
+  // project — the unique index is NULLS NOT DISTINCT (see the migration), so project-less
+  // memberships can't be duplicated either.
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id])
+
   opCoId        String?
   opCo          OpCo?   @relation(fields: [opCoId], references: [id])
   workingDomain String?
@@ -174,7 +209,7 @@ model Membership {
 
   responses QuestionnaireResponse[]
 
-  @@unique([userId, organizationId])
+  @@unique([userId, organizationId, projectId])
 }
 
 // Forgot-password flow (OVERVIEW.md item 12) — a single-use, expiring token emailed as a
@@ -220,6 +255,7 @@ model Questionnaire {
   orgSettings             QuestionnaireOrgSetting[]
   effectivenessIndicators EffectivenessIndicator[]
   projects                ProjectQuestionnaire[]
+  projectSettings         QuestionnaireProjectSetting[]
 }
 
 // Admin-controlled per-(questionnaire, organization) open/close toggle (THIRD_REVIEW.md item

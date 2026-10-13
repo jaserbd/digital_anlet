@@ -65,6 +65,7 @@ export async function getAuthenticatedUser(caller: RequestUser): Promise<Authent
     email: caller.email,
     role: caller.role,
     organizationId: caller.organizationId,
+    projectId: caller.projectId,
     activeMembershipId: caller.membershipId,
     isAdmin: caller.isAdmin,
     contexts,

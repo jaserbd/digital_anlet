@@ -38,6 +38,17 @@ export class QuestionnaireNotFoundError extends Error {}
 const RESPONDENT_ROLES: Role[] = ['NORMAL_USER', 'EXECUTIVE'];
 const COUNTED_MEMBERSHIP = { role: { in: RESPONDENT_ROLES } };
 
+/** What an organization dashboard looks at (PROJECTS_V2_PLAN.md): one organization within one
+ * project (null = its memberships outside projects) — answers are separate per project. */
+export interface InsightsScope {
+  organizationId: string;
+  projectId: string | null;
+}
+
+function scopedMembership(scope: InsightsScope) {
+  return { organizationId: scope.organizationId, projectId: scope.projectId, ...COUNTED_MEMBERSHIP };
+}
+
 // Executives see participants anonymously (ANONYMOUS_EXECUTIVE_PLAN.md): no emails, names,
 // designations or user ids leave the server for them. Admins pass `anonymize: false`.
 export interface InsightsViewOptions {
@@ -125,10 +136,10 @@ function subScenarioAverages(
  * organization — the data behind the Executive's "how many people picked option A for
  * question 1" view (REQUIREMENTS.md, Group2_Executive). Distribution counts are scoped to
  * SUBMITTED responses only, so in-progress answers don't skew the picture. Callers are
- * responsible for authorizing that `organizationId` is one the requester may view.
+ * responsible for authorizing that `scope` is one the requester may view.
  */
 export async function getOrganizationQuestionnaireSummary(
-  organizationId: string,
+  scope: InsightsScope,
   questionnaireCode: string,
   options: InsightsViewOptions = {},
 ): Promise<OrganizationQuestionnaireSummaryDto> {
@@ -147,7 +158,7 @@ export async function getOrganizationQuestionnaireSummary(
   // are per membership, so a person in two organizations appears in each with that
   // organization's NatCo and answers.
   const memberships = await prisma.membership.findMany({
-    where: { organizationId, ...COUNTED_MEMBERSHIP },
+    where: scopedMembership(scope),
     orderBy: { user: { email: 'asc' } },
     include: {
       user: { select: { id: true, email: true, firstName: true, lastName: true } },
@@ -184,7 +195,7 @@ export async function getOrganizationQuestionnaireSummary(
       response: {
         questionnaireId: questionnaire.id,
         status: 'SUBMITTED',
-        membership: { organizationId, ...COUNTED_MEMBERSHIP },
+        membership: scopedMembership(scope),
       },
     },
     _count: { _all: true },
@@ -315,11 +326,11 @@ const IDENTITY_SELECT = {
  * respondent's own comment for the specific question, and the full org-scoped comment list
  * independently (`comments`) for the Organization Deep-Dive page and GroupedCommentsList.
  * Scoped to SUBMITTED responses only, same convention as the rest of this module. Callers
- * are responsible for authorizing that `organizationId` is one the requester may view (same
+ * are responsible for authorizing that `scope` is one the requester may view (same
  * convention as getOrganizationQuestionnaireSummary).
  */
 export async function getAnswerDrilldown(
-  organizationId: string,
+  scope: InsightsScope,
   questionnaireCode: string,
   options: InsightsViewOptions = {},
 ): Promise<AnswerDrilldownDto> {
@@ -331,7 +342,7 @@ export async function getAnswerDrilldown(
   const responseScope = {
     questionnaireId: questionnaire.id,
     status: 'SUBMITTED' as const,
-    membership: { organizationId, ...COUNTED_MEMBERSHIP },
+    membership: scopedMembership(scope),
   };
 
   const [answers, comments, keis] = await Promise.all([
@@ -436,11 +447,11 @@ export async function getAnswerDrilldown(
  * contiguous-run assumption), plus the same responses' overall finalScore for the headline
  * number shown next to the chart. A null averageScore/averageFinalScore means no matching
  * SUBMITTED response had a score there — never a misleading 0 (same convention as
- * computeBenchmarkRows below). Callers are responsible for authorizing that `organizationId`
+ * computeBenchmarkRows below). Callers are responsible for authorizing that `scope`
  * is one the requester may view (same convention as getAnswerDrilldown).
  */
 export async function getCognitiveActivitySummary(
-  organizationId: string,
+  scope: InsightsScope,
   questionnaireCode: string,
   filters: { opCoId?: string; country?: string },
 ): Promise<CognitiveActivitySummaryDto> {
@@ -455,8 +466,7 @@ export async function getCognitiveActivitySummary(
         questionnaireId: questionnaire.id,
         status: 'SUBMITTED',
         membership: {
-          organizationId,
-          ...COUNTED_MEMBERSHIP,
+          ...scopedMembership(scope),
           ...(filters.opCoId ? { opCoId: filters.opCoId } : {}),
           ...(filters.country ? { opCo: { country: filters.country } } : {}),
         },
@@ -516,7 +526,11 @@ export async function getCrossOrgCommentCollection(questionnaireCode: string): P
   }
 
   const membershipWithOrg = {
-    select: { ...IDENTITY_SELECT, organization: { select: { id: true, name: true } } },
+    select: {
+      ...IDENTITY_SELECT,
+      organization: { select: { id: true, name: true } },
+      project: { select: { name: true } },
+    },
   };
   const [comments, keiComments] = await Promise.all([
     prisma.questionComment.findMany({
@@ -548,6 +562,7 @@ export async function getCrossOrgCommentCollection(questionnaireCode: string): P
     respondent: toIdentity(c.response.membership),
     organizationId: c.response.membership.organization.id,
     organizationName: c.response.membership.organization.name,
+    projectName: c.response.membership.project?.name ?? null,
   }));
 
   const keiCommentEntries: CrossOrgKeiCommentEntryDto[] = keiComments.map((k) => ({
@@ -558,12 +573,15 @@ export async function getCrossOrgCommentCollection(questionnaireCode: string): P
     respondent: toIdentity(k.response.membership),
     organizationId: k.response.membership.organization.id,
     organizationName: k.response.membership.organization.name,
+    projectName: k.response.membership.project?.name ?? null,
   }));
 
   return { questionnaireCode: questionnaire.code, comments: commentEntries, keiComments: keiCommentEntries };
 }
 
 interface BenchmarkRowLabel {
+  projectId: string | null;
+  projectName: string | null;
   organizationId: string;
   organizationName: string;
   opCoId: string | null;
@@ -571,49 +589,86 @@ interface BenchmarkRowLabel {
   country: string | null;
 }
 
-function rowKey(organizationId: string, opCoId: string | null): string {
-  return `${organizationId}:${opCoId ?? 'none'}`;
+function rowKey(projectId: string | null, organizationId: string, opCoId: string | null): string {
+  return `${projectId ?? 'none'}:${organizationId}:${opCoId ?? 'none'}`;
+}
+
+interface BenchmarkUnit {
+  projectId: string | null;
+  projectName: string | null;
+  organization: { id: string; name: string; opCos: { id: string; name: string; country: string }[] };
+}
+
+/** The (project, organization) pairs benchmark rows are built for: every project link, plus each
+ * organization's memberships outside projects — for organizations in no project at all, or that
+ * have respondents outside projects (e.g. Detecon). Ordered by project (outside projects last),
+ * then organization. */
+async function benchmarkUnits(scope?: InsightsScope): Promise<BenchmarkUnit[]> {
+  const orgSelect = { id: true, name: true, opCos: { orderBy: { name: 'asc' as const } } };
+  if (scope) {
+    const [organization, project] = await Promise.all([
+      prisma.organization.findUniqueOrThrow({ where: { id: scope.organizationId }, select: orgSelect }),
+      scope.projectId ? prisma.project.findUnique({ where: { id: scope.projectId }, select: { name: true } }) : null,
+    ]);
+    return [{ projectId: scope.projectId, projectName: project?.name ?? null, organization }];
+  }
+  const [links, organizations, projectlessMemberships] = await Promise.all([
+    prisma.projectOrganization.findMany({
+      select: { project: { select: { id: true, name: true } }, organization: { select: orgSelect } },
+      orderBy: [{ project: { name: 'asc' } }, { organization: { name: 'asc' } }],
+    }),
+    prisma.organization.findMany({
+      select: { ...orgSelect, _count: { select: { projects: true } } },
+      orderBy: { name: 'asc' },
+    }),
+    prisma.membership.findMany({
+      where: { ...COUNTED_MEMBERSHIP, projectId: null },
+      select: { organizationId: true },
+      distinct: ['organizationId'],
+    }),
+  ]);
+  const withProjectless = new Set(projectlessMemberships.map((m) => m.organizationId));
+  return [
+    ...links.map((l) => ({ projectId: l.project.id, projectName: l.project.name, organization: l.organization })),
+    ...organizations
+      .filter((o) => o._count.projects === 0 || withProjectless.has(o.id))
+      .map(({ _count: _ignored, ...organization }) => ({ projectId: null, projectName: null, organization })),
+  ];
 }
 
 /**
- * One row per (Organization, OpCo) pair, optionally scoped to a single organization —
- * shared by getBenchmarkingSummary (cross-org, Admin) and getOpCoBenchmarkingSummary
- * (single-org, Executive/Admin). A synthetic "no OpCo" row (opCoId/country null, opCoName
- * falls back to the organization's own name) is included for any organization that either
- * has zero OpCos at all (small orgs) or has at least one respondent (Normal User or
- * Executive) not yet assigned one —
- * SECOND_REVIEW.md item 9's "for small organizations, NatCo and Organization will be the
- * same" plus not silently dropping unassigned respondents from the table.
+ * One row per (Project, Organization, OpCo) — PROJECTS_V2_PLAN.md: an organization in two
+ * projects gets separate rows, since answers are separate per project — optionally scoped to one
+ * organization + project. Shared by getBenchmarkingSummary (cross-org, Admin) and
+ * getOpCoBenchmarkingSummary (single-org, Executive/Admin). A synthetic "no OpCo" row
+ * (opCoId/country null, opCoName falls back to the organization's own name) is included for any
+ * organization that either has zero OpCos at all (small orgs) or has at least one respondent not
+ * yet assigned one — SECOND_REVIEW.md item 9's "for small organizations, NatCo and Organization
+ * will be the same" plus not silently dropping unassigned respondents from the table.
  */
 async function computeBenchmarkRows(
   questionnaire: { id: string; subScenarios: { code: SubScenarioCode }[] },
-  scopeOrganizationId?: string,
+  scope?: InsightsScope,
 ): Promise<BenchmarkRowDto[]> {
-  const orgWhere = scopeOrganizationId ? { id: scopeOrganizationId } : {};
-  const organizations = await prisma.organization.findMany({
-    where: orgWhere,
-    orderBy: { name: 'asc' },
-    include: { opCos: { orderBy: { name: 'asc' } } },
-  });
+  const units = await benchmarkUnits(scope);
+  const membershipWhere = scope ? scopedMembership(scope) : COUNTED_MEMBERSHIP;
 
-  const unassignedUserOrgIds = new Set(
+  const unassignedKeys = new Set(
     (
       await prisma.membership.findMany({
-        where: {
-          ...COUNTED_MEMBERSHIP,
-          opCoId: null,
-          ...(scopeOrganizationId ? { organizationId: scopeOrganizationId } : {}),
-        },
-        select: { organizationId: true },
-        distinct: ['organizationId'],
+        where: { ...membershipWhere, opCoId: null },
+        select: { organizationId: true, projectId: true },
+        distinct: ['organizationId', 'projectId'],
       })
-    ).map((m) => m.organizationId),
+    ).map((m) => rowKey(m.projectId, m.organizationId, null)),
   );
 
   const rowLabels: BenchmarkRowLabel[] = [];
-  for (const org of organizations) {
+  for (const { projectId, projectName, organization: org } of units) {
     for (const opCo of org.opCos) {
       rowLabels.push({
+        projectId,
+        projectName,
         organizationId: org.id,
         organizationName: org.name,
         opCoId: opCo.id,
@@ -621,8 +676,10 @@ async function computeBenchmarkRows(
         country: opCo.country,
       });
     }
-    if (org.opCos.length === 0 || unassignedUserOrgIds.has(org.id)) {
+    if (org.opCos.length === 0 || unassignedKeys.has(rowKey(projectId, org.id, null))) {
       rowLabels.push({
+        projectId,
+        projectName,
         organizationId: org.id,
         organizationName: org.name,
         opCoId: null,
@@ -633,35 +690,32 @@ async function computeBenchmarkRows(
   }
 
   const respondentCounts = await prisma.membership.groupBy({
-    by: ['organizationId', 'opCoId'],
-    where: { ...COUNTED_MEMBERSHIP, ...(scopeOrganizationId ? { organizationId: scopeOrganizationId } : {}) },
+    by: ['projectId', 'organizationId', 'opCoId'],
+    where: membershipWhere,
     _count: { _all: true },
   });
   const respondentCountByKey = new Map(
-    respondentCounts.map((r) => [rowKey(r.organizationId, r.opCoId), r._count._all]),
+    respondentCounts.map((r) => [rowKey(r.projectId, r.organizationId, r.opCoId), r._count._all]),
   );
 
   const submittedResponses = await prisma.questionnaireResponse.findMany({
-    where: {
-      questionnaireId: questionnaire.id,
-      status: 'SUBMITTED',
-      membership: {
-        ...COUNTED_MEMBERSHIP,
-        ...(scopeOrganizationId ? { organizationId: scopeOrganizationId } : {}),
-      },
-    },
+    where: { questionnaireId: questionnaire.id, status: 'SUBMITTED', membership: membershipWhere },
     include: {
-      membership: { select: { organizationId: true, opCoId: true } },
+      membership: { select: { organizationId: true, projectId: true, opCoId: true } },
       result: { include: { subScenarioScores: { include: { subScenario: true } } } },
       _count: { select: { comments: true } },
     },
   });
-  const byKey = groupScores(submittedResponses, (r) => rowKey(r.membership.organizationId, r.membership.opCoId));
+  const byKey = groupScores(submittedResponses, (r) =>
+    rowKey(r.membership.projectId, r.membership.organizationId, r.membership.opCoId),
+  );
 
   return rowLabels.map((label) => {
-    const key = rowKey(label.organizationId, label.opCoId);
+    const key = rowKey(label.projectId, label.organizationId, label.opCoId);
     const acc = byKey.get(key);
     return {
+      projectId: label.projectId,
+      projectName: label.projectName,
       organizationId: label.organizationId,
       organizationName: label.organizationName,
       opCoId: label.opCoId,
@@ -705,17 +759,17 @@ export async function getBenchmarkingSummary(questionnaireCode: string): Promise
 /**
  * Benchmarks OpCos within a single organization — the Group CTO / Admin view of "how do my
  * NatCos compare for this HVS" (FIRST_REVIEW.md). Same row shape and averaging rules as
- * getBenchmarkingSummary, scoped to one organizationId. Callers are responsible for
- * authorizing that `organizationId` is one the requester may view (same convention as
+ * getBenchmarkingSummary, scoped to one organization + project. Callers are responsible for
+ * authorizing that `scope` is one the requester may view (same convention as
  * getOrganizationQuestionnaireSummary).
  */
 export async function getOpCoBenchmarkingSummary(
-  organizationId: string,
+  scope: InsightsScope,
   questionnaireCode: string,
 ): Promise<OpCoBenchmarkingSummaryDto> {
   const questionnaire = await loadQuestionnaireForBenchmarking(questionnaireCode);
-  const rows = await computeBenchmarkRows(questionnaire, organizationId);
-  return { questionnaireCode: questionnaire.code, organizationId, rows };
+  const rows = await computeBenchmarkRows(questionnaire, scope);
+  return { questionnaireCode: questionnaire.code, organizationId: scope.organizationId, rows };
 }
 
 /**
@@ -727,7 +781,7 @@ export async function getOpCoBenchmarkingSummary(
  */
 export async function getCombinedBenchmarkingSummary(
   group: { groupCode: string; questionnaireCodes: string[] },
-  scopeOrganizationId?: string,
+  scope?: InsightsScope,
 ): Promise<CombinedBenchmarkingSummaryDto> {
   const [codeA, codeB] = group.questionnaireCodes;
   if (!codeA || !codeB) {
@@ -738,18 +792,20 @@ export async function getCombinedBenchmarkingSummary(
     loadQuestionnaireForBenchmarking(codeB),
   ]);
   const [rowsA, rowsB] = await Promise.all([
-    computeBenchmarkRows(qA, scopeOrganizationId),
-    computeBenchmarkRows(qB, scopeOrganizationId),
+    computeBenchmarkRows(qA, scope),
+    computeBenchmarkRows(qB, scope),
   ]);
-  const byKeyB = new Map(rowsB.map((r) => [rowKey(r.organizationId, r.opCoId), r]));
+  const byKeyB = new Map(rowsB.map((r) => [rowKey(r.projectId, r.organizationId, r.opCoId), r]));
 
   const rows: CombinedBenchmarkRowDto[] = rowsA.map((rowA) => {
-    const rowB = byKeyB.get(rowKey(rowA.organizationId, rowA.opCoId))!;
+    const rowB = byKeyB.get(rowKey(rowA.projectId, rowA.organizationId, rowA.opCoId))!;
     const combinedAverageFinalScore =
       rowA.averageFinalScore != null && rowB.averageFinalScore != null
         ? round4(0.5 * rowA.averageFinalScore + 0.5 * rowB.averageFinalScore)
         : null;
     return {
+      projectId: rowA.projectId,
+      projectName: rowA.projectName,
       organizationId: rowA.organizationId,
       organizationName: rowA.organizationName,
       opCoId: rowA.opCoId,
@@ -763,7 +819,7 @@ export async function getCombinedBenchmarkingSummary(
 
   return {
     groupCode: group.groupCode,
-    ...(scopeOrganizationId ? { organizationId: scopeOrganizationId } : {}),
+    ...(scope ? { organizationId: scope.organizationId } : {}),
     rows,
   };
 }
