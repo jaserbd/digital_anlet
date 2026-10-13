@@ -208,6 +208,8 @@ export interface ProjectDto {
   organizations: OrganizationDto[];
   // Emails holding a PROJECT_ADMIN membership in any of the project's organizations.
   projectAdmins: { userId: string; email: string }[];
+  // The questionnaires its organizations work with (PROJECT_QUESTIONNAIRES_PLAN.md).
+  questionnaireCodes: string[];
 }
 
 export interface CreateProjectRequestDto {
@@ -218,6 +220,8 @@ export interface CreateProjectRequestDto {
 export interface UpdateProjectRequestDto {
   name?: string;
   organizationIds?: string[];
+  // At least one; an HVS group (Core FM + Stability) must be selected as a whole.
+  questionnaireCodes?: string[];
 }
 
 // Excel project import (PROJECTS_PLAN.md) — parsed client-side from the template, validated
@@ -228,6 +232,8 @@ export type ProjectMemberRole = Extract<Role, 'PROJECT_ADMIN' | 'EXECUTIVE' | 'N
 export interface ProjectImportRequestDto {
   projectName: string;
   organizations: string[];
+  // Questionnaire or HVS names/codes; omitted or empty = all for a new project, unchanged for an existing one.
+  questionnaires?: string[];
   natCos: { organization: string; name: string; country: string }[];
   members: {
     organization: string;
@@ -239,7 +245,7 @@ export interface ProjectImportRequestDto {
 }
 
 export interface ProjectImportResultRowDto {
-  sheet: 'Project' | 'NatCos' | 'Members';
+  sheet: 'Project' | 'Questionnaires' | 'NatCos' | 'Members';
   row: number; // 1-based data row within its sheet
   label: string; // organization / NatCo / email
   status: 'created' | 'existing' | 'membership-added' | 'error';
@@ -328,31 +334,6 @@ export interface CreateUserResultDto {
 // the user, who must change it at next login.
 export interface TemporaryPasswordDto {
   temporaryPassword: string;
-}
-
-// Bulk user creation from an uploaded CSV (OVERVIEW.md item 4) — one row per user, parsed
-// client-side and posted as a plain JSON array (no multipart upload needed). `organization`
-// is an exact organization name, resolved server-side. `password` is optional — omitted rows
-// get a generated one-time password (see BulkCreateUsersResultDto.tempPassword).
-export interface BulkCreateUsersRowDto {
-  email: string;
-  role: Extract<Role, 'NORMAL_USER' | 'EXECUTIVE'>;
-  organization: string;
-  password?: string;
-}
-
-// One result per input row, in the same order — a bad row (unknown org, taken email, weak
-// password) doesn't abort the rest of the batch.
-export interface BulkCreateUsersResultDto {
-  row: number;
-  email: string;
-  // 'membership-added': the email already existed, so the row's organization/role was added
-  // to that user (password unchanged — no tempPassword).
-  status: 'created' | 'membership-added' | 'error';
-  // Only present when status === 'created' — the one-time password (either the row's own or
-  // a generated one), shown to the Admin exactly once since it isn't stored in plain text.
-  tempPassword?: string;
-  error?: string;
 }
 
 export type RespondentStatus = 'NOT_STARTED' | ResponseStatus;

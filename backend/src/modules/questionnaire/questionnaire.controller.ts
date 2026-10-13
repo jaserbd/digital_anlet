@@ -12,12 +12,18 @@ import {
 import { prisma } from '../../lib/prisma';
 import { requireManageOrganization } from '../../lib/projectAccess';
 
-export async function listQuestionnairesHandler(_req: Request, res: Response) {
-  res.json(await listQuestionnaires());
+// Members of a project's organizations see only the project's questionnaires
+// (PROJECT_QUESTIONNAIRES_PLAN.md); the Application Admin context sees all.
+function listingScope(req: Request): string | undefined {
+  return req.user!.role === 'ADMIN' ? undefined : req.user!.organizationId;
 }
 
-export async function listHvsEntriesHandler(_req: Request, res: Response) {
-  res.json(await listHvsEntries());
+export async function listQuestionnairesHandler(req: Request, res: Response) {
+  res.json(await listQuestionnaires(listingScope(req)));
+}
+
+export async function listHvsEntriesHandler(req: Request, res: Response) {
+  res.json(await listHvsEntries(listingScope(req)));
 }
 
 export async function getQuestionnaireHandler(req: Request, res: Response) {

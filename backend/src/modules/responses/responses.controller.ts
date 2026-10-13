@@ -7,6 +7,7 @@ import {
   ForbiddenError,
   InvalidKeiError,
   NoMembershipError,
+  QuestionnaireNotInProjectError,
   ResetNotAllowedError,
   ResponseNotFoundError,
   ResultNotAvailableError,
@@ -74,6 +75,10 @@ function handleKnownErrors(err: unknown, res: Response): boolean {
   }
   if (err instanceof InvalidKeiError) {
     res.status(400).json({ error: 'Invalid effectiveness indicator or option' });
+    return true;
+  }
+  if (err instanceof QuestionnaireNotInProjectError) {
+    res.status(403).json({ error: 'This assessment is not part of your project' });
     return true;
   }
   if (err instanceof ResetNotAllowedError) {

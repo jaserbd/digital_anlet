@@ -7,6 +7,7 @@ import type {
 import { prisma } from '../../lib/prisma';
 import { generatePassword } from '../../lib/generatePassword';
 import { createOrganization } from '../organizations/organizations.service';
+import { HVS_GROUPS } from '../questionnaire/hvsGroups';
 import { AlreadyMemberError, EmailTakenError, SuperAdminRequiredError, createUser } from '../users/users.service';
 
 // Projects (PROJECTS_PLAN.md): a client engagement grouping organizations — normally one. Its
@@ -18,10 +19,12 @@ export class ProjectNameTakenError extends Error {}
 export class ProjectNotEmptyError extends Error {}
 export class OrganizationNotFoundError extends Error {}
 export class OrganizationInOtherProjectError extends Error {}
+export class InvalidQuestionnaireSelectionError extends Error {}
 
 const PROJECT_SELECT = {
   id: true,
   name: true,
+  questionnaires: { select: { questionnaire: { select: { code: true } } } },
   organizations: {
     select: {
       id: true,
@@ -54,7 +57,34 @@ function toProjectDto(project: ProjectRow): ProjectDto {
     projectAdmins: [...admins]
       .map(([userId, email]) => ({ userId, email }))
       .sort((a, b) => a.email.localeCompare(b.email)),
+    questionnaireCodes: project.questionnaires.map((q) => q.questionnaire.code).sort(),
   };
+}
+
+/**
+ * Resolves a questionnaire selection to ids (PROJECT_QUESTIONNAIRES_PLAN.md): at least one
+ * active questionnaire, and an HVS group (Core FM + Stability) all-or-nothing, since its
+ * combined score and views need both halves.
+ */
+async function resolveQuestionnaireSelection(codes: string[]): Promise<string[]> {
+  const unique = [...new Set(codes)];
+  const questionnaires = await prisma.questionnaire.findMany({
+    where: { code: { in: unique }, isActive: true },
+    select: { id: true },
+  });
+  const splitsGroup = HVS_GROUPS.some((g) => {
+    const selected = g.questionnaireCodes.filter((c) => unique.includes(c)).length;
+    return selected > 0 && selected < g.questionnaireCodes.length;
+  });
+  if (unique.length === 0 || questionnaires.length !== unique.length || splitsGroup) {
+    throw new InvalidQuestionnaireSelectionError();
+  }
+  return questionnaires.map((q) => q.id);
+}
+
+async function allActiveQuestionnaireIds(): Promise<string[]> {
+  const questionnaires = await prisma.questionnaire.findMany({ where: { isActive: true }, select: { id: true } });
+  return questionnaires.map((q) => q.id);
 }
 
 async function loadProjectDto(id: string): Promise<ProjectDto> {
@@ -74,7 +104,11 @@ function findProjectByName(name: string) {
 
 export async function createProject(name: string): Promise<ProjectDto> {
   if (await findProjectByName(name)) throw new ProjectNameTakenError();
-  const project = await prisma.project.create({ data: { name } });
+  // A new project starts with every questionnaire; narrow it down afterwards.
+  const questionnaireIds = await allActiveQuestionnaireIds();
+  const project = await prisma.project.create({
+    data: { name, questionnaires: { create: questionnaireIds.map((questionnaireId) => ({ questionnaireId })) } },
+  });
   return loadProjectDto(project.id);
 }
 
@@ -82,7 +116,7 @@ export async function createProject(name: string): Promise<ProjectDto> {
  * project must be removed from it first; organizations dropped here become project-less. */
 export async function updateProject(
   id: string,
-  input: { name?: string; organizationIds?: string[] },
+  input: { name?: string; organizationIds?: string[]; questionnaireCodes?: string[] },
 ): Promise<ProjectDto> {
   const project = await prisma.project.findUnique({ where: { id } });
   if (!project) throw new ProjectNotFoundError();
@@ -102,7 +136,17 @@ export async function updateProject(
     }
   }
 
+  const questionnaireIds = input.questionnaireCodes
+    ? await resolveQuestionnaireSelection(input.questionnaireCodes)
+    : undefined;
+
   await prisma.$transaction(async (tx) => {
+    if (questionnaireIds) {
+      await tx.projectQuestionnaire.deleteMany({ where: { projectId: id } });
+      await tx.projectQuestionnaire.createMany({
+        data: questionnaireIds.map((questionnaireId) => ({ projectId: id, questionnaireId })),
+      });
+    }
     if (input.name !== undefined) {
       await tx.project.update({ where: { id }, data: { name: input.name } });
     }
@@ -143,7 +187,42 @@ export async function importProject(
   const rows: ProjectImportResultRowDto[] = [];
 
   const existingProject = await findProjectByName(input.projectName);
-  const project = existingProject ?? (await prisma.project.create({ data: { name: input.projectName } }));
+  const project = existingProject ?? (await createProject(input.projectName));
+
+  // Questionnaires (sheet "Questionnaires", optional): names or codes of questionnaires or HVS
+  // groups. Replaces the selection when given; otherwise a new project keeps all of them and an
+  // existing one is left unchanged.
+  if (input.questionnaires && input.questionnaires.length > 0) {
+    const all = await prisma.questionnaire.findMany({
+      where: { isActive: true },
+      select: { id: true, code: true, name: true },
+    });
+    const current = new Set(
+      (await prisma.projectQuestionnaire.findMany({ where: { projectId: project.id } })).map((q) => q.questionnaireId),
+    );
+    const selected = new Map<string, string>(); // id -> code
+    for (const [index, raw] of input.questionnaires.entries()) {
+      const key = normalize(raw);
+      const group = HVS_GROUPS.find((g) => normalize(g.groupName) === key || normalize(g.groupCode) === key);
+      const matches = group
+        ? all.filter((q) => group.questionnaireCodes.includes(q.code))
+        : all.filter((q) => normalize(q.name) === key || normalize(q.code) === key);
+      const base = { sheet: 'Questionnaires' as const, row: index + 1, label: group?.groupName ?? matches[0]?.name ?? raw.trim() };
+      // A group's member listed on its own still selects the whole group (both halves are needed).
+      const ownGroup = !group && matches[0] ? HVS_GROUPS.find((g) => g.questionnaireCodes.includes(matches[0]!.code)) : undefined;
+      const expanded = ownGroup ? all.filter((q) => ownGroup.questionnaireCodes.includes(q.code)) : matches;
+      if (expanded.length === 0) {
+        rows.push({ ...base, status: 'error', error: `Unknown questionnaire "${raw.trim()}"` });
+        continue;
+      }
+      for (const q of expanded) selected.set(q.id, q.code);
+      const isNew = existingProject && expanded.some((q) => !current.has(q.id));
+      rows.push({ ...base, status: isNew || !existingProject ? 'created' : 'existing' });
+    }
+    if (selected.size > 0) {
+      await updateProject(project.id, { questionnaireCodes: [...selected.values()] });
+    }
+  }
 
   // Organizations (sheet "Project") — the only organizations NatCos and members may refer to.
   const orgIdByName = new Map<string, { id: string; name: string }>();

@@ -4,7 +4,6 @@ import { authenticate } from '../../middleware/auth';
 import { requireRole } from '../../middleware/requireRole';
 import {
   addMembershipHandler,
-  bulkCreateUsersHandler,
   createUserHandler,
   deleteUserHandler,
   listUsersHandler,
@@ -21,7 +20,6 @@ export const usersRouter = Router();
 usersRouter.use(authenticate, requireRole('ADMIN', 'PROJECT_ADMIN'));
 usersRouter.get('/', asyncHandler(listUsersHandler));
 usersRouter.post('/', asyncHandler(createUserHandler));
-usersRouter.post('/bulk', asyncHandler(bulkCreateUsersHandler));
 usersRouter.patch('/:id', requireRole('ADMIN'), asyncHandler(updateUserHandler));
 usersRouter.delete('/:id', requireRole('ADMIN'), asyncHandler(deleteUserHandler));
 // Organization memberships (MULTI_ORG_PLAN.md) and admin-generated temporary passwords.

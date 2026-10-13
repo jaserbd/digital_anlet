@@ -1,5 +1,4 @@
 import type {
-  BulkCreateUsersResultDto,
   CreateUserResultDto,
   MembershipDto,
   Role,
@@ -415,93 +414,6 @@ export async function deleteUser(callerId: string, userId: string): Promise<void
   }
 
   await prisma.user.delete({ where: { id: userId } });
-}
-
-export interface BulkCreateUserRow {
-  email: string;
-  role: MembershipRole;
-  organization: string;
-  password?: string;
-}
-
-/**
- * Admin-only: create many users from CSV rows (OVERVIEW.md item 4) — processed one row at a
- * time so a bad row (unknown organization name, weak password, already a member) is reported
- * per-row rather than aborting the whole batch. `organization` is matched case-insensitively
- * against existing organization names (resolved once up front, not once per row). A row whose
- * email already exists adds that organization/role as a membership (MULTI_ORG_PLAN.md) and
- * leaves the password alone; a new account gets the row's password or a generated one-time
- * password, with mustChangePassword: true (createUser's own default).
- */
-export async function createUsersBulk(
-  rows: BulkCreateUserRow[],
-  // Project Admins: rows for any other organization are rejected.
-  scopeOrganizationId?: string,
-): Promise<BulkCreateUsersResultDto[]> {
-  const organizations = await prisma.organization.findMany({ select: { id: true, name: true } });
-  const orgIdByName = new Map(organizations.map((o) => [o.name.trim().toLowerCase(), o.id]));
-
-  const results: BulkCreateUsersResultDto[] = [];
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i]!;
-    const rowNumber = i + 1;
-
-    if (row.password && row.password.length < 8) {
-      results.push({
-        row: rowNumber,
-        email: row.email,
-        status: 'error',
-        error: 'Password must be at least 8 characters',
-      });
-      continue;
-    }
-
-    const organizationId = orgIdByName.get(row.organization.trim().toLowerCase());
-    if (!organizationId) {
-      results.push({
-        row: rowNumber,
-        email: row.email,
-        status: 'error',
-        error: `Organization "${row.organization}" not found`,
-      });
-      continue;
-    }
-    if (scopeOrganizationId && organizationId !== scopeOrganizationId) {
-      results.push({
-        row: rowNumber,
-        email: row.email,
-        status: 'error',
-        error: `Organization "${row.organization}" is not in your project`,
-      });
-      continue;
-    }
-
-    const password = row.password ?? generatePassword();
-    try {
-      const result = await createUser({
-        email: row.email,
-        password,
-        role: row.role,
-        organizationId,
-      }, undefined, scopeOrganizationId);
-      results.push(
-        result.status === 'created'
-          ? { row: rowNumber, email: result.user.email, status: 'created', tempPassword: password }
-          : { row: rowNumber, email: result.user.email, status: 'membership-added' },
-      );
-    } catch (err) {
-      const error =
-        err instanceof OutsideProjectError
-          ? 'Not allowed for a Project Admin'
-          : err instanceof AlreadyMemberError
-          ? 'Already a member of this organization'
-          : err instanceof EmailTakenError
-            ? 'A user with this email already exists'
-            : 'Failed to create user';
-      results.push({ row: rowNumber, email: row.email, status: 'error', error });
-    }
-  }
-  return results;
 }
 
 /**

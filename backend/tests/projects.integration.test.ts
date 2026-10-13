@@ -7,6 +7,7 @@ import { createApp } from '../src/app';
 import { AUTH_COOKIE_NAME } from '../src/middleware/auth';
 import { getOrCreateResponse, submitResponse, upsertAnswer } from '../src/modules/responses/responses.service';
 import {
+  InvalidQuestionnaireSelectionError,
   OrganizationInOtherProjectError,
   ProjectNotEmptyError,
   createProject,
@@ -106,7 +107,16 @@ async function answerAllAndSubmit(userId: string, membershipId: string, option: 
 beforeAll(async () => {
   orgAId = (await prisma.organization.create({ data: { name: ORG_A } })).id;
   orgBId = (await prisma.organization.create({ data: { name: ORG_B } })).id;
-  projectAId = (await prisma.project.create({ data: { name: PROJECT_A, organizations: { connect: { id: orgAId } } } })).id;
+  const questionnaires = await prisma.questionnaire.findMany({ where: { isActive: true }, select: { id: true } });
+  projectAId = (
+    await prisma.project.create({
+      data: {
+        name: PROJECT_A,
+        organizations: { connect: { id: orgAId } },
+        questionnaires: { create: questionnaires.map((q) => ({ questionnaireId: q.id })) },
+      },
+    })
+  ).id;
   projectIds.push(projectAId);
   await prisma.referenceListEntry.create({ data: { category: 'COUNTRY', name: COUNTRY } });
 
@@ -357,5 +367,76 @@ describe('Project Admin scoping over HTTP (real DB)', () => {
     expect((await api('DELETE', `/responses/${projectAdminResponseId}`, { userId: memberAId, membershipId: memberAMembership.id })).status).toBe(403);
     expect((await api('DELETE', `/responses/${projectAdminResponseId}`, asProjectAdmin())).status).toBe(204);
     expect(await prisma.questionnaireResponse.findUnique({ where: { id: projectAdminResponseId } })).toBeNull();
+  });
+});
+
+describe('questionnaires per project (real DB)', () => {
+  const RAN = 'RAN_FM_GB1059A';
+  const CORE_FM = 'CORE_FM_GB1059B';
+
+  it('starts a new project with every questionnaire and rejects an invalid selection', async () => {
+    const project = await createProject(`${PREFIX}-project-q__`);
+    const activeCount = await prisma.questionnaire.count({ where: { isActive: true } });
+    expect(project.questionnaireCodes).toHaveLength(activeCount);
+    // Core FM without Core Stability splits the HVS group; empty and unknown are invalid too.
+    for (const codes of [[CORE_FM], [], ['NOT_A_CODE']]) {
+      await expect(updateProject(project.id, { questionnaireCodes: codes })).rejects.toBeInstanceOf(
+        InvalidQuestionnaireSelectionError,
+      );
+    }
+    const narrowed = await updateProject(project.id, { questionnaireCodes: [RAN, CORE_FM, QUESTIONNAIRE] });
+    expect(narrowed.questionnaireCodes).toEqual([CORE_FM, QUESTIONNAIRE, RAN].sort());
+    await deleteProject(project.id);
+  });
+
+  it('limits listings and new responses to the project questionnaires, keeping existing responses reachable', async () => {
+    const existing = await api('POST', '/responses', asProjectAdmin(), { questionnaireCode: QUESTIONNAIRE });
+    expect(existing.status).toBe(200);
+    await updateProject(projectAId, { questionnaireCodes: [RAN] });
+
+    const list = await api('GET', '/questionnaires', asProjectAdmin());
+    expect(list.json.map((q: { code: string }) => q.code)).toEqual([RAN]);
+    const hvs = await api('GET', '/questionnaires/hvs-entries', asExecutive());
+    expect(hvs.json.map((h: { key: string }) => h.key)).toEqual([RAN]);
+    const adminList = await api('GET', '/questionnaires', asAdmin());
+    expect(adminList.json.length).toBeGreaterThan(1);
+    // Organization B has no project: unrestricted.
+    const memberB = await prisma.membership.findFirstOrThrow({ where: { userId: memberBId } });
+    const listB = await api('GET', '/questionnaires', { userId: memberBId, membershipId: memberB.id });
+    expect(listB.json.length).toBe(adminList.json.length);
+
+    const refused = await api('POST', '/responses', asExecutive(), { questionnaireCode: CORE_FM });
+    expect(refused.status).toBe(403);
+    expect((await api('POST', '/responses', asExecutive(), { questionnaireCode: RAN })).status).toBe(200);
+    const stillThere = await api('POST', '/responses', asProjectAdmin(), { questionnaireCode: QUESTIONNAIRE });
+    expect(stillThere.json.id).toBe(existing.json.id);
+
+    const all = await prisma.questionnaire.findMany({ where: { isActive: true }, select: { code: true } });
+    await updateProject(projectAId, { questionnaireCodes: all.map((q) => q.code) });
+  });
+
+  it('imports a questionnaire selection by name, code or HVS group, expanding group members', async () => {
+    const result = await importProject(
+      {
+        projectName: `${PREFIX}-project-qimport__`,
+        organizations: [`${PREFIX}-org-qimport__`],
+        questionnaires: ['ran fault management', 'Core Network Stability', 'Not a questionnaire'],
+        natCos: [],
+        members: [],
+      },
+      adminId,
+    );
+    const ranName = (await prisma.questionnaire.findUniqueOrThrow({ where: { code: RAN } })).name;
+    expect(result.project.questionnaireCodes).toEqual([CORE_FM, QUESTIONNAIRE, RAN].sort());
+    const qRows = result.rows.filter((r) => r.sheet === 'Questionnaires');
+    expect(qRows.map((r) => r.status)).toEqual(['created', 'created', 'error']);
+    expect(qRows[0]!.label).toBe(ranName);
+
+    // Re-import without a Questionnaires sheet leaves the selection unchanged.
+    const again = await importProject(
+      { projectName: `${PREFIX}-project-qimport__`, organizations: [`${PREFIX}-org-qimport__`], natCos: [], members: [] },
+      adminId,
+    );
+    expect(again.project.questionnaireCodes).toEqual(result.project.questionnaireCodes);
   });
 });

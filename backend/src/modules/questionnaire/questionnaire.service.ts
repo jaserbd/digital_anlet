@@ -46,9 +46,25 @@ function toOptionDtos(row: OptionColumns): QuestionOptionDto[] {
   );
 }
 
-export async function listQuestionnaires(): Promise<QuestionnaireSummaryDto[]> {
+/**
+ * The questionnaire ids an organization works with (PROJECT_QUESTIONNAIRES_PLAN.md): its
+ * project's selection, or null (= every questionnaire) when it has no project.
+ */
+export async function getAllowedQuestionnaireIds(organizationId: string): Promise<Set<string> | null> {
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { project: { select: { questionnaires: { select: { questionnaireId: true } } } } },
+  });
+  if (!organization?.project) return null;
+  return new Set(organization.project.questionnaires.map((q) => q.questionnaireId));
+}
+
+// `organizationId`: limit the listing to that organization's project questionnaires; omitted
+// for the Application Admin context, which sees every questionnaire.
+export async function listQuestionnaires(organizationId?: string): Promise<QuestionnaireSummaryDto[]> {
+  const allowed = organizationId ? await getAllowedQuestionnaireIds(organizationId) : null;
   const questionnaires = await prisma.questionnaire.findMany({
-    where: { isActive: true },
+    where: { isActive: true, ...(allowed ? { id: { in: [...allowed] } } : {}) },
     orderBy: [{ networkType: 'asc' }, { hvsCategory: 'asc' }],
   });
   return questionnaires.map((q) => ({
@@ -66,10 +82,14 @@ export async function listQuestionnaires(): Promise<QuestionnaireSummaryDto[]> {
  * there. This is for results-viewing/benchmarking contexts, where the two should present as
  * one "Core Network Fault Management & Stability Assessment" HVS entry.
  */
-export async function listHvsEntries(): Promise<HvsListItemDto[]> {
-  const questionnaires = await listQuestionnaires();
+export async function listHvsEntries(organizationId?: string): Promise<HvsListItemDto[]> {
+  const questionnaires = await listQuestionnaires(organizationId);
+  const available = new Set(questionnaires.map((q) => q.code));
   const grouped = new Set(HVS_GROUPS.flatMap((g) => g.questionnaireCodes));
-  const items: HvsListItemDto[] = HVS_GROUPS.map((g) => ({
+  // A group is selected for a project as a whole (both halves), so it's listed only when all of
+  // its questionnaires are available.
+  const groups = HVS_GROUPS.filter((g) => g.questionnaireCodes.every((code) => available.has(code)));
+  const items: HvsListItemDto[] = groups.map((g) => ({
     kind: 'group' as const,
     key: g.groupCode,
     name: g.groupName,

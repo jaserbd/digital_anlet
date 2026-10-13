@@ -13,7 +13,6 @@ import {
   SuperAdminRequiredError,
   addMembership,
   createUser,
-  createUsersBulk,
   deleteUser,
   listUsers,
   removeMembership,
@@ -305,22 +304,5 @@ describe('temporary passwords (real DB)', () => {
     await expect(setTemporaryPassword(superAdminId, otherAdmin)).resolves.toEqual(expect.any(String));
     await expect(setTemporaryPassword(adminId, superAdminId)).rejects.toBeInstanceOf(CannotModifyAdminError);
     await expect(setTemporaryPassword(adminId, adminId)).rejects.toBeInstanceOf(CannotModifyAdminError);
-  });
-});
-
-describe('bulk CSV with existing emails (real DB)', () => {
-  it('adds a membership for an existing email and reports duplicates per row', async () => {
-    const email = '__integration-test-users-bulk__@example.com';
-    const results = await createUsersBulk([
-      { email, role: 'NORMAL_USER', organization: ORG_A_NAME },
-      { email, role: 'EXECUTIVE', organization: ORG_B_NAME },
-      { email, role: 'EXECUTIVE', organization: ORG_B_NAME },
-    ]);
-    const created = await prisma.user.findUniqueOrThrow({ where: { email } });
-    userIds.push(created.id);
-    expect(results.map((r) => r.status)).toEqual(['created', 'membership-added', 'error']);
-    expect(results[0]!.tempPassword).toEqual(expect.any(String));
-    expect(results[1]!.tempPassword).toBeUndefined();
-    expect(results[2]!.error).toBe('Already a member of this organization');
   });
 });

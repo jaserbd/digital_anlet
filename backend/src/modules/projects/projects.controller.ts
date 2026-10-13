@@ -5,6 +5,7 @@ import {
   createProject,
   deleteProject,
   importProject,
+  InvalidQuestionnaireSelectionError,
   listProjects,
   OrganizationInOtherProjectError,
   OrganizationNotFoundError,
@@ -31,6 +32,12 @@ function handleProjectErrors(err: unknown, res: Response): boolean {
   }
   if (err instanceof OrganizationNotFoundError) {
     res.status(400).json({ error: 'Organization not found' });
+    return true;
+  }
+  if (err instanceof InvalidQuestionnaireSelectionError) {
+    res.status(400).json({
+      error: 'Select at least one questionnaire; Core Fault Management and Core Stability go together',
+    });
     return true;
   }
   if (err instanceof OrganizationInOtherProjectError) {
@@ -60,6 +67,7 @@ export async function createProjectHandler(req: Request, res: Response) {
 const updateProjectSchema = z.object({
   name: projectNameSchema.optional(),
   organizationIds: z.array(z.string().min(1)).optional(),
+  questionnaireCodes: z.array(z.string().min(1)).optional(),
 });
 
 export async function updateProjectHandler(req: Request, res: Response) {
@@ -88,6 +96,7 @@ const nameSchema = z.string().trim().min(1).max(200);
 const importProjectSchema = z.object({
   projectName: projectNameSchema,
   organizations: z.array(nameSchema).min(1).max(50),
+  questionnaires: z.array(nameSchema).max(50).optional(),
   natCos: z
     .array(z.object({ organization: nameSchema, name: nameSchema, country: z.string().trim().min(1).max(100) }))
     .max(500),

@@ -36,7 +36,19 @@ model Project {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organizations Organization[]
+  organizations  Organization[]
+  questionnaires ProjectQuestionnaire[]
+}
+
+// The questionnaires a project's organizations work with (PROJECT_QUESTIONNAIRES_PLAN.md) —
+// all or a few. Organizations without a project are unrestricted.
+model ProjectQuestionnaire {
+  projectId       String
+  project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  questionnaireId String
+  questionnaire   Questionnaire @relation(fields: [questionnaireId], references: [id])
+
+  @@id([projectId, questionnaireId])
 }
 
 model Organization {
@@ -207,6 +219,7 @@ model Questionnaire {
   responses               QuestionnaireResponse[]
   orgSettings             QuestionnaireOrgSetting[]
   effectivenessIndicators EffectivenessIndicator[]
+  projects                ProjectQuestionnaire[]
 }
 
 // Admin-controlled per-(questionnaire, organization) open/close toggle (THIRD_REVIEW.md item

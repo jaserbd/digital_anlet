@@ -16,7 +16,11 @@ import {
   type ScoringQuestionInput,
   type ScoringSubScenarioInput,
 } from '../scoring/scoring';
-import { QuestionnaireNotFoundError, getAcceptingResponses } from '../questionnaire/questionnaire.service';
+import {
+  QuestionnaireNotFoundError,
+  getAcceptingResponses,
+  getAllowedQuestionnaireIds,
+} from '../questionnaire/questionnaire.service';
 import { CORE_FAULT_MANAGEMENT_CODE, CORE_STABILITY_CODE } from '../questionnaire/hvsGroups';
 
 export class ResponseNotFoundError extends Error {}
@@ -31,6 +35,8 @@ export class ResultNotAvailableError extends Error {}
 // mutable (including re-submitting); once closed, every mutation is blocked regardless of
 // status.
 export class AcceptanceClosedError extends Error {}
+// Starting a questionnaire the organization's project doesn't include (PROJECT_QUESTIONNAIRES_PLAN.md).
+export class QuestionnaireNotInProjectError extends Error {}
 // Resetting a response is for Application Admins and Project Admins only (PROJECTS_PLAN.md).
 export class ResetNotAllowedError extends Error {}
 
@@ -176,6 +182,17 @@ export async function getOrCreateResponse(
   });
   if (existing) {
     return toResponseDto(existing);
+  }
+
+  // A response that already exists stays reachable (above) even if the questionnaire was later
+  // removed from the project; only starting a new one is refused.
+  const membership = await prisma.membership.findUniqueOrThrow({
+    where: { id: membershipId },
+    select: { organizationId: true },
+  });
+  const allowed = await getAllowedQuestionnaireIds(membership.organizationId);
+  if (allowed && !allowed.has(questionnaire.id)) {
+    throw new QuestionnaireNotInProjectError();
   }
 
   const created = await prisma.questionnaireResponse.create({

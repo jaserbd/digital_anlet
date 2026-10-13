@@ -18,7 +18,6 @@ import {
   assertProjectAdminMayManageMembership,
   assertProjectAdminMayManageUser,
   createUser,
-  createUsersBulk,
   deleteUser,
   listUsers,
   removeMembership,
@@ -78,30 +77,6 @@ export async function createUserHandler(req: Request, res: Response) {
     }
     throw err;
   }
-}
-
-const bulkCreateUsersSchema = z.object({
-  rows: z
-    .array(
-      z.object({
-        email: z.string().email(),
-        role: z.enum(['NORMAL_USER', 'EXECUTIVE']),
-        organization: z.string().trim().min(1),
-        password: z.string().min(8).optional(),
-      }),
-    )
-    .min(1),
-});
-
-export async function bulkCreateUsersHandler(req: Request, res: Response) {
-  const parsed = bulkCreateUsersSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid request body' });
-    return;
-  }
-
-  const results = await createUsersBulk(parsed.data.rows, projectAdminScope(req));
-  res.status(201).json(results);
 }
 
 export async function listUsersHandler(req: Request, res: Response) {

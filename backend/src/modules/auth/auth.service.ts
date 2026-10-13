@@ -77,7 +77,7 @@ export async function getAuthenticatedUser(caller: RequestUser): Promise<Authent
 }
 
 // Self-service password change (OVERVIEW.md item 4) — required before an admin-created user
-// (mustChangePassword: true, either from single-create or bulk CSV) can reach any other
+// (mustChangePassword: true, from single-create, the project import or a temporary password) can reach any other
 // route, mirroring ProtectedRoute's existing profile-completion gate. Clears the flag once
 // the new password is set.
 export async function changeOwnPassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
