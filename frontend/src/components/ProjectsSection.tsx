@@ -349,6 +349,20 @@ const STATUS_LABELS: Record<ProjectImportResultDto['rows'][number]['status'], st
   error: 'Error',
 };
 
+const SETUP_ORDER: Record<ProjectImportResultDto['rows'][number]['sheet'], number> = {
+  Project: 0,
+  Questionnaires: 1,
+  NatCos: 2,
+  Members: 3,
+};
+
+const SETUP_TYPE_LABELS: Record<ProjectImportResultDto['rows'][number]['sheet'], string> = {
+  Project: 'Organization',
+  Questionnaires: 'Questionnaire',
+  NatCos: 'NatCo',
+  Members: 'User',
+};
+
 function statusLabel(row: ProjectImportResultDto['rows'][number]): string {
   if (row.sheet === 'Questionnaires' && row.status !== 'error') {
     return row.status === 'created' ? 'Selected' : 'Already selected';
@@ -398,25 +412,38 @@ function ProjectImportForm({ hvsNames, onImported }: { hvsNames: string[]; onImp
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
+  // Results split into project setup (organizations, questionnaires, NatCos) and users
+  // (USERS_TABLE_PLAN.md) — on screen and as two sheets in the downloaded workbook.
+  const setupRows = result
+    ? [...result.rows.filter((r) => r.sheet !== 'Members')].sort((a, b) => SETUP_ORDER[a.sheet] - SETUP_ORDER[b.sheet])
+    : [];
+  const userRows = result ? result.rows.filter((r) => r.sheet === 'Members') : [];
+
   function handleDownloadResults() {
     if (!result) return;
     exportRowsToXlsx(`project-import-${result.project.name}`, [
       {
-        name: 'Results',
+        name: 'Users',
         columns: [
-          { header: 'Sheet', key: 'sheet' },
+          { header: 'Email', key: 'label' },
           { header: 'Organization', key: 'organization' },
-          { header: 'Item', key: 'label' },
           { header: 'Role', key: 'role' },
           { header: 'Status', key: 'status' },
           { header: 'Temporary password', key: 'tempPassword' },
           { header: 'Error', key: 'error' },
         ],
-        rows: result.rows.map((r) => ({
-          ...r,
-          role: r.role ? MEMBER_ROLE_LABELS[r.role] : '',
-          status: statusLabel(r),
-        })),
+        rows: userRows.map((r) => ({ ...r, role: r.role ? MEMBER_ROLE_LABELS[r.role] : '', status: statusLabel(r) })),
+      },
+      {
+        name: 'Project setup',
+        columns: [
+          { header: 'Type', key: 'type' },
+          { header: 'Name', key: 'label' },
+          { header: 'Organization', key: 'organization' },
+          { header: 'Status', key: 'status' },
+          { header: 'Error', key: 'error' },
+        ],
+        rows: setupRows.map((r) => ({ ...r, type: SETUP_TYPE_LABELS[r.sheet], status: statusLabel(r) })),
       },
     ]);
   }
@@ -511,22 +538,25 @@ function ProjectImportForm({ hvsNames, onImported }: { hvsNames: string[]; onImp
           <Alert severity="warning" sx={{ mb: 1 }}>
             Temporary passwords are shown only once — download the results now before leaving this page.
           </Alert>
-          <TableContainer component={Paper} variant="outlined" sx={{ mb: 1, maxHeight: 420 }}>
+          <Typography variant="subtitle2" sx={{ mt: 1, mb: 0.5 }}>
+            Users
+          </Typography>
+          <TableContainer component={Paper} variant="outlined" sx={{ mb: 2, maxHeight: 420 }}>
             <Table size="small" stickyHeader>
               <TableHead>
                 <TableRow>
-                  <TableCell>Sheet</TableCell>
-                  <TableCell>Item</TableCell>
+                  <TableCell>Email</TableCell>
+                  <TableCell>Organization</TableCell>
                   <TableCell>Role</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Temporary password / error</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {result.rows.map((r) => (
+                {userRows.map((r) => (
                   <TableRow key={`${r.sheet}-${r.row}`}>
-                    <TableCell>{r.sheet}</TableCell>
                     <TableCell>{r.label}</TableCell>
+                    <TableCell>{r.organization ?? ''}</TableCell>
                     <TableCell>{r.role ? MEMBER_ROLE_LABELS[r.role] : ''}</TableCell>
                     <TableCell>
                       <Chip size="small" label={statusLabel(r)} color={r.status === 'error' ? 'error' : 'success'} />
@@ -534,6 +564,40 @@ function ProjectImportForm({ hvsNames, onImported }: { hvsNames: string[]; onImp
                     <TableCell sx={{ fontFamily: r.tempPassword ? 'monospace' : undefined }}>
                       {r.tempPassword ?? r.error ?? ''}
                     </TableCell>
+                  </TableRow>
+                ))}
+                {userRows.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5}>No users in this file.</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+            Project setup
+          </Typography>
+          <TableContainer component={Paper} variant="outlined" sx={{ mb: 1, maxHeight: 320 }}>
+            <Table size="small" stickyHeader>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Type</TableCell>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Organization</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Error</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {setupRows.map((r) => (
+                  <TableRow key={`${r.sheet}-${r.row}`}>
+                    <TableCell>{SETUP_TYPE_LABELS[r.sheet]}</TableCell>
+                    <TableCell>{r.label}</TableCell>
+                    <TableCell>{r.sheet === 'NatCos' ? (r.organization ?? '') : ''}</TableCell>
+                    <TableCell>
+                      <Chip size="small" label={statusLabel(r)} color={r.status === 'error' ? 'error' : 'success'} />
+                    </TableCell>
+                    <TableCell>{r.error ?? ''}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

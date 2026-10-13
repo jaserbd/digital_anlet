@@ -1,6 +1,6 @@
 # Existing users table, moving memberships, import results, template drop-downs
 
-**Status: planned** — branch `feature/users-table-cleanup`.
+**Status: steps 1–2 done** (backend 287 + frontend 35 tests) — branch `feature/users-table-cleanup`. Remaining: deploy, live testing.
 
 Source: user feedback on 2026-10-13 after the projects release, clarified in discussion.
 

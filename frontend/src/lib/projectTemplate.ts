@@ -32,78 +32,120 @@ const ROLE_BY_TEXT = new Map<string, ProjectMemberRole>(
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function sheetFromRows(rows: (string | number)[][], widths: number[]): XLSX.WorkSheet {
-  const sheet = XLSX.utils.aoa_to_sheet(rows);
-  sheet['!cols'] = widths.map((wch) => ({ wch }));
+type ExcelWorkbook = import('exceljs').Workbook;
+type ExcelWorksheet = import('exceljs').Worksheet;
+
+// Rows in the template that get drop-downs (well beyond any realistic project size).
+const MAX_ROWS = 1000;
+
+function addSheet(workbook: ExcelWorkbook, name: string, rows: string[][], widths: number[]): ExcelWorksheet {
+  const sheet = workbook.addWorksheet(name);
+  sheet.columns = widths.map((width) => ({ width }));
+  rows.forEach((row) => sheet.addRow(row));
+  if (name !== 'Instructions' && rows.length > 0) sheet.getRow(1).font = { bold: true };
   return sheet;
 }
 
-/** Builds the template workbook. `countries` (the Country list) and `questionnaires` (the
- * assessment names, Core FM + Stability as one item) are listed on a reference sheet, since a
- * NatCo's country and a selected questionnaire must match one of them. */
-export function buildProjectTemplate(
+/** An Excel drop-down list on `range`, fed by `source` (an absolute range on another sheet). */
+function addDropdown(sheet: ExcelWorksheet, range: string, source: string, what: string): void {
+  // Range-wide validation (one entry per column instead of one per cell); exists at runtime but
+  // is missing from exceljs's type definitions.
+  const validations = (sheet as ExcelWorksheet & {
+    dataValidations: { add(range: string, validation: import('exceljs').DataValidation): void };
+  }).dataValidations;
+  validations.add(range, {
+    type: 'list',
+    allowBlank: true,
+    formulae: [source],
+    showErrorMessage: true,
+    errorStyle: 'error',
+    errorTitle: `Invalid ${what}`,
+    error: `Please pick a ${what} from the list.`,
+  });
+}
+
+/**
+ * Builds the template workbook (with `exceljs`, which — unlike SheetJS community edition — can
+ * write Excel drop-down lists; USERS_TABLE_PLAN.md). `countries` (the Country list) and
+ * `questionnaires` (the assessment names, Core FM + Stability as one item) go on the "Lists"
+ * sheet, which feeds the Role, Questionnaire and Country drop-downs; the Organization drop-downs
+ * read the organizations typed on the Project sheet.
+ */
+export async function buildProjectTemplate(
   countries: string[],
   questionnaires: string[] = [],
   exampleCountry = countries[0] ?? 'Germany',
-): XLSX.WorkBook {
-  const workbook = XLSX.utils.book_new();
+): Promise<ExcelWorkbook> {
+  const { default: ExcelJS } = await import('exceljs');
+  const workbook = new ExcelJS.Workbook();
   const instructions = [
     ['ANLET — project import template'],
     [],
     ['1. Project: the project name in the first row, and one organization per row (normally just one).'],
     ['   Organizations are created when they do not exist yet; an organization can only belong to one project.'],
-    ['2. Questionnaires (optional): one assessment per row, named as on the "Lists" sheet — only these are'],
-    ['   available to the project\'s members. Leave it empty for all assessments (or, for an existing project, to keep its selection).'],
+    ['2. Questionnaires (optional): one assessment per row, picked from the drop-down — only these are available'],
+    ['   to the project\'s members. Leave it empty for all assessments (or, for an existing project, to keep its selection).'],
     ['3. NatCos (optional): the organization\'s NatCos (OpCos) with their country — leave empty if it has none.'],
-    ['   The country must be one of the values on the "Lists" sheet.'],
     ['4. Members: one row per person — organization, email and role (Project Admin, Executive or Normal User).'],
     ['   Project Admins are the Detecon consultants of the project; Executives and Normal Users are client members.'],
     ['   The same email can appear for several organizations. First and last name are optional.'],
     [],
+    ['Organization, Questionnaire, Country and Role cells have drop-down lists (fill the Project sheet first).'],
     ['New accounts get a temporary password, listed in the results file you can download after the import.'],
     ['People who already have an account keep their password and are only added to the organization.'],
     ['Importing the same file again is safe: anything that already exists is reported as "existing".'],
   ];
-  XLSX.utils.book_append_sheet(workbook, sheetFromRows(instructions, [110]), 'Instructions');
-  XLSX.utils.book_append_sheet(
+  addSheet(workbook, 'Instructions', instructions, [110]);
+  addSheet(workbook, PROJECT_TEMPLATE_SHEETS.project, [PROJECT_HEADERS, ['Client A 2026 assessment', 'Client A']], [32, 32]);
+  const questionnaireSheet = addSheet(workbook, PROJECT_TEMPLATE_SHEETS.questionnaires, [QUESTIONNAIRE_HEADERS], [56]);
+  const natCoSheet = addSheet(
     workbook,
-    sheetFromRows([PROJECT_HEADERS, ['Client A 2026 assessment', 'Client A']], [32, 32]),
-    PROJECT_TEMPLATE_SHEETS.project,
-  );
-  XLSX.utils.book_append_sheet(
-    workbook,
-    sheetFromRows([QUESTIONNAIRE_HEADERS], [52]),
-    PROJECT_TEMPLATE_SHEETS.questionnaires,
-  );
-  XLSX.utils.book_append_sheet(
-    workbook,
-    sheetFromRows([NATCO_HEADERS, ['Client A', 'Client A Germany', exampleCountry]], [32, 32, 24]),
     PROJECT_TEMPLATE_SHEETS.natCos,
+    [NATCO_HEADERS, ['Client A', 'Client A Germany', exampleCountry]],
+    [32, 32, 24],
   );
-  XLSX.utils.book_append_sheet(
+  const memberSheet = addSheet(
     workbook,
-    sheetFromRows(
-      [
-        MEMBER_HEADERS,
-        ['Client A', 'consultant@detecon.com', 'Project Admin', 'Jane', 'Consultant'],
-        ['Client A', 'cto@client-a.com', 'Executive', '', ''],
-        ['Client A', 'engineer@client-a.com', 'Normal User', '', ''],
-      ],
-      [32, 34, 16, 16, 16],
-    ),
     PROJECT_TEMPLATE_SHEETS.members,
+    [
+      MEMBER_HEADERS,
+      ['Client A', 'consultant@detecon.com', 'Project Admin', 'Jane', 'Consultant'],
+      ['Client A', 'cto@client-a.com', 'Executive', '', ''],
+      ['Client A', 'engineer@client-a.com', 'Normal User', '', ''],
+    ],
+    [32, 34, 16, 16, 16],
   );
-  const listRows: string[][] = [['Role', 'Questionnaire', 'Country']];
   const roleLabels = Object.values(MEMBER_ROLE_LABELS);
+  const listRows: string[][] = [['Role', 'Questionnaire', 'Country']];
   for (let i = 0; i < Math.max(roleLabels.length, questionnaires.length, countries.length); i++) {
     listRows.push([roleLabels[i] ?? '', questionnaires[i] ?? '', countries[i] ?? '']);
   }
-  XLSX.utils.book_append_sheet(workbook, sheetFromRows(listRows, [18, 52, 28]), 'Lists');
+  addSheet(workbook, 'Lists', listRows, [18, 56, 28]);
+
+  const organizations = `${PROJECT_TEMPLATE_SHEETS.project}!$B$2:$B$100`;
+  addDropdown(memberSheet, `C2:C${MAX_ROWS}`, `Lists!$A$2:$A$${roleLabels.length + 1}`, 'role');
+  addDropdown(memberSheet, `A2:A${MAX_ROWS}`, organizations, 'organization');
+  addDropdown(natCoSheet, `A2:A${MAX_ROWS}`, organizations, 'organization');
+  if (questionnaires.length > 0) {
+    addDropdown(questionnaireSheet, `A2:A${MAX_ROWS}`, `Lists!$B$2:$B$${questionnaires.length + 1}`, 'questionnaire');
+  }
+  if (countries.length > 0) {
+    addDropdown(natCoSheet, `C2:C${MAX_ROWS}`, `Lists!$C$2:$C$${countries.length + 1}`, 'country');
+  }
   return workbook;
 }
 
-export function downloadProjectTemplate(countries: string[], questionnaires: string[]): void {
-  XLSX.writeFile(buildProjectTemplate(countries, questionnaires), 'anlet-project-template.xlsx');
+export async function downloadProjectTemplate(countries: string[], questionnaires: string[]): Promise<void> {
+  const workbook = await buildProjectTemplate(countries, questionnaires);
+  const buffer = await workbook.xlsx.writeBuffer();
+  const url = URL.createObjectURL(
+    new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+  );
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'anlet-project-template.xlsx';
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 export interface ParsedProjectWorkbook {
