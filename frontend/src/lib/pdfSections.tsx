@@ -1,5 +1,6 @@
 import type {
   AnswerDrilldownEntryDto,
+  CommentDrilldownEntryDto,
   BenchmarkRowDto,
   CombinedBenchmarkRowDto,
   NatCoStatusDto,
@@ -9,10 +10,17 @@ import type {
 } from '@anlet/shared';
 import type { CommentCollectionRow } from '../components/CommentCollectionTable';
 import type { PdfSection } from './exportPdf';
-import { ANSWER_OPTIONS, buildOptionCountsChartData, indexAnswerDistribution } from './answerDistribution';
+import {
+  ANSWER_OPTIONS,
+  buildOptionCountsChartData,
+  formatCommentSubScenarios,
+  indexAnswerDistribution,
+} from './answerDistribution';
 import { captureChartImage } from './chartCapture';
 import { ScoreBarChart, computeScoreBarChartHeight } from '../components/charts/ScoreBarChart';
 import { OptionCountsChart, OPTION_COUNTS_CHART_HEIGHT } from '../components/charts/OptionCountsChart';
+import { CognitiveActivityChart, MIN_RADAR_AXES, RADAR_CHART_HEIGHT, type RadarScoreChartRow } from '../components/charts/RadarScoreChart';
+import { formatQuestionNumberLabel } from './cognitiveActivity';
 import { formatSubScenarioLabel } from './subScenarioCategories';
 import { questionPdfLines } from './questionText';
 import { respondentColumnHeader } from './respondentIdentity';
@@ -32,6 +40,20 @@ const CHART_CAPTURE_WIDTH = 640;
 // a captured chart image next to each table and, for Answer distribution, the full
 // per-respondent breakdown that's normally only reachable by clicking a count on screen —
 // a PDF has no interactivity, so nothing can be left behind a click.
+// The Cognitive Activity spider diagram (EXECUTIVE_FEEDBACK_PLAN.md) — or its bar-chart
+// fallback for fewer than 3 activities, exactly like on screen. `lines` describe the scope
+// (score, filter) above the image. Shared by the personal results PDF and the dashboard report.
+export async function buildCognitiveActivityPdfSections(axes: RadarScoreChartRow[], lines: string[]): Promise<PdfSection[]> {
+  const heading = 'Cognitive Activity scores';
+  if (axes.length === 0) return [{ kind: 'text', heading, lines: [...lines, 'No Cognitive Activity scores yet.'] }];
+  const height = axes.length >= MIN_RADAR_AXES ? RADAR_CHART_HEIGHT : computeScoreBarChartHeight(axes.length);
+  const image = await captureChartImage(<CognitiveActivityChart axes={axes} />, CHART_CAPTURE_WIDTH, height);
+  return [
+    { kind: 'text', heading, lines },
+    { kind: 'image', dataUrl: image.dataUrl, width: image.width, height: image.height },
+  ];
+}
+
 export function buildRespondentsPdfSection(respondents: RespondentSummaryDto[]): PdfSection {
   return {
     kind: 'table',
@@ -212,15 +234,24 @@ export function buildCommentCollectionPdfSection(rows: CommentCollectionRow[], a
     return {
       kind: 'table',
       heading: 'Comment Collection',
-      head: [[respondentColumnHeader(true), 'NatCo', 'Country', 'Cognitive Activity', 'Sub Scenario', 'Comment']],
-      body: rows.map((r) => [r.email, r.opCoName ?? '—', r.country ?? '—', r.cognitiveActivity, r.subScenario, r.comment]),
+      head: [[respondentColumnHeader(true), 'NatCo', 'Country', 'Cognitive Activity', 'Question', 'Sub Scenario', 'Comment']],
+      body: rows.map((r) => [r.email, r.opCoName ?? '—', r.country ?? '—', r.cognitiveActivity, r.question, r.subScenario, r.comment]),
     };
   }
   return {
     kind: 'table',
     heading: 'Comment Collection',
-    head: [['Email', 'NatCo', 'Country', 'Designation', 'Cognitive Activity', 'Sub Scenario', 'Comment']],
-    body: rows.map((r) => [r.email, r.opCoName ?? '—', r.country ?? '—', r.designation ?? '—', r.cognitiveActivity, r.subScenario, r.comment]),
+    head: [['Email', 'NatCo', 'Country', 'Designation', 'Cognitive Activity', 'Question', 'Sub Scenario', 'Comment']],
+    body: rows.map((r) => [
+      r.email,
+      r.opCoName ?? '—',
+      r.country ?? '—',
+      r.designation ?? '—',
+      r.cognitiveActivity,
+      r.question,
+      r.subScenario,
+      r.comment,
+    ]),
   };
 }
 
@@ -234,17 +265,20 @@ export async function buildAnswerDistributionPdfSections(
   entries: AnswerDrilldownEntryDto[],
   opCoScopeId?: string | null,
   anonymized?: boolean,
+  // Each question's comments, listed under its block (EXECUTIVE_FEEDBACK_PLAN.md).
+  comments: CommentDrilldownEntryDto[] = [],
 ): Promise<PdfSection[]> {
   const { countsByKey, respondentsByKey } = indexAnswerDistribution(entries, opCoScopeId);
+  const scopedComments = opCoScopeId ? comments.filter((c) => c.respondent.opCoId === opCoScopeId) : comments;
 
   const sections: PdfSection[] = [{ kind: 'text', heading: 'Answer distribution', lines: [] }];
-  for (const q of questions) {
+  for (const [index, q] of questions.entries()) {
     const availableOptions = new Set(q.options.map((o) => o.option));
     const availableOptionsOrdered = ANSWER_OPTIONS.filter((o) => availableOptions.has(o));
 
     sections.push({
       kind: 'text',
-      heading: `${q.cognitiveActivity} — ${q.serviceCapability}`,
+      heading: `${q.cognitiveActivity} — ${formatQuestionNumberLabel(index + 1, q)}`,
       lines: questionPdfLines(q.questionText, q.options),
     });
     sections.push({
@@ -287,6 +321,21 @@ export async function buildAnswerDistributionPdfSections(
           ]),
         });
       }
+    }
+
+    const questionComments = scopedComments.filter((c) => c.questionId === q.id);
+    if (questionComments.length > 0) {
+      sections.push({
+        kind: 'table',
+        heading: `Comments on ${formatQuestionNumberLabel(index + 1, q)}`,
+        head: [[respondentColumnHeader(anonymized), 'NatCo', 'Sub Scenario', 'Comment']],
+        body: questionComments.map((c) => [
+          c.respondent.email,
+          c.respondent.opCoName ?? '—',
+          formatCommentSubScenarios(c, subScenarios),
+          c.commentText,
+        ]),
+      });
     }
   }
   return sections;

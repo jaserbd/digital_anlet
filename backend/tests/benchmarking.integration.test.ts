@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma';
 import { callerFor } from './testUsers';
-import { getBenchmarkingSummary, getOpCoBenchmarkingSummary } from '../src/modules/insights/insights.service';
+import {
+  getBenchmarkingSummary,
+  getCombinedBenchmarkingSummary,
+  getOpCoBenchmarkingSummary,
+  getOrganizationQuestionnaireSummary,
+} from '../src/modules/insights/insights.service';
 import {
   getOrCreateResponse,
   submitResponse,
@@ -19,14 +24,14 @@ let orgAId: string;
 let orgBId: string;
 const userIds: string[] = [];
 
-async function createUser(orgId: string, label: string) {
+async function createUser(orgId: string, label: string, membershipRole: 'NORMAL_USER' | 'EXECUTIVE' = 'NORMAL_USER') {
   const user = await prisma.user.create({
     data: {
       email: `__integration-test-benchmark-${label}__@example.com`,
       passwordHash: 'not-a-real-hash',
       role: 'NORMAL_USER',
       organizationId: orgId,
-      memberships: { create: { organizationId: orgId, role: 'NORMAL_USER' } },
+      memberships: { create: { organizationId: orgId, role: membershipRole } },
     },
   });
   userIds.push(user.id);
@@ -227,5 +232,81 @@ describe('getBenchmarkingSummary NatCo/country rows and getOpCoBenchmarkingSumma
       respondentCount: 3,
       submittedCount: 2,
     });
+  });
+});
+
+// EXECUTIVE_FEEDBACK_PLAN.md: the synthetic "no NatCo" row read as a duplicate of the real
+// NatCo row (e.g. an Executive without a NatCo next to a NatCo named like the organization).
+describe('members without a NatCo (real DB)', () => {
+  const SINGLE_ORG_NAME = '__integration-test-benchmark-single-natco__';
+  const MULTI_ORG_NAME = '__integration-test-benchmark-multi-natco__';
+  let singleOrgId: string;
+  let multiOrgId: string;
+  let singleOpCoId: string;
+
+  beforeAll(async () => {
+    singleOrgId = (await prisma.organization.create({ data: { name: SINGLE_ORG_NAME } })).id;
+    multiOrgId = (await prisma.organization.create({ data: { name: MULTI_ORG_NAME } })).id;
+    // The NatCo carries the organization's own name — the case from the feedback.
+    singleOpCoId = (
+      await prisma.opCo.create({ data: { name: SINGLE_ORG_NAME, country: '__integration-test-country-s__', organizationId: singleOrgId } })
+    ).id;
+    const multiOpCoIds = await Promise.all(
+      ['x', 'y'].map(async (n) =>
+        (await prisma.opCo.create({ data: { name: `__integration-test-multi-${n}__`, country: 'Multiland', organizationId: multiOrgId } })).id,
+      ),
+    );
+
+    const singleUser = await createUser(singleOrgId, 'single-user');
+    await prisma.membership.updateMany({ where: { userId: singleUser }, data: { opCoId: singleOpCoId } });
+    await submitAllA(singleUser);
+    await createUser(singleOrgId, 'single-executive', 'EXECUTIVE'); // no NatCo, never answers
+
+    const multiUser = await createUser(multiOrgId, 'multi-user');
+    await prisma.membership.updateMany({ where: { userId: multiUser }, data: { opCoId: multiOpCoIds[0] } });
+    await submitAllA(multiUser);
+    await createUser(multiOrgId, 'multi-executive', 'EXECUTIVE'); // no NatCo, never answers
+  });
+
+  afterAll(async () => {
+    const orgIds = [singleOrgId, multiOrgId];
+    await prisma.questionnaireResponse.deleteMany({ where: { membership: { organizationId: { in: orgIds } } } });
+    await prisma.user.deleteMany({ where: { organizationId: { in: orgIds } } });
+    await prisma.opCo.deleteMany({ where: { organizationId: { in: orgIds } } });
+    await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+  });
+
+  it('counts them under the only NatCo instead of a separate row', async () => {
+    const summary = await getOpCoBenchmarkingSummary({ organizationId: singleOrgId, projectId: null }, 'RAN_FM_GB1059A');
+    expect(summary.rows).toEqual([
+      expect.objectContaining({ opCoId: singleOpCoId, opCoName: SINGLE_ORG_NAME, respondentCount: 2, submittedCount: 1, averageFinalScore: 4 }),
+    ]);
+
+    const participation = await getOrganizationQuestionnaireSummary(
+      { organizationId: singleOrgId, projectId: null },
+      'RAN_FM_GB1059A',
+      { anonymize: true },
+    );
+    expect(participation.natCoStatus).toEqual([
+      expect.objectContaining({ opCoId: singleOpCoId, participantCount: 2, submittedCount: 1, notStartedCount: 1 }),
+    ]);
+  });
+
+  it('hides the "no NatCo" row of an organization with several NatCos while nobody in it submitted', async () => {
+    const summary = await getOpCoBenchmarkingSummary({ organizationId: multiOrgId, projectId: null }, 'RAN_FM_GB1059A');
+    expect(summary.rows.map((r) => r.opCoName)).toEqual(['__integration-test-multi-x__', '__integration-test-multi-y__']);
+    expect(summary.rows.every((r) => r.opCoId != null)).toBe(true);
+
+    const crossOrg = await getBenchmarkingSummary('RAN_FM_GB1059A');
+    const orgRows = crossOrg.rows.filter((r) => r.organizationId === multiOrgId || r.organizationId === singleOrgId);
+    expect(orgRows).toHaveLength(3);
+  });
+
+  it('keeps the combined Core table paired after hiding rows', async () => {
+    const combined = await getCombinedBenchmarkingSummary(
+      { groupCode: 'CORE', questionnaireCodes: ['CORE_FM_GB1059B', 'CORE_STABILITY_GB1059B'] },
+      { organizationId: multiOrgId, projectId: null },
+    );
+    expect(combined.rows.map((r) => r.opCoName)).toEqual(['__integration-test-multi-x__', '__integration-test-multi-y__']);
   });
 });

@@ -7,7 +7,9 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from 'recharts';
+import { useContext } from 'react';
 import { ScoreBarChart } from './ScoreBarChart';
+import { ChartAnimationContext } from './chartAnimation';
 
 export interface RadarScoreChartRow {
   axis: string;
@@ -17,7 +19,9 @@ export interface RadarScoreChartRow {
 // A radar chart only reads as a meaningful shape with 3+ axes — Core Network Stability has
 // just 2 (Basic stability/Intelligent stability), so it (and any future small-category-count
 // questionnaire) gets a bar chart instead (ADMIN_3.md item 4).
-const MIN_RADAR_AXES = 3;
+export const MIN_RADAR_AXES = 3;
+// Exported so the PDF chart capture sizes its off-screen box to the on-screen height.
+export const RADAR_CHART_HEIGHT = 340;
 
 // Shared by PersonalCognitiveActivityRadar.tsx and AggregateCognitiveActivityRadar.tsx so the
 // radar-vs-bar-chart threshold lives in exactly one place.
@@ -38,13 +42,14 @@ export function CognitiveActivityChart({ axes }: { axes: RadarScoreChartRow[] })
 // already names it). Only meaningful with 3+ axes — callers with fewer (Core Network
 // Stability's 2 categories) use ScoreBarChart instead (ADMIN_3.md item 4).
 export function RadarScoreChart({ data }: { data: RadarScoreChartRow[] }) {
+  const animate = useContext(ChartAnimationContext);
   if (data.length === 0) {
     return null;
   }
   const chartData = data.map((d) => ({ ...d, value: d.value ?? 0 }));
 
   return (
-    <div style={{ width: '100%', height: 340, minWidth: 300 }}>
+    <div style={{ width: '100%', height: RADAR_CHART_HEIGHT, minWidth: 300 }}>
       <ResponsiveContainer width="100%" height="100%">
         <RadarChart data={chartData} outerRadius="70%">
           <PolarGrid stroke="#e1e0d9" />
@@ -74,6 +79,7 @@ export function RadarScoreChart({ data }: { data: RadarScoreChartRow[] }) {
             fill="#e20074"
             fillOpacity={0.25}
             dot={{ r: 3, fill: '#e20074' }}
+            isAnimationActive={animate}
           />
         </RadarChart>
       </ResponsiveContainer>

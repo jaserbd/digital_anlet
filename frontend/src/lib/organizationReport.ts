@@ -1,6 +1,7 @@
 import type {
   AnswerDrilldownDto,
   BenchmarkRowDto,
+  CognitiveActivitySummaryDto,
   CombinedBenchmarkRowDto,
   OrganizationQuestionnaireSummaryDto,
   QuestionnaireDto,
@@ -14,6 +15,7 @@ import type { XlsxSheet } from './exportXlsx';
 import {
   buildAnswerDistributionPdfSections,
   buildBenchmarkPdfSections,
+  buildCognitiveActivityPdfSections,
   buildCombinedBenchmarkPdfSections,
   buildCommentCollectionPdfSection,
   buildNatCoStatusPdfSections,
@@ -28,6 +30,16 @@ export interface OrganizationReportDetail {
   questionnaire: QuestionnaireDto;
   summary: OrganizationQuestionnaireSummaryDto;
   drilldown: AnswerDrilldownDto | undefined;
+  // The spider chart's data for its current NatCo/Country filter, and that filter in words
+  // ("All NatCos · All countries") — PDF only (EXECUTIVE_FEEDBACK_PLAN.md).
+  cognitiveActivity?: { summary: CognitiveActivitySummaryDto; filterLabel: string };
+}
+
+// "NatCo: X · Country: Y" for the spider chart's filter ('' = all).
+export function cognitiveFilterLabel(filters: { opCoId: string; country: string }, opCoName: (opCoId: string) => string | undefined): string {
+  const natCo = filters.opCoId ? (opCoName(filters.opCoId) ?? 'selected NatCo') : 'All NatCos';
+  const country = filters.country || 'All countries';
+  return `${natCo} · ${country}`;
 }
 
 export type OrganizationReportBenchmarkPart =
@@ -93,8 +105,20 @@ export async function buildOrganizationReportPdfSections(
       )),
     );
   }
-  for (const { questionnaire, summary, drilldown } of details) {
+  for (const { questionnaire, summary, drilldown, cognitiveActivity } of details) {
     const anonymized = summary.anonymized;
+    if (cognitiveActivity) {
+      const { summary: ca, filterLabel } = cognitiveActivity;
+      sections.push(
+        ...(await buildCognitiveActivityPdfSections(
+          ca.activities.filter((a) => a.averageScore != null).map((a) => ({ axis: a.cognitiveActivity, value: a.averageScore })),
+          [
+            `${questionnaire.name} — ${filterLabel}`,
+            ...(ca.sampleSize > 0 ? [`Average: ${ca.averageFinalScore?.toFixed(2) ?? '—'} / 4 (${ca.sampleSize} submitted)`] : []),
+          ],
+        )),
+      );
+    }
     sections.push(
       ...(anonymized
         ? await buildNatCoStatusPdfSections(summary.natCoStatus)
@@ -108,6 +132,7 @@ export async function buildOrganizationReportPdfSections(
         drilldown?.entries ?? [],
         undefined,
         anonymized,
+        drilldown?.comments ?? [],
       )),
     );
     sections.push(...buildKeiDistributionPdfSections(questionnaire.effectivenessIndicators, drilldown?.keiResponses ?? [], anonymized));

@@ -22,10 +22,15 @@ import type {
   QuestionDto,
   SubScenarioDto,
 } from '@anlet/shared';
-import { groupByCognitiveActivity } from '../lib/cognitiveActivity';
+import { formatQuestionNumberLabel, groupByCognitiveActivity } from '../lib/cognitiveActivity';
 import { buildAnswerMatrix } from '../lib/answerMatrix';
 import { exportRowsToXlsx } from '../lib/exportXlsx';
-import { ANSWER_OPTIONS, buildOptionCountsChartData, indexAnswerDistribution } from '../lib/answerDistribution';
+import {
+  ANSWER_OPTIONS,
+  buildOptionCountsChartData,
+  formatCommentSubScenarios,
+  indexAnswerDistribution,
+} from '../lib/answerDistribution';
 import { OptionCountsChart, OPTION_COLORS } from './charts/OptionCountsChart';
 import { formatSubScenarioLabel, groupSubScenariosByCategory } from '../lib/subScenarioCategories';
 import { buildCommentCollectionRows, buildCommentCollectionSheet } from './CommentCollectionTable';
@@ -85,12 +90,16 @@ export function AnswerDistributionDrilldown({
   }
 
   const { countsByKey, respondentsByKey } = indexAnswerDistribution(entries, opCoScopeId);
+  const scopedComments = opCoScopeId ? comments.filter((c) => c.respondent.opCoId === opCoScopeId) : comments;
+  const commentsByQuestionId = new Map<string, CommentDrilldownEntryDto[]>();
+  for (const c of scopedComments) {
+    commentsByQuestionId.set(c.questionId, [...(commentsByQuestionId.get(c.questionId) ?? []), c]);
+  }
 
   function handleExportMatrix() {
     const scopedEntries = entries
       .map((e) => ({ ...e, respondents: respondentsFor(e) }))
       .filter((e) => e.respondents.length > 0);
-    const scopedComments = opCoScopeId ? comments.filter((c) => c.respondent.opCoId === opCoScopeId) : comments;
     exportRowsToXlsx(`${exportFileNamePrefix ?? 'answer'}-matrix`, [
       ...buildAnswerMatrix(questions, subScenarios, scopedEntries, anonymized),
       buildCommentCollectionSheet(buildCommentCollectionRows(scopedComments, questions, subScenarios), false, anonymized),
@@ -135,11 +144,21 @@ export function AnswerDistributionDrilldown({
             const expandedSubScenarioName = expandedSubScenario ? formatSubScenarioLabel(expandedSubScenario) : undefined;
             const availableOptionsOrdered = ANSWER_OPTIONS.filter((o) => availableOptions.has(o));
             const chartData = buildOptionCountsChartData(q, subScenarios, countsByKey, availableOptionsOrdered);
+            const questionComments = commentsByQuestionId.get(q.id) ?? [];
 
             return (
               <Accordion key={q.id} disableGutters>
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Typography sx={{ fontWeight: 700 }}>{q.serviceCapability}</Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                    <Typography sx={{ fontWeight: 700 }}>{formatQuestionNumberLabel(questions.indexOf(q) + 1, q)}</Typography>
+                    {questionComments.length > 0 && (
+                      <Chip
+                        size="small"
+                        label={`${questionComments.length} comment${questionComments.length === 1 ? '' : 's'}`}
+                        sx={{ fontWeight: 600 }}
+                      />
+                    )}
+                  </Box>
                 </AccordionSummary>
                 <AccordionDetails>
                   <QuestionText text={q.questionText} compact />
@@ -207,6 +226,17 @@ export function AnswerDistributionDrilldown({
                       <RespondentTable respondents={expandedRespondents ?? []} anonymized={anonymized} />
                     </Box>
                   )}
+
+                  <Box sx={{ mt: 2 }}>
+                    <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Comments on this question ({questionComments.length})</Typography>
+                    {questionComments.length === 0 ? (
+                      <Typography variant="body2" color="text.secondary">
+                        No comments on this question.
+                      </Typography>
+                    ) : (
+                      <QuestionCommentsTable comments={questionComments} subScenarios={subScenarios} anonymized={anonymized} />
+                    )}
+                  </Box>
                 </AccordionDetails>
               </Accordion>
             );
@@ -214,6 +244,43 @@ export function AnswerDistributionDrilldown({
         </Box>
       ))}
     </Box>
+  );
+}
+
+// Every comment on one question (EXECUTIVE_FEEDBACK_PLAN.md) — shown inside the question's own
+// block so the reader doesn't have to match the separate Comment Collection table to it.
+function QuestionCommentsTable({
+  comments,
+  subScenarios,
+  anonymized,
+}: {
+  comments: CommentDrilldownEntryDto[];
+  subScenarios: SubScenarioDto[];
+  anonymized?: boolean;
+}) {
+  return (
+    <TableContainer component={Paper} variant="outlined">
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>{respondentColumnHeader(anonymized)}</TableCell>
+            <TableCell>NatCo</TableCell>
+            <TableCell>Sub Scenario</TableCell>
+            <TableCell>Comment</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {comments.map((c, i) => (
+            <TableRow key={`${c.respondent.userId}:${i}`}>
+              <TableCell>{c.respondent.email}</TableCell>
+              <TableCell>{c.respondent.opCoName ?? '—'}</TableCell>
+              <TableCell>{formatCommentSubScenarios(c, subScenarios)}</TableCell>
+              <TableCell sx={{ whiteSpace: 'pre-wrap' }}>{c.commentText}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
   );
 }
 

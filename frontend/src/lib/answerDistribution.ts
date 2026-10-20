@@ -1,5 +1,13 @@
-import type { AnswerDrilldownEntryDto, AnswerOption, DrilldownRespondentDto, QuestionDto, SubScenarioDto } from '@anlet/shared';
+import type {
+  AnswerDrilldownEntryDto,
+  AnswerOption,
+  CommentDrilldownEntryDto,
+  DrilldownRespondentDto,
+  QuestionDto,
+  SubScenarioDto,
+} from '@anlet/shared';
 import type { OptionCountsChartRow } from '../components/charts/OptionCountsChart';
+import { formatSubScenarioLabel } from './subScenarioCategories';
 
 export const ANSWER_OPTIONS: AnswerOption[] = ['A', 'B', 'C', 'D'];
 
@@ -45,4 +53,14 @@ export function buildOptionCountsChartData(
     }
     return row;
   });
+}
+
+// A comment's tagged sub-scenarios for display, e.g. "Equipment, Security" — shared by the
+// per-question comment list on screen and in the PDF report (EXECUTIVE_FEEDBACK_PLAN.md).
+export function formatCommentSubScenarios(c: CommentDrilldownEntryDto, subScenarios: SubScenarioDto[]): string {
+  const names = c.subScenarioIds
+    .map((id) => subScenarios.find((s) => s.id === id))
+    .filter((s): s is SubScenarioDto => !!s)
+    .map(formatSubScenarioLabel);
+  return names.join(', ') || (c.appliesToNone ? 'None of the sub-scenarios' : '—');
 }

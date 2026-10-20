@@ -33,6 +33,12 @@ export function formatQuestionLabel(q: { cognitiveActivity: string; serviceCapab
   return `${q.cognitiveActivity} (${q.serviceCapability})`;
 }
 
+// Numbered question label ("Q3 · Fault Prediction") — the same 1-based numbering as the
+// question stepper, so a comment can be matched to its question (EXECUTIVE_FEEDBACK_PLAN.md).
+export function formatQuestionNumberLabel(questionNumber: number, q: { serviceCapability: string }): string {
+  return `Q${questionNumber} · ${q.serviceCapability}`;
+}
+
 // Per-question/per-group answer-completeness coloring (FORTH_REVIEW.md item 3). Deliberately
 // based on raw answered-cell counts only, not comment coverage — a fully-skip-covered
 // question still reads "empty" here, since coverage/skip status is already surfaced

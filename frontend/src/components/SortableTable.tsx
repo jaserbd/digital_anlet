@@ -90,7 +90,7 @@ export function SortableTable<T>({
           if (av == null && bv == null) return 0;
           if (av == null) return 1; // nulls last
           if (bv == null) return -1;
-          const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
+          const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv), undefined, { numeric: true });
           return sortDir === 'asc' ? cmp : -cmp;
         });
       }
@@ -219,7 +219,7 @@ function MultiSelectFilter<T>({
       const v = getValue(row);
       if (v != null && v !== '') values.add(String(v));
     }
-    return [...values].sort((a, b) => a.localeCompare(b));
+    return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   }, [rows, getValue]);
 
   const visibleValues = uniqueValues.filter((v) => v.toLowerCase().includes(search.trim().toLowerCase()));

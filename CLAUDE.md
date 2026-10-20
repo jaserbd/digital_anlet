@@ -244,6 +244,12 @@ Six items, all frontend-only — every data point they need was already returned
 - **User email in the header**: `AppHeader.tsx` now renders `user.email` alongside the Home/Results/Logout links, visible on every page.
 - `RespondentsTable.tsx`'s average-score sentence moved to above the table (was below).
 
+### Comments per question, "no NatCo" rows, PDF charts (`EXECUTIVE_FEEDBACK_PLAN.md`)
+
+- **Comments traceable to questions**: every Comment Collection row (screen, Excel, PDF) has a **Question** column (`formatQuestionNumberLabel` → "Q3 · Fault Prediction", same numbering as the stepper; KEIs "KEI 1 · MTTR"), rows in question order; `SortableTable` sorts/lists values with `numeric: true` so Q10 follows Q9. `AnswerDistributionDrilldown` labels each question "Q3 · …" with a comment-count chip and lists that question's comments (NatCo-scoped, pseudonymous for Executives) inside its block; the dashboard PDF adds a "Comments on Q…" table per question.
+- **"No NatCo" benchmark rows** (`computeBenchmarkRows`): an organization with **exactly one** OpCo counts members without an OpCo (typically Executives, whose profile doesn't ask for one) under it — no synthetic row; with several OpCos the synthetic row is shown only if someone in it submitted (`visibleBenchmarkRows`; the combined Core table keeps a row when either questionnaire has a submission, so both sides stay paired). Organizations without OpCos keep their single organization-named row. The Executive `natCoStatus` applies the same single-OpCo rule.
+- **PDF charts**: `lib/chartCapture.tsx` serializes the chart's SVG straight onto a canvas (plus HTML legend text) instead of html2canvas, which took ~1.4 s per chart and produced **blank** images; captures render inside `ChartAnimationContext` = false so Recharts draws complete bars/labels on first paint. Dashboard report ~15 s → ~2 s (20 respondents). Both PDFs now include the **Cognitive Activity spider diagram** (`buildCognitiveActivityPdfSections`, bar fallback below 3 activities): the personal one from the result, the dashboard one with the on-screen NatCo/Country filter — the filter state lives in the page (`lib/cognitiveActivityFilters.ts`'s `useCognitiveFilterState`, passed to `AggregateCognitiveActivityRadar` as a controlled prop; `useQuestionnaireExecutiveData` fetches the same query key for the report).
+
 ## Architecture
 
 Monorepo, npm workspaces (plain npm, no Turborepo/Nx): `shared/`, `backend/`, `frontend/`.

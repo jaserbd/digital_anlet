@@ -19,7 +19,6 @@
     "canvg": "^4.0.3",
     "dompurify": "^3.4.12",
     "exceljs": "^4.4.0",
-    "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "react": "^19.0.0",

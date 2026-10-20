@@ -222,11 +222,15 @@ export async function getOrganizationQuestionnaireSummary(
   }
 
   if (options.anonymize) {
+    const opCos = await prisma.opCo.findMany({
+      where: { organizationId: scope.organizationId },
+      select: { id: true, name: true, country: true },
+    });
     return {
       questionnaireCode: questionnaire.code,
       anonymized: true,
       respondents: [],
-      natCoStatus: summarizeByNatCo(respondents),
+      natCoStatus: summarizeByNatCo(respondents, opCos.length === 1 ? opCos[0] : undefined),
       answerDistribution,
     };
   }
@@ -234,9 +238,18 @@ export async function getOrganizationQuestionnaireSummary(
 }
 
 // Per-NatCo participation counts — what an Executive sees instead of per-person rows.
-function summarizeByNatCo(respondents: RespondentSummaryDto[]): NatCoStatusDto[] {
+// `onlyOpCo`: the organization's sole NatCo, which members without one are counted under (same
+// rule as computeBenchmarkRows, EXECUTIVE_FEEDBACK_PLAN.md).
+function summarizeByNatCo(
+  respondents: RespondentSummaryDto[],
+  onlyOpCo?: { id: string; name: string; country: string },
+): NatCoStatusDto[] {
   const groups = new Map<string, NatCoStatusDto & { scoreSum: number; scoreCount: number }>();
-  for (const r of respondents) {
+  for (const respondent of respondents) {
+    const r =
+      respondent.opCoId == null && onlyOpCo
+        ? { ...respondent, opCoId: onlyOpCo.id, opCoName: onlyOpCo.name, country: onlyOpCo.country }
+        : respondent;
     const key = r.opCoId ?? '';
     const g = groups.get(key) ?? {
       opCoId: r.opCoId,
@@ -587,6 +600,19 @@ interface BenchmarkRowLabel {
   opCoId: string | null;
   opCoName: string;
   country: string | null;
+  // The synthetic "no OpCo" row of an organization that has OpCos (see computeBenchmarkRows).
+  optionalUnassigned: boolean;
+}
+
+// computeBenchmarkRows' rows, still carrying BenchmarkRowLabel's flag for the callers to filter on.
+type BenchmarkRowWithFlag = BenchmarkRowDto & { optionalUnassigned: boolean };
+
+// Drops the synthetic "no OpCo" rows nobody in them has submitted (EXECUTIVE_FEEDBACK_PLAN.md) — in
+// the combined table only when both questionnaires' rows are empty, so the two sets stay paired.
+function visibleBenchmarkRows(rows: BenchmarkRowWithFlag[], keep?: (row: BenchmarkRowWithFlag) => boolean): BenchmarkRowDto[] {
+  return rows
+    .filter((r) => !r.optionalUnassigned || r.submittedCount > 0 || (keep?.(r) ?? false))
+    .map(({ optionalUnassigned: _ignored, ...row }) => row);
 }
 
 function rowKey(projectId: string | null, organizationId: string, opCoId: string | null): string {
@@ -645,13 +671,23 @@ async function benchmarkUnits(scope?: InsightsScope): Promise<BenchmarkUnit[]> {
  * organization that either has zero OpCos at all (small orgs) or has at least one respondent not
  * yet assigned one — SECOND_REVIEW.md item 9's "for small organizations, NatCo and Organization
  * will be the same" plus not silently dropping unassigned respondents from the table.
+ * EXECUTIVE_FEEDBACK_PLAN.md: an organization with exactly one OpCo counts unassigned members
+ * under that OpCo instead (no extra row), and with several OpCos the synthetic row is dropped
+ * unless someone in it submitted (visibleBenchmarkRows) — it read as a duplicate of the real
+ * NatCo row.
  */
 async function computeBenchmarkRows(
   questionnaire: { id: string; subScenarios: { code: SubScenarioCode }[] },
   scope?: InsightsScope,
-): Promise<BenchmarkRowDto[]> {
+): Promise<BenchmarkRowWithFlag[]> {
   const units = await benchmarkUnits(scope);
   const membershipWhere = scope ? scopedMembership(scope) : COUNTED_MEMBERSHIP;
+  // Organizations whose members without an OpCo are counted under their only OpCo.
+  const singleOpCoByOrg = new Map(
+    units.filter((u) => u.organization.opCos.length === 1).map((u) => [u.organization.id, u.organization.opCos[0]!.id]),
+  );
+  const effectiveOpCoId = (organizationId: string, opCoId: string | null) =>
+    opCoId ?? singleOpCoByOrg.get(organizationId) ?? null;
 
   const unassignedKeys = new Set(
     (
@@ -674,9 +710,10 @@ async function computeBenchmarkRows(
         opCoId: opCo.id,
         opCoName: opCo.name,
         country: opCo.country,
+        optionalUnassigned: false,
       });
     }
-    if (org.opCos.length === 0 || unassignedKeys.has(rowKey(projectId, org.id, null))) {
+    if (org.opCos.length === 0 || (org.opCos.length > 1 && unassignedKeys.has(rowKey(projectId, org.id, null)))) {
       rowLabels.push({
         projectId,
         projectName,
@@ -685,6 +722,8 @@ async function computeBenchmarkRows(
         opCoId: null,
         opCoName: org.name,
         country: null,
+        // Only an organization's sole row is kept when nobody in it submitted.
+        optionalUnassigned: org.opCos.length > 0,
       });
     }
   }
@@ -694,9 +733,11 @@ async function computeBenchmarkRows(
     where: membershipWhere,
     _count: { _all: true },
   });
-  const respondentCountByKey = new Map(
-    respondentCounts.map((r) => [rowKey(r.projectId, r.organizationId, r.opCoId), r._count._all]),
-  );
+  const respondentCountByKey = new Map<string, number>();
+  for (const r of respondentCounts) {
+    const key = rowKey(r.projectId, r.organizationId, effectiveOpCoId(r.organizationId, r.opCoId));
+    respondentCountByKey.set(key, (respondentCountByKey.get(key) ?? 0) + r._count._all);
+  }
 
   const submittedResponses = await prisma.questionnaireResponse.findMany({
     where: { questionnaireId: questionnaire.id, status: 'SUBMITTED', membership: membershipWhere },
@@ -707,10 +748,10 @@ async function computeBenchmarkRows(
     },
   });
   const byKey = groupScores(submittedResponses, (r) =>
-    rowKey(r.membership.projectId, r.membership.organizationId, r.membership.opCoId),
+    rowKey(r.membership.projectId, r.membership.organizationId, effectiveOpCoId(r.membership.organizationId, r.membership.opCoId)),
   );
 
-  return rowLabels.map((label) => {
+  return rowLabels.map(({ optionalUnassigned, ...label }): BenchmarkRowWithFlag => {
     const key = rowKey(label.projectId, label.organizationId, label.opCoId);
     const acc = byKey.get(key);
     return {
@@ -728,6 +769,7 @@ async function computeBenchmarkRows(
       subScenarioAverages: subScenarioAverages(acc, questionnaire.subScenarios),
       averageKeiScore: average(acc?.keiScores ?? []),
       commentCount: acc?.commentCount ?? 0,
+      optionalUnassigned,
     };
   });
 }
@@ -752,7 +794,7 @@ async function loadQuestionnaireForBenchmarking(questionnaireCode: string) {
  */
 export async function getBenchmarkingSummary(questionnaireCode: string): Promise<BenchmarkingSummaryDto> {
   const questionnaire = await loadQuestionnaireForBenchmarking(questionnaireCode);
-  const rows = await computeBenchmarkRows(questionnaire);
+  const rows = visibleBenchmarkRows(await computeBenchmarkRows(questionnaire));
   return { questionnaireCode: questionnaire.code, rows };
 }
 
@@ -768,7 +810,7 @@ export async function getOpCoBenchmarkingSummary(
   questionnaireCode: string,
 ): Promise<OpCoBenchmarkingSummaryDto> {
   const questionnaire = await loadQuestionnaireForBenchmarking(questionnaireCode);
-  const rows = await computeBenchmarkRows(questionnaire, scope);
+  const rows = visibleBenchmarkRows(await computeBenchmarkRows(questionnaire, scope));
   return { questionnaireCode: questionnaire.code, organizationId: scope.organizationId, rows };
 }
 
@@ -795,10 +837,14 @@ export async function getCombinedBenchmarkingSummary(
     computeBenchmarkRows(qA, scope),
     computeBenchmarkRows(qB, scope),
   ]);
-  const byKeyB = new Map(rowsB.map((r) => [rowKey(r.projectId, r.organizationId, r.opCoId), r]));
+  const keyOf = (r: BenchmarkRowDto) => rowKey(r.projectId, r.organizationId, r.opCoId);
+  const submittedInB = new Set(rowsB.filter((r) => r.submittedCount > 0).map(keyOf));
+  const submittedInA = new Set(rowsA.filter((r) => r.submittedCount > 0).map(keyOf));
+  const visibleA = visibleBenchmarkRows(rowsA, (r) => submittedInB.has(keyOf(r)));
+  const byKeyB = new Map(visibleBenchmarkRows(rowsB, (r) => submittedInA.has(keyOf(r))).map((r) => [keyOf(r), r]));
 
-  const rows: CombinedBenchmarkRowDto[] = rowsA.map((rowA) => {
-    const rowB = byKeyB.get(rowKey(rowA.projectId, rowA.organizationId, rowA.opCoId))!;
+  const rows: CombinedBenchmarkRowDto[] = visibleA.map((rowA) => {
+    const rowB = byKeyB.get(keyOf(rowA))!;
     const combinedAverageFinalScore =
       rowA.averageFinalScore != null && rowB.averageFinalScore != null
         ? round4(0.5 * rowA.averageFinalScore + 0.5 * rowB.averageFinalScore)

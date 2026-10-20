@@ -8,6 +8,11 @@ import Typography from '@mui/material/Typography';
 import { opCoApi } from '../api/opCoApi';
 import { insightsApi } from '../api/insightsApi';
 import { CognitiveActivityChart } from './charts/RadarScoreChart';
+import {
+  cognitiveActivitySummaryQueryKey,
+  NO_COGNITIVE_ACTIVITY_FILTERS,
+  type CognitiveActivityFilters,
+} from '../lib/cognitiveActivityFilters';
 
 export interface OrganizationSwitcher {
   organizations: OrganizationDto[];
@@ -25,15 +30,24 @@ export function AggregateCognitiveActivityRadar({
   questionnaireCode,
   projectId,
   organizationSwitcher,
+  filters: controlledFilters,
+  onFiltersChange,
 }: {
   organizationId: string;
   questionnaireCode: string;
   // The project an Application Admin looks at (PROJECTS_V2_PLAN.md); see QuestionnaireExecutiveDetail.
   projectId?: string | null;
   organizationSwitcher?: OrganizationSwitcher;
+  // Controlled filter (both or neither); otherwise the component keeps its own.
+  filters?: CognitiveActivityFilters;
+  onFiltersChange?: (filters: CognitiveActivityFilters) => void;
 }) {
-  const [opCoId, setOpCoId] = useState('');
-  const [country, setCountry] = useState('');
+  const [ownFilters, setOwnFilters] = useState(NO_COGNITIVE_ACTIVITY_FILTERS);
+  const filters = controlledFilters ?? ownFilters;
+  const setFilters = onFiltersChange ?? setOwnFilters;
+  const { opCoId, country } = filters;
+  const setOpCoId = (value: string) => setFilters({ ...filters, opCoId: value });
+  const setCountry = (value: string) => setFilters({ ...filters, country: value });
 
   const opCosQuery = useQuery({
     queryKey: ['opcos', organizationId],
@@ -45,7 +59,7 @@ export function AggregateCognitiveActivityRadar({
   );
 
   const summaryQuery = useQuery({
-    queryKey: ['cognitive-activity-summary', organizationId, questionnaireCode, opCoId, country, projectId ?? null],
+    queryKey: cognitiveActivitySummaryQueryKey(organizationId, questionnaireCode, filters, projectId),
     queryFn: () =>
       insightsApi.getCognitiveActivitySummary(
         organizationId,
