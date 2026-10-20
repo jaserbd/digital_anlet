@@ -1,6 +1,6 @@
 # Executive comments per question, duplicate benchmark rows, PDF spider diagram
 
-**Status: merged** — locally tested (integration + unit tests, headless-Chrome walkthrough of the Executive page, Deep-Dive page and personal results PDF with local "ZZ PDF Test" data, deleted afterwards).
+**Status: done** — merged to `main`, deployed to `anlet-504115` as revision `anlet-00011-zjm` on 2026-10-20 after Cloud SQL backup `1792526056171` (no migration; rollback: revision `anlet-00010-9kf`). Live smoke test only (pages load, new bundle served, no error logs), since the logged-in walkthrough needs a production account. Locally tested (integration + unit tests, headless-Chrome walkthrough of the Executive page, Deep-Dive page and personal results PDF with local "ZZ PDF Test" data, deleted afterwards).
 
 Source: `admin_management.md` lines 25–29 (2026-10-20), clarified in discussion.
 
