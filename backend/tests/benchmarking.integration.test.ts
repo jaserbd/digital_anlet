@@ -2,7 +2,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma';
 import { callerFor } from './testUsers';
 import {
+  getAnswerDrilldown,
   getBenchmarkingSummary,
+  getCognitiveActivitySummary,
   getCombinedBenchmarkingSummary,
   getOpCoBenchmarkingSummary,
   getOrganizationQuestionnaireSummary,
@@ -261,6 +263,17 @@ describe('members without a NatCo (real DB)', () => {
     await prisma.membership.updateMany({ where: { userId: singleUser }, data: { opCoId: singleOpCoId } });
     await submitAllA(singleUser);
     await createUser(singleOrgId, 'single-executive', 'EXECUTIVE'); // no NatCo, never answers
+    // An Executive without a NatCo who does answer, with a comment.
+    const answeringExecutive = await createUser(singleOrgId, 'single-answering-executive', 'EXECUTIVE');
+    await submitAllA(answeringExecutive);
+    const ran = await prisma.questionnaire.findUniqueOrThrow({ where: { code: 'RAN_FM_GB1059A' }, include: { questions: true } });
+    const executiveResponse = await getOrCreateResponse(await callerFor(answeringExecutive), 'RAN_FM_GB1059A');
+    await upsertComment(executiveResponse.id, answeringExecutive, {
+      questionId: ran.questions[0]!.id,
+      commentText: 'Executive remark.',
+      subScenarioIds: [],
+      appliesToNone: true,
+    });
 
     const multiUser = await createUser(multiOrgId, 'multi-user');
     await prisma.membership.updateMany({ where: { userId: multiUser }, data: { opCoId: multiOpCoIds[0] } });
@@ -279,7 +292,14 @@ describe('members without a NatCo (real DB)', () => {
   it('counts them under the only NatCo instead of a separate row', async () => {
     const summary = await getOpCoBenchmarkingSummary({ organizationId: singleOrgId, projectId: null }, 'RAN_FM_GB1059A');
     expect(summary.rows).toEqual([
-      expect.objectContaining({ opCoId: singleOpCoId, opCoName: SINGLE_ORG_NAME, respondentCount: 2, submittedCount: 1, averageFinalScore: 4 }),
+      expect.objectContaining({
+        opCoId: singleOpCoId,
+        opCoName: SINGLE_ORG_NAME,
+        respondentCount: 3,
+        submittedCount: 2,
+        averageFinalScore: 4,
+        commentCount: 1,
+      }),
     ]);
 
     const participation = await getOrganizationQuestionnaireSummary(
@@ -288,8 +308,21 @@ describe('members without a NatCo (real DB)', () => {
       { anonymize: true },
     );
     expect(participation.natCoStatus).toEqual([
-      expect.objectContaining({ opCoId: singleOpCoId, participantCount: 2, submittedCount: 1, notStartedCount: 1 }),
+      expect.objectContaining({ opCoId: singleOpCoId, participantCount: 3, submittedCount: 2, notStartedCount: 1 }),
     ]);
+  });
+
+  it("puts them under the only NatCo in the drill-downs and the spider chart's filters too", async () => {
+    const scope = { organizationId: singleOrgId, projectId: null };
+    const drilldown = await getAnswerDrilldown(scope, 'RAN_FM_GB1059A');
+    expect(drilldown.comments).toEqual([
+      expect.objectContaining({ commentText: 'Executive remark.', respondent: expect.objectContaining({ opCoId: singleOpCoId }) }),
+    ]);
+    expect(drilldown.entries.every((e) => e.respondents.every((r) => r.opCoId === singleOpCoId))).toBe(true);
+
+    expect((await getCognitiveActivitySummary(scope, 'RAN_FM_GB1059A', { opCoId: singleOpCoId })).sampleSize).toBe(2);
+    expect((await getCognitiveActivitySummary(scope, 'RAN_FM_GB1059A', { country: '__integration-test-country-s__' })).sampleSize).toBe(2);
+    expect((await getCognitiveActivitySummary(scope, 'RAN_FM_GB1059A', { country: 'Elsewhere' })).sampleSize).toBe(0);
   });
 
   it('hides the "no NatCo" row of an organization with several NatCos while nobody in it submitted', async () => {

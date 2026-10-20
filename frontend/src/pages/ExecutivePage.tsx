@@ -72,7 +72,14 @@ export function ExecutivePage() {
   const details = isGroup ? [detailA, detailB] : [detailA];
 
   const benchmarkReady = isGroup ? !!combinedQuery.data : !!(opCoBenchmarkQuery.data && questionnaireQuery.data);
-  const detailsReady = details.every((d) => d.questionnaireQuery.data && d.summaryQuery.data && d.drilldownQuery.data);
+  // The spider chart's data too (its PDF section) — or its error, which the PDF then reports.
+  const detailsReady = details.every(
+    (d) =>
+      d.questionnaireQuery.data &&
+      d.summaryQuery.data &&
+      d.drilldownQuery.data &&
+      (d.cognitiveActivityQuery.data || d.cognitiveActivityQuery.isError),
+  );
   const reportReady = !!effectiveEntry && benchmarkReady && detailsReady;
 
   function reportInputs(): { benchmark: OrganizationReportBenchmarkPart; details: OrganizationReportDetail[] } {
@@ -89,22 +96,17 @@ export function ExecutivePage() {
           : null;
     const reportDetails: OrganizationReportDetail[] = details.map((d) => {
       const questionnaire = d.questionnaireQuery.data!;
-      const cognitiveActivity = d.cognitiveActivityQuery.data;
       return {
         questionnaire,
         summary: d.summaryQuery.data!,
         drilldown: d.drilldownQuery.data,
-        ...(cognitiveActivity
-          ? {
-              cognitiveActivity: {
-                summary: cognitiveActivity,
-                filterLabel: cognitiveFilterLabel(
-                  filtersFor(questionnaire.code),
-                  (id) => opCosQuery.data?.find((o) => o.id === id)?.name,
-                ),
-              },
-            }
-          : {}),
+        cognitiveActivity: {
+          summary: d.cognitiveActivityQuery.data ?? null,
+          filterLabel: cognitiveFilterLabel(
+            filtersFor(questionnaire.code),
+            (id) => opCosQuery.data?.find((o) => o.id === id)?.name,
+          ),
+        },
       };
     });
     return { benchmark, details: reportDetails };

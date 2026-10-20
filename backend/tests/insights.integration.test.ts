@@ -235,6 +235,10 @@ describe('getCognitiveActivitySummary (real DB)', () => {
   it('averages per Cognitive Activity and overall final score across an org, scoped and filterable by OpCo', async () => {
     const opCo = await prisma.opCo.create({ data: { name: '__test-opco__', country: 'Testland', organizationId: orgAId } });
     opCoIds.push(opCo.id);
+    // A second NatCo: with only one, members without a NatCo would count under it
+    // (EXECUTIVE_FEEDBACK_PLAN.md, covered in benchmarking.integration.test.ts).
+    const secondOpCo = await prisma.opCo.create({ data: { name: '__test-opco-2__', country: 'Otherland', organizationId: orgAId } });
+    opCoIds.push(secondOpCo.id);
 
     const inOpCoUserId = await createUser(orgAId, 'cog-in-opco', opCo.id);
     const noOpCoUserId = await createUser(orgAId, 'cog-no-opco');

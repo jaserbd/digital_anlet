@@ -25,6 +25,7 @@ import type {
   SubScenarioAverageDto,
   SubScenarioCode,
 } from '@anlet/shared';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { round4 } from '../../lib/rounding';
 
@@ -47,6 +48,28 @@ export interface InsightsScope {
 
 function scopedMembership(scope: InsightsScope) {
   return { organizationId: scope.organizationId, projectId: scope.projectId, ...COUNTED_MEMBERSHIP };
+}
+
+type OpCoIdentity = { id: string; name: string; country: string };
+
+/** Per organization, its only OpCo — for organizations with exactly one. Members without an OpCo
+ * (typically Executives, whose profile doesn't ask for one) count as that OpCo's members in every
+ * view (benchmark rows, participation, drill-downs, spider-chart filter), so they don't show up
+ * as a separate "no NatCo" group (EXECUTIVE_FEEDBACK_PLAN.md). */
+async function soleOpCoByOrganization(organizationIds: string[]): Promise<Map<string, OpCoIdentity>> {
+  const opCos = await prisma.opCo.findMany({
+    where: { organizationId: { in: organizationIds } },
+    select: { id: true, name: true, country: true, organizationId: true },
+  });
+  const byOrg = new Map<string, OpCoIdentity[]>();
+  for (const { organizationId, ...opCo } of opCos) {
+    byOrg.set(organizationId, [...(byOrg.get(organizationId) ?? []), opCo]);
+  }
+  return new Map([...byOrg].filter(([, list]) => list.length === 1).map(([orgId, list]) => [orgId, list[0]!]));
+}
+
+async function soleOpCo(organizationId: string): Promise<OpCoIdentity | undefined> {
+  return (await soleOpCoByOrganization([organizationId])).get(organizationId);
 }
 
 // Executives see participants anonymously (ANONYMOUS_EXECUTIVE_PLAN.md): no emails, names,
@@ -172,8 +195,10 @@ export async function getOrganizationQuestionnaireSummary(
     },
   });
 
+  const fallbackOpCo = await soleOpCo(scope.organizationId);
   const respondents: RespondentSummaryDto[] = memberships.map((m) => {
     const latest = m.responses[0];
+    const opCo = m.opCo ?? fallbackOpCo;
     return {
       userId: m.user.id,
       email: m.user.email,
@@ -181,9 +206,9 @@ export async function getOrganizationQuestionnaireSummary(
       lastName: m.user.lastName,
       status: latest?.status ?? 'NOT_STARTED',
       finalScore: latest?.result ? Number(latest.result.finalScore) : null,
-      opCoId: m.opCo?.id ?? null,
-      opCoName: m.opCo?.name ?? null,
-      country: m.opCo?.country ?? null,
+      opCoId: opCo?.id ?? null,
+      opCoName: opCo?.name ?? null,
+      country: opCo?.country ?? null,
       workingDomain: m.workingDomain,
       designation: m.designation,
     };
@@ -222,15 +247,11 @@ export async function getOrganizationQuestionnaireSummary(
   }
 
   if (options.anonymize) {
-    const opCos = await prisma.opCo.findMany({
-      where: { organizationId: scope.organizationId },
-      select: { id: true, name: true, country: true },
-    });
     return {
       questionnaireCode: questionnaire.code,
       anonymized: true,
       respondents: [],
-      natCoStatus: summarizeByNatCo(respondents, opCos.length === 1 ? opCos[0] : undefined),
+      natCoStatus: summarizeByNatCo(respondents),
       answerDistribution,
     };
   }
@@ -238,18 +259,9 @@ export async function getOrganizationQuestionnaireSummary(
 }
 
 // Per-NatCo participation counts — what an Executive sees instead of per-person rows.
-// `onlyOpCo`: the organization's sole NatCo, which members without one are counted under (same
-// rule as computeBenchmarkRows, EXECUTIVE_FEEDBACK_PLAN.md).
-function summarizeByNatCo(
-  respondents: RespondentSummaryDto[],
-  onlyOpCo?: { id: string; name: string; country: string },
-): NatCoStatusDto[] {
+function summarizeByNatCo(respondents: RespondentSummaryDto[]): NatCoStatusDto[] {
   const groups = new Map<string, NatCoStatusDto & { scoreSum: number; scoreCount: number }>();
-  for (const respondent of respondents) {
-    const r =
-      respondent.opCoId == null && onlyOpCo
-        ? { ...respondent, opCoId: onlyOpCo.id, opCoName: onlyOpCo.name, country: onlyOpCo.country }
-        : respondent;
+  for (const r of respondents) {
     const key = r.opCoId ?? '';
     const g = groups.get(key) ?? {
       opCoId: r.opCoId,
@@ -303,13 +315,15 @@ type IdentitySourceMembership = {
   user: { email: string };
 };
 
-function toIdentity(membership: IdentitySourceMembership): DrilldownRespondentIdentityDto {
+// `fallbackOpCo`: the organization's only OpCo, for members without one (soleOpCoByOrganization).
+function toIdentity(membership: IdentitySourceMembership, fallbackOpCo?: OpCoIdentity): DrilldownRespondentIdentityDto {
+  const opCo = membership.opCo ?? fallbackOpCo;
   return {
     userId: membership.userId,
     email: membership.user.email,
-    opCoId: membership.opCo?.id ?? null,
-    opCoName: membership.opCo?.name ?? null,
-    country: membership.opCo?.country ?? null,
+    opCoId: opCo?.id ?? null,
+    opCoName: opCo?.name ?? null,
+    country: opCo?.country ?? null,
     workingDomain: membership.workingDomain,
     designation: membership.designation,
   };
@@ -358,7 +372,7 @@ export async function getAnswerDrilldown(
     membership: scopedMembership(scope),
   };
 
-  const [answers, comments, keis] = await Promise.all([
+  const [answers, comments, keis, fallbackOpCo] = await Promise.all([
     prisma.answer.findMany({
       where: { response: responseScope },
       select: {
@@ -386,6 +400,7 @@ export async function getAnswerDrilldown(
         response: { select: { membership: { select: IDENTITY_SELECT } } },
       },
     }),
+    soleOpCo(scope.organizationId),
   ]);
 
   const commentByUserAndQuestion = new Map<string, string>();
@@ -396,7 +411,7 @@ export async function getAnswerDrilldown(
       subScenarioIds: c.subScenarios.map((s) => s.subScenarioId),
       appliesToNone: c.appliesToNone,
       commentText: c.commentText,
-      respondent: toIdentity(c.response.membership),
+      respondent: toIdentity(c.response.membership, fallbackOpCo),
     };
   });
 
@@ -414,7 +429,7 @@ export async function getAnswerDrilldown(
       byKey.set(key, entry);
     }
     entry.respondents.push({
-      ...toIdentity(a.response.membership),
+      ...toIdentity(a.response.membership, fallbackOpCo),
       comment: commentByUserAndQuestion.get(`${a.response.membership.userId}:${a.questionId}`) ?? null,
     });
   }
@@ -424,7 +439,7 @@ export async function getAnswerDrilldown(
     selectedOption: k.selectedOption,
     indicatorValue: k.indicatorValue,
     comment: k.comment,
-    respondent: toIdentity(k.response.membership),
+    respondent: toIdentity(k.response.membership, fallbackOpCo),
   }));
 
   const entries = [...byKey.values()];
@@ -473,6 +488,10 @@ export async function getCognitiveActivitySummary(
     throw new QuestionnaireNotFoundError();
   }
 
+  // Members without an OpCo belong to the organization's only OpCo (soleOpCoByOrganization).
+  const fallbackOpCo = await soleOpCo(scope.organizationId);
+  const orUnassigned = (matchesFallback: boolean, condition: Prisma.MembershipWhereInput): Prisma.MembershipWhereInput =>
+    matchesFallback ? { OR: [condition, { opCoId: null }] } : condition;
   const scoreResults = await prisma.scoreResult.findMany({
     where: {
       response: {
@@ -480,8 +499,12 @@ export async function getCognitiveActivitySummary(
         status: 'SUBMITTED',
         membership: {
           ...scopedMembership(scope),
-          ...(filters.opCoId ? { opCoId: filters.opCoId } : {}),
-          ...(filters.country ? { opCo: { country: filters.country } } : {}),
+          AND: [
+            ...(filters.opCoId ? [orUnassigned(fallbackOpCo?.id === filters.opCoId, { opCoId: filters.opCoId })] : []),
+            ...(filters.country
+              ? [orUnassigned(fallbackOpCo?.country === filters.country, { opCo: { country: filters.country } })]
+              : []),
+          ],
         },
       },
     },
@@ -567,12 +590,15 @@ export async function getCrossOrgCommentCollection(questionnaireCode: string): P
     }),
   ]);
 
+  const fallbackOpCos = await soleOpCoByOrganization([
+    ...new Set([...comments, ...keiComments].map((c) => c.response.membership.organization.id)),
+  ]);
   const commentEntries: CrossOrgCommentEntryDto[] = comments.map((c) => ({
     questionId: c.questionId,
     subScenarioIds: c.subScenarios.map((s) => s.subScenarioId),
     appliesToNone: c.appliesToNone,
     commentText: c.commentText,
-    respondent: toIdentity(c.response.membership),
+    respondent: toIdentity(c.response.membership, fallbackOpCos.get(c.response.membership.organization.id)),
     organizationId: c.response.membership.organization.id,
     organizationName: c.response.membership.organization.name,
     projectName: c.response.membership.project?.name ?? null,
@@ -583,7 +609,7 @@ export async function getCrossOrgCommentCollection(questionnaireCode: string): P
     selectedOption: k.selectedOption,
     indicatorValue: k.indicatorValue,
     comment: k.comment,
-    respondent: toIdentity(k.response.membership),
+    respondent: toIdentity(k.response.membership, fallbackOpCos.get(k.response.membership.organization.id)),
     organizationId: k.response.membership.organization.id,
     organizationName: k.response.membership.organization.name,
     projectName: k.response.membership.project?.name ?? null,

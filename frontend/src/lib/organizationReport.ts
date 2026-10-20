@@ -31,8 +31,9 @@ export interface OrganizationReportDetail {
   summary: OrganizationQuestionnaireSummaryDto;
   drilldown: AnswerDrilldownDto | undefined;
   // The spider chart's data for its current NatCo/Country filter, and that filter in words
-  // ("All NatCos · All countries") — PDF only (EXECUTIVE_FEEDBACK_PLAN.md).
-  cognitiveActivity?: { summary: CognitiveActivitySummaryDto; filterLabel: string };
+  // ("All NatCos · All countries") — PDF only (EXECUTIVE_FEEDBACK_PLAN.md). `summary` is null
+  // when it couldn't be loaded, which the PDF says rather than silently leaving the chart out.
+  cognitiveActivity?: { summary: CognitiveActivitySummaryDto | null; filterLabel: string };
 }
 
 // "NatCo: X · Country: Y" for the spider chart's filter ('' = all).
@@ -107,7 +108,13 @@ export async function buildOrganizationReportPdfSections(
   }
   for (const { questionnaire, summary, drilldown, cognitiveActivity } of details) {
     const anonymized = summary.anonymized;
-    if (cognitiveActivity) {
+    if (cognitiveActivity && !cognitiveActivity.summary) {
+      sections.push({
+        kind: 'text',
+        heading: 'Cognitive Activity scores',
+        lines: [`${questionnaire.name} — ${cognitiveActivity.filterLabel}`, 'The scores could not be loaded.'],
+      });
+    } else if (cognitiveActivity?.summary) {
       const { summary: ca, filterLabel } = cognitiveActivity;
       sections.push(
         ...(await buildCognitiveActivityPdfSections(
