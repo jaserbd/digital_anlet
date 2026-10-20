@@ -1,5 +1,7 @@
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis, LabelList } from 'recharts';
+import { useContext } from 'react';
 import type { AnswerOption } from '@anlet/shared';
+import { ChartAnimationContext } from './chartAnimation';
 
 export interface OptionCountsChartRow {
   subScenario: string;
@@ -26,6 +28,7 @@ export const OPTION_COUNTS_CHART_HEIGHT = 300;
 // since not every question offers all four options and a shared 0 baseline would otherwise
 // be ambiguous).
 export function OptionCountsChart({ data, options }: { data: OptionCountsChartRow[]; options: AnswerOption[] }) {
+  const animate = useContext(ChartAnimationContext);
   if (data.length === 0) {
     return null;
   }
@@ -52,7 +55,7 @@ export function OptionCountsChart({ data, options }: { data: OptionCountsChartRo
           <Tooltip contentStyle={{ fontSize: 12, borderRadius: 4, border: '1px solid #e1e0d9' }} />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           {options.map((option) => (
-            <Bar key={option} dataKey={option} name={`Option ${option}`} fill={OPTION_COLORS[option]} radius={[4, 4, 0, 0]} barSize={20}>
+            <Bar key={option} dataKey={option} name={`Option ${option}`} fill={OPTION_COLORS[option]} radius={[4, 4, 0, 0]} barSize={20} isAnimationActive={animate}>
               <LabelList dataKey={option} position="top" style={{ fontSize: 10, fill: '#52514e' }} />
             </Bar>
           ))}

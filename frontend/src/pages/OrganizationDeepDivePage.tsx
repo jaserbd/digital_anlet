@@ -20,11 +20,13 @@ import { SectionCard } from '../components/SectionCard';
 import { BenchmarkTable } from '../components/BenchmarkTable';
 import { CombinedBenchmarkTable } from '../components/CombinedBenchmarkTable';
 import { QuestionnaireExecutiveDetail, useQuestionnaireExecutiveData } from '../components/QuestionnaireExecutiveDetail';
+import { useCognitiveFilterState } from '../lib/cognitiveActivityFilters';
 import { GroupedCommentsList, type CommentEntry } from '../components/GroupedCommentsList';
 import { exportRowsToXlsx } from '../lib/exportXlsx';
 import {
   buildOrganizationReportPdfSections,
   buildOrganizationReportSheets,
+  cognitiveFilterLabel,
   type OrganizationReportBenchmarkPart,
   type OrganizationReportDetail,
 } from '../lib/organizationReport';
@@ -82,8 +84,9 @@ export function OrganizationDeepDivePage() {
   // undefined (queries disabled) outside the Core FM+Stability group case.
   const codeA = effectiveEntry?.questionnaireCodes[0];
   const codeB = effectiveEntry?.questionnaireCodes[1];
-  const detailA = useQuestionnaireExecutiveData(organizationId, codeA, projectId);
-  const detailB = useQuestionnaireExecutiveData(organizationId, isGroup ? codeB : undefined, projectId);
+  const { filtersFor, setFiltersFor } = useCognitiveFilterState(organizationId);
+  const detailA = useQuestionnaireExecutiveData(organizationId, codeA, projectId, filtersFor(codeA));
+  const detailB = useQuestionnaireExecutiveData(organizationId, isGroup ? codeB : undefined, projectId, filtersFor(codeB));
   const details = isGroup ? [detailA, detailB] : [detailA];
 
   const [selectedOpCoId, setSelectedOpCoId] = useState<string | null>(null);
@@ -95,7 +98,14 @@ export function OrganizationDeepDivePage() {
   const isGeneratingPdfRef = useRef(false);
 
   const benchmarkReady = isGroup ? !!combinedQuery.data : !!(opCoBenchmarkQuery.data && questionnaireQuery.data);
-  const detailsReady = details.every((d) => d.questionnaireQuery.data && d.summaryQuery.data && d.drilldownQuery.data);
+  // The spider chart's data too (its PDF section) — or its error, which the PDF then reports.
+  const detailsReady = details.every(
+    (d) =>
+      d.questionnaireQuery.data &&
+      d.summaryQuery.data &&
+      d.drilldownQuery.data &&
+      (d.cognitiveActivityQuery.data || d.cognitiveActivityQuery.isError),
+  );
   const reportReady = !!effectiveEntry && benchmarkReady && detailsReady;
 
   function reportInputs(): { benchmark: OrganizationReportBenchmarkPart; details: OrganizationReportDetail[] } {
@@ -110,11 +120,21 @@ export function OrganizationDeepDivePage() {
               showKeiColumn: questionnaireQuery.data.effectivenessIndicators.length > 0,
             }
           : null;
-    const reportDetails: OrganizationReportDetail[] = details.map((d) => ({
-      questionnaire: d.questionnaireQuery.data!,
-      summary: d.summaryQuery.data!,
-      drilldown: d.drilldownQuery.data,
-    }));
+    const reportDetails: OrganizationReportDetail[] = details.map((d) => {
+      const questionnaire = d.questionnaireQuery.data!;
+      return {
+        questionnaire,
+        summary: d.summaryQuery.data!,
+        drilldown: d.drilldownQuery.data,
+        cognitiveActivity: {
+          summary: d.cognitiveActivityQuery.data ?? null,
+          filterLabel: cognitiveFilterLabel(
+            filtersFor(questionnaire.code),
+            (id) => opCosQuery.data?.find((o) => o.id === id)?.name,
+          ),
+        },
+      };
+    });
     return { benchmark, details: reportDetails };
   }
 
@@ -304,6 +324,8 @@ export function OrganizationDeepDivePage() {
             questionnaireCode={code}
             projectId={projectId}
             opCoScopeId={isGroup ? null : selectedOpCoId}
+            cognitiveFilters={filtersFor(code)}
+            onCognitiveFiltersChange={setFiltersFor(code)}
             organizationSwitcher={{
               organizations: organizationsQuery.data ?? [],
               currentOrganizationId: organizationId,

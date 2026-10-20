@@ -153,7 +153,8 @@ export function buildKeiDistributionPdfSections(
 
 // Key Effectiveness Indicator comments (NEW_HVS_PLAN.md Phase B) join the same flat table:
 // KEIs have no Cognitive Activity or sub-scenario, so those columns carry a fixed
-// "Effectiveness Indicator" label and the indicator's name respectively.
+// "Effectiveness Indicator" label and the indicator's name respectively; the Question column
+// numbers the indicator ("KEI 1 · MTTR").
 const KEI_COMMENT_ACTIVITY_LABEL = 'Effectiveness Indicator';
 
 function flattenKeiCommentRows<T extends KeiDrilldownEntryDto>(
@@ -162,6 +163,7 @@ function flattenKeiCommentRows<T extends KeiDrilldownEntryDto>(
   extra: (entry: T) => Partial<CommentCollectionRow>,
 ): CommentCollectionRow[] {
   const nameById = new Map(indicators.map((k) => [k.id, k.name]));
+  const numberById = new Map(indicators.map((k, i) => [k.id, i + 1]));
   return keiResponses.flatMap((k) =>
     k.comment?.trim()
       ? [
@@ -172,6 +174,7 @@ function flattenKeiCommentRows<T extends KeiDrilldownEntryDto>(
             country: k.respondent.country,
             designation: k.respondent.designation,
             cognitiveActivity: KEI_COMMENT_ACTIVITY_LABEL,
+            question: numberById.has(k.indicatorId) ? `KEI ${numberById.get(k.indicatorId)} · ${nameById.get(k.indicatorId)}` : '—',
             subScenario: nameById.get(k.indicatorId) ?? '—',
             comment: k.comment,
             ...extra(k),

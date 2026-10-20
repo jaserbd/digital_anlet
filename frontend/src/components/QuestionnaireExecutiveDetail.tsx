@@ -8,6 +8,11 @@ import { buildCommentCollectionRows, CommentCollectionTable } from './CommentCol
 import { buildKeiCommentRows } from '../lib/keiDistribution';
 import { KeiDistribution } from './KeiDistribution';
 import { AggregateCognitiveActivityRadar, type OrganizationSwitcher } from './AggregateCognitiveActivityRadar';
+import {
+  cognitiveActivitySummaryQueryKey,
+  NO_COGNITIVE_ACTIVITY_FILTERS,
+  type CognitiveActivityFilters,
+} from '../lib/cognitiveActivityFilters';
 
 // Fetches everything one member questionnaire's section of an organization overview needs.
 // Shared by ExecutivePage.tsx (own org) and OrganizationDeepDivePage.tsx (any org, ADMIN.md
@@ -20,6 +25,8 @@ export function useQuestionnaireExecutiveData(
   organizationId: string,
   questionnaireCode: string | undefined,
   projectId?: string | null,
+  // The spider chart's current filter — its data goes into the PDF report.
+  cognitiveFilters: CognitiveActivityFilters = NO_COGNITIVE_ACTIVITY_FILTERS,
 ) {
   const questionnaireQuery = useQuery({
     queryKey: ['questionnaire', questionnaireCode],
@@ -36,7 +43,18 @@ export function useQuestionnaireExecutiveData(
     queryFn: () => insightsApi.getAnswerDrilldown(organizationId, questionnaireCode!, projectId),
     enabled: !!questionnaireCode,
   });
-  return { questionnaireQuery, summaryQuery, drilldownQuery };
+  const cognitiveActivityQuery = useQuery({
+    queryKey: cognitiveActivitySummaryQueryKey(organizationId, questionnaireCode, cognitiveFilters, projectId),
+    queryFn: () =>
+      insightsApi.getCognitiveActivitySummary(
+        organizationId,
+        questionnaireCode!,
+        { opCoId: cognitiveFilters.opCoId || undefined, country: cognitiveFilters.country || undefined },
+        projectId,
+      ),
+    enabled: !!questionnaireCode,
+  });
+  return { questionnaireQuery, summaryQuery, drilldownQuery, cognitiveActivityQuery };
 }
 
 // Respondents + Answer distribution + Comment Collection for one questionnaire — extracted
@@ -51,6 +69,8 @@ export function QuestionnaireExecutiveDetail({
   projectId,
   opCoScopeId,
   organizationSwitcher,
+  cognitiveFilters,
+  onCognitiveFiltersChange,
 }: {
   organizationId: string;
   questionnaireCode: string;
@@ -63,8 +83,16 @@ export function QuestionnaireExecutiveDetail({
   // ADMIN_2.md item 1's Admin-only Organization dropdown, gating the spider chart's own
   // NatCo/Country filters — omitted by ExecutivePage, which never switches organizations.
   organizationSwitcher?: OrganizationSwitcher;
+  // The spider chart's filter, held by the page for its PDF report (see AggregateCognitiveActivityRadar).
+  cognitiveFilters?: CognitiveActivityFilters;
+  onCognitiveFiltersChange?: (filters: CognitiveActivityFilters) => void;
 }) {
-  const { questionnaireQuery, summaryQuery, drilldownQuery } = useQuestionnaireExecutiveData(organizationId, questionnaireCode, projectId);
+  const { questionnaireQuery, summaryQuery, drilldownQuery } = useQuestionnaireExecutiveData(
+    organizationId,
+    questionnaireCode,
+    projectId,
+    cognitiveFilters,
+  );
 
   if (questionnaireQuery.isLoading || summaryQuery.isLoading) {
     return <p>Loading…</p>;
@@ -84,6 +112,8 @@ export function QuestionnaireExecutiveDetail({
         questionnaireCode={questionnaireCode}
         projectId={projectId}
         organizationSwitcher={organizationSwitcher}
+        filters={cognitiveFilters}
+        onFiltersChange={onCognitiveFiltersChange}
       />
 
       {summary.anonymized ? (

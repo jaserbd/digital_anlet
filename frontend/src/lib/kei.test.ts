@@ -81,9 +81,9 @@ describe('KEI distribution', () => {
 
   it('turns KEI comments into Comment Collection rows', () => {
     const rows = buildKeiCommentRows(responses, [mttr, automation]);
-    expect(rows.map((r) => [r.email, r.cognitiveActivity, r.subScenario, r.comment])).toEqual([
-      ['u2@x.test', 'Effectiveness Indicator', 'MTTR', 'No ticket data'],
-      ['u1@x.test', 'Effectiveness Indicator', 'Automation rate', 'Pilot only'],
+    expect(rows.map((r) => [r.email, r.cognitiveActivity, r.question, r.subScenario, r.comment])).toEqual([
+      ['u2@x.test', 'Effectiveness Indicator', 'KEI 1 · MTTR', 'MTTR', 'No ticket data'],
+      ['u1@x.test', 'Effectiveness Indicator', 'KEI 2 · Automation rate', 'Automation rate', 'Pilot only'],
     ]);
   });
 

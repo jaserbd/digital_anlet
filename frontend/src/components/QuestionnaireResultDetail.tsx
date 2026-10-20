@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { QuestionnaireDto, ResponseDto, ScoreResultDto } from '@anlet/shared';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -7,7 +8,8 @@ import { ScoreBreakdownTable } from './ScoreBreakdownTable';
 import { E2EChecklistTable } from './E2EChecklistTable';
 import { GroupedCommentsList } from './GroupedCommentsList';
 import { PersonalCognitiveActivityRadar } from './PersonalCognitiveActivityRadar';
-import { formatQuestionLabel, groupByCognitiveActivity } from '../lib/cognitiveActivity';
+import { computeCognitiveActivityAverages, formatQuestionLabel, groupByCognitiveActivity } from '../lib/cognitiveActivity';
+import { buildCognitiveActivityPdfSections } from '../lib/pdfSections';
 import { exportSectionsToPdf, type PdfSection } from '../lib/exportPdf';
 import { formatSubScenarioLabel } from '../lib/subScenarioCategories';
 import { questionPdfLines } from '../lib/questionText';
@@ -20,11 +22,11 @@ import { buildKeiResultsPdfSection } from '../lib/kei';
 // Cognitive Activity, mirroring the on-screen sections (including the collapsible Guideline
 // and per-question option lists, previously omitted from the export — MANAGEMENT_REVIEW_3.md
 // item 5) one-for-one.
-function buildPdfSections(
+async function buildPdfSections(
   questionnaire: QuestionnaireDto,
   response: ResponseDto,
   result: ScoreResultDto,
-): PdfSection[] {
+): Promise<PdfSection[]> {
   const sections: PdfSection[] = [
     {
       kind: 'text',
@@ -35,6 +37,8 @@ function buildPdfSections(
           : []),
       ],
     },
+    // The same spider diagram as at the top of the page (EXECUTIVE_FEEDBACK_PLAN.md).
+    ...(await buildCognitiveActivityPdfSections(computeCognitiveActivityAverages(questionnaire.questions, result.questionScores), [])),
   ];
 
   if (questionnaire.guidelineText) {
@@ -152,6 +156,22 @@ export function QuestionnaireResultDetail({
   result: ScoreResultDto;
 }) {
   const hasKeis = questionnaire.effectivenessIndicators.length > 0;
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  async function handleExportPdf() {
+    if (isGeneratingPdf) return;
+    setIsGeneratingPdf(true);
+    try {
+      exportSectionsToPdf(
+        `${questionnaire.code}-results`,
+        `${questionnaire.name} — Results`,
+        await buildPdfSections(questionnaire, response, result),
+      );
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  }
+
   return (
     <>
       <PersonalCognitiveActivityRadar
@@ -179,17 +199,8 @@ export function QuestionnaireResultDetail({
             </Typography>
           )}
         </Box>
-        <Button
-          variant="outlined"
-          onClick={() =>
-            exportSectionsToPdf(
-              `${questionnaire.code}-results`,
-              `${questionnaire.name} — Results`,
-              buildPdfSections(questionnaire, response, result),
-            )
-          }
-        >
-          Export to PDF
+        <Button variant="outlined" onClick={handleExportPdf} disabled={isGeneratingPdf}>
+          {isGeneratingPdf ? 'Generating PDF…' : 'Export to PDF'}
         </Button>
       </Box>
 

@@ -25,6 +25,7 @@ import type {
   SubScenarioAverageDto,
   SubScenarioCode,
 } from '@anlet/shared';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { round4 } from '../../lib/rounding';
 
@@ -47,6 +48,28 @@ export interface InsightsScope {
 
 function scopedMembership(scope: InsightsScope) {
   return { organizationId: scope.organizationId, projectId: scope.projectId, ...COUNTED_MEMBERSHIP };
+}
+
+type OpCoIdentity = { id: string; name: string; country: string };
+
+/** Per organization, its only OpCo — for organizations with exactly one. Members without an OpCo
+ * (typically Executives, whose profile doesn't ask for one) count as that OpCo's members in every
+ * view (benchmark rows, participation, drill-downs, spider-chart filter), so they don't show up
+ * as a separate "no NatCo" group (EXECUTIVE_FEEDBACK_PLAN.md). */
+async function soleOpCoByOrganization(organizationIds: string[]): Promise<Map<string, OpCoIdentity>> {
+  const opCos = await prisma.opCo.findMany({
+    where: { organizationId: { in: organizationIds } },
+    select: { id: true, name: true, country: true, organizationId: true },
+  });
+  const byOrg = new Map<string, OpCoIdentity[]>();
+  for (const { organizationId, ...opCo } of opCos) {
+    byOrg.set(organizationId, [...(byOrg.get(organizationId) ?? []), opCo]);
+  }
+  return new Map([...byOrg].filter(([, list]) => list.length === 1).map(([orgId, list]) => [orgId, list[0]!]));
+}
+
+async function soleOpCo(organizationId: string): Promise<OpCoIdentity | undefined> {
+  return (await soleOpCoByOrganization([organizationId])).get(organizationId);
 }
 
 // Executives see participants anonymously (ANONYMOUS_EXECUTIVE_PLAN.md): no emails, names,
@@ -172,8 +195,10 @@ export async function getOrganizationQuestionnaireSummary(
     },
   });
 
+  const fallbackOpCo = await soleOpCo(scope.organizationId);
   const respondents: RespondentSummaryDto[] = memberships.map((m) => {
     const latest = m.responses[0];
+    const opCo = m.opCo ?? fallbackOpCo;
     return {
       userId: m.user.id,
       email: m.user.email,
@@ -181,9 +206,9 @@ export async function getOrganizationQuestionnaireSummary(
       lastName: m.user.lastName,
       status: latest?.status ?? 'NOT_STARTED',
       finalScore: latest?.result ? Number(latest.result.finalScore) : null,
-      opCoId: m.opCo?.id ?? null,
-      opCoName: m.opCo?.name ?? null,
-      country: m.opCo?.country ?? null,
+      opCoId: opCo?.id ?? null,
+      opCoName: opCo?.name ?? null,
+      country: opCo?.country ?? null,
       workingDomain: m.workingDomain,
       designation: m.designation,
     };
@@ -290,13 +315,15 @@ type IdentitySourceMembership = {
   user: { email: string };
 };
 
-function toIdentity(membership: IdentitySourceMembership): DrilldownRespondentIdentityDto {
+// `fallbackOpCo`: the organization's only OpCo, for members without one (soleOpCoByOrganization).
+function toIdentity(membership: IdentitySourceMembership, fallbackOpCo?: OpCoIdentity): DrilldownRespondentIdentityDto {
+  const opCo = membership.opCo ?? fallbackOpCo;
   return {
     userId: membership.userId,
     email: membership.user.email,
-    opCoId: membership.opCo?.id ?? null,
-    opCoName: membership.opCo?.name ?? null,
-    country: membership.opCo?.country ?? null,
+    opCoId: opCo?.id ?? null,
+    opCoName: opCo?.name ?? null,
+    country: opCo?.country ?? null,
     workingDomain: membership.workingDomain,
     designation: membership.designation,
   };
@@ -345,7 +372,7 @@ export async function getAnswerDrilldown(
     membership: scopedMembership(scope),
   };
 
-  const [answers, comments, keis] = await Promise.all([
+  const [answers, comments, keis, fallbackOpCo] = await Promise.all([
     prisma.answer.findMany({
       where: { response: responseScope },
       select: {
@@ -373,6 +400,7 @@ export async function getAnswerDrilldown(
         response: { select: { membership: { select: IDENTITY_SELECT } } },
       },
     }),
+    soleOpCo(scope.organizationId),
   ]);
 
   const commentByUserAndQuestion = new Map<string, string>();
@@ -383,7 +411,7 @@ export async function getAnswerDrilldown(
       subScenarioIds: c.subScenarios.map((s) => s.subScenarioId),
       appliesToNone: c.appliesToNone,
       commentText: c.commentText,
-      respondent: toIdentity(c.response.membership),
+      respondent: toIdentity(c.response.membership, fallbackOpCo),
     };
   });
 
@@ -401,7 +429,7 @@ export async function getAnswerDrilldown(
       byKey.set(key, entry);
     }
     entry.respondents.push({
-      ...toIdentity(a.response.membership),
+      ...toIdentity(a.response.membership, fallbackOpCo),
       comment: commentByUserAndQuestion.get(`${a.response.membership.userId}:${a.questionId}`) ?? null,
     });
   }
@@ -411,7 +439,7 @@ export async function getAnswerDrilldown(
     selectedOption: k.selectedOption,
     indicatorValue: k.indicatorValue,
     comment: k.comment,
-    respondent: toIdentity(k.response.membership),
+    respondent: toIdentity(k.response.membership, fallbackOpCo),
   }));
 
   const entries = [...byKey.values()];
@@ -460,6 +488,10 @@ export async function getCognitiveActivitySummary(
     throw new QuestionnaireNotFoundError();
   }
 
+  // Members without an OpCo belong to the organization's only OpCo (soleOpCoByOrganization).
+  const fallbackOpCo = await soleOpCo(scope.organizationId);
+  const orUnassigned = (matchesFallback: boolean, condition: Prisma.MembershipWhereInput): Prisma.MembershipWhereInput =>
+    matchesFallback ? { OR: [condition, { opCoId: null }] } : condition;
   const scoreResults = await prisma.scoreResult.findMany({
     where: {
       response: {
@@ -467,8 +499,12 @@ export async function getCognitiveActivitySummary(
         status: 'SUBMITTED',
         membership: {
           ...scopedMembership(scope),
-          ...(filters.opCoId ? { opCoId: filters.opCoId } : {}),
-          ...(filters.country ? { opCo: { country: filters.country } } : {}),
+          AND: [
+            ...(filters.opCoId ? [orUnassigned(fallbackOpCo?.id === filters.opCoId, { opCoId: filters.opCoId })] : []),
+            ...(filters.country
+              ? [orUnassigned(fallbackOpCo?.country === filters.country, { opCo: { country: filters.country } })]
+              : []),
+          ],
         },
       },
     },
@@ -554,12 +590,15 @@ export async function getCrossOrgCommentCollection(questionnaireCode: string): P
     }),
   ]);
 
+  const fallbackOpCos = await soleOpCoByOrganization([
+    ...new Set([...comments, ...keiComments].map((c) => c.response.membership.organization.id)),
+  ]);
   const commentEntries: CrossOrgCommentEntryDto[] = comments.map((c) => ({
     questionId: c.questionId,
     subScenarioIds: c.subScenarios.map((s) => s.subScenarioId),
     appliesToNone: c.appliesToNone,
     commentText: c.commentText,
-    respondent: toIdentity(c.response.membership),
+    respondent: toIdentity(c.response.membership, fallbackOpCos.get(c.response.membership.organization.id)),
     organizationId: c.response.membership.organization.id,
     organizationName: c.response.membership.organization.name,
     projectName: c.response.membership.project?.name ?? null,
@@ -570,7 +609,7 @@ export async function getCrossOrgCommentCollection(questionnaireCode: string): P
     selectedOption: k.selectedOption,
     indicatorValue: k.indicatorValue,
     comment: k.comment,
-    respondent: toIdentity(k.response.membership),
+    respondent: toIdentity(k.response.membership, fallbackOpCos.get(k.response.membership.organization.id)),
     organizationId: k.response.membership.organization.id,
     organizationName: k.response.membership.organization.name,
     projectName: k.response.membership.project?.name ?? null,
@@ -587,6 +626,19 @@ interface BenchmarkRowLabel {
   opCoId: string | null;
   opCoName: string;
   country: string | null;
+  // The synthetic "no OpCo" row of an organization that has OpCos (see computeBenchmarkRows).
+  optionalUnassigned: boolean;
+}
+
+// computeBenchmarkRows' rows, still carrying BenchmarkRowLabel's flag for the callers to filter on.
+type BenchmarkRowWithFlag = BenchmarkRowDto & { optionalUnassigned: boolean };
+
+// Drops the synthetic "no OpCo" rows nobody in them has submitted (EXECUTIVE_FEEDBACK_PLAN.md) — in
+// the combined table only when both questionnaires' rows are empty, so the two sets stay paired.
+function visibleBenchmarkRows(rows: BenchmarkRowWithFlag[], keep?: (row: BenchmarkRowWithFlag) => boolean): BenchmarkRowDto[] {
+  return rows
+    .filter((r) => !r.optionalUnassigned || r.submittedCount > 0 || (keep?.(r) ?? false))
+    .map(({ optionalUnassigned: _ignored, ...row }) => row);
 }
 
 function rowKey(projectId: string | null, organizationId: string, opCoId: string | null): string {
@@ -645,13 +697,23 @@ async function benchmarkUnits(scope?: InsightsScope): Promise<BenchmarkUnit[]> {
  * organization that either has zero OpCos at all (small orgs) or has at least one respondent not
  * yet assigned one — SECOND_REVIEW.md item 9's "for small organizations, NatCo and Organization
  * will be the same" plus not silently dropping unassigned respondents from the table.
+ * EXECUTIVE_FEEDBACK_PLAN.md: an organization with exactly one OpCo counts unassigned members
+ * under that OpCo instead (no extra row), and with several OpCos the synthetic row is dropped
+ * unless someone in it submitted (visibleBenchmarkRows) — it read as a duplicate of the real
+ * NatCo row.
  */
 async function computeBenchmarkRows(
   questionnaire: { id: string; subScenarios: { code: SubScenarioCode }[] },
   scope?: InsightsScope,
-): Promise<BenchmarkRowDto[]> {
+): Promise<BenchmarkRowWithFlag[]> {
   const units = await benchmarkUnits(scope);
   const membershipWhere = scope ? scopedMembership(scope) : COUNTED_MEMBERSHIP;
+  // Organizations whose members without an OpCo are counted under their only OpCo.
+  const singleOpCoByOrg = new Map(
+    units.filter((u) => u.organization.opCos.length === 1).map((u) => [u.organization.id, u.organization.opCos[0]!.id]),
+  );
+  const effectiveOpCoId = (organizationId: string, opCoId: string | null) =>
+    opCoId ?? singleOpCoByOrg.get(organizationId) ?? null;
 
   const unassignedKeys = new Set(
     (
@@ -674,9 +736,10 @@ async function computeBenchmarkRows(
         opCoId: opCo.id,
         opCoName: opCo.name,
         country: opCo.country,
+        optionalUnassigned: false,
       });
     }
-    if (org.opCos.length === 0 || unassignedKeys.has(rowKey(projectId, org.id, null))) {
+    if (org.opCos.length === 0 || (org.opCos.length > 1 && unassignedKeys.has(rowKey(projectId, org.id, null)))) {
       rowLabels.push({
         projectId,
         projectName,
@@ -685,6 +748,8 @@ async function computeBenchmarkRows(
         opCoId: null,
         opCoName: org.name,
         country: null,
+        // Only an organization's sole row is kept when nobody in it submitted.
+        optionalUnassigned: org.opCos.length > 0,
       });
     }
   }
@@ -694,9 +759,11 @@ async function computeBenchmarkRows(
     where: membershipWhere,
     _count: { _all: true },
   });
-  const respondentCountByKey = new Map(
-    respondentCounts.map((r) => [rowKey(r.projectId, r.organizationId, r.opCoId), r._count._all]),
-  );
+  const respondentCountByKey = new Map<string, number>();
+  for (const r of respondentCounts) {
+    const key = rowKey(r.projectId, r.organizationId, effectiveOpCoId(r.organizationId, r.opCoId));
+    respondentCountByKey.set(key, (respondentCountByKey.get(key) ?? 0) + r._count._all);
+  }
 
   const submittedResponses = await prisma.questionnaireResponse.findMany({
     where: { questionnaireId: questionnaire.id, status: 'SUBMITTED', membership: membershipWhere },
@@ -707,10 +774,10 @@ async function computeBenchmarkRows(
     },
   });
   const byKey = groupScores(submittedResponses, (r) =>
-    rowKey(r.membership.projectId, r.membership.organizationId, r.membership.opCoId),
+    rowKey(r.membership.projectId, r.membership.organizationId, effectiveOpCoId(r.membership.organizationId, r.membership.opCoId)),
   );
 
-  return rowLabels.map((label) => {
+  return rowLabels.map(({ optionalUnassigned, ...label }): BenchmarkRowWithFlag => {
     const key = rowKey(label.projectId, label.organizationId, label.opCoId);
     const acc = byKey.get(key);
     return {
@@ -728,6 +795,7 @@ async function computeBenchmarkRows(
       subScenarioAverages: subScenarioAverages(acc, questionnaire.subScenarios),
       averageKeiScore: average(acc?.keiScores ?? []),
       commentCount: acc?.commentCount ?? 0,
+      optionalUnassigned,
     };
   });
 }
@@ -752,7 +820,7 @@ async function loadQuestionnaireForBenchmarking(questionnaireCode: string) {
  */
 export async function getBenchmarkingSummary(questionnaireCode: string): Promise<BenchmarkingSummaryDto> {
   const questionnaire = await loadQuestionnaireForBenchmarking(questionnaireCode);
-  const rows = await computeBenchmarkRows(questionnaire);
+  const rows = visibleBenchmarkRows(await computeBenchmarkRows(questionnaire));
   return { questionnaireCode: questionnaire.code, rows };
 }
 
@@ -768,7 +836,7 @@ export async function getOpCoBenchmarkingSummary(
   questionnaireCode: string,
 ): Promise<OpCoBenchmarkingSummaryDto> {
   const questionnaire = await loadQuestionnaireForBenchmarking(questionnaireCode);
-  const rows = await computeBenchmarkRows(questionnaire, scope);
+  const rows = visibleBenchmarkRows(await computeBenchmarkRows(questionnaire, scope));
   return { questionnaireCode: questionnaire.code, organizationId: scope.organizationId, rows };
 }
 
@@ -795,10 +863,14 @@ export async function getCombinedBenchmarkingSummary(
     computeBenchmarkRows(qA, scope),
     computeBenchmarkRows(qB, scope),
   ]);
-  const byKeyB = new Map(rowsB.map((r) => [rowKey(r.projectId, r.organizationId, r.opCoId), r]));
+  const keyOf = (r: BenchmarkRowDto) => rowKey(r.projectId, r.organizationId, r.opCoId);
+  const submittedInB = new Set(rowsB.filter((r) => r.submittedCount > 0).map(keyOf));
+  const submittedInA = new Set(rowsA.filter((r) => r.submittedCount > 0).map(keyOf));
+  const visibleA = visibleBenchmarkRows(rowsA, (r) => submittedInB.has(keyOf(r)));
+  const byKeyB = new Map(visibleBenchmarkRows(rowsB, (r) => submittedInA.has(keyOf(r))).map((r) => [keyOf(r), r]));
 
-  const rows: CombinedBenchmarkRowDto[] = rowsA.map((rowA) => {
-    const rowB = byKeyB.get(rowKey(rowA.projectId, rowA.organizationId, rowA.opCoId))!;
+  const rows: CombinedBenchmarkRowDto[] = visibleA.map((rowA) => {
+    const rowB = byKeyB.get(keyOf(rowA))!;
     const combinedAverageFinalScore =
       rowA.averageFinalScore != null && rowB.averageFinalScore != null
         ? round4(0.5 * rowA.averageFinalScore + 0.5 * rowB.averageFinalScore)

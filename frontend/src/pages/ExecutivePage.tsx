@@ -9,15 +9,18 @@ import Box from '@mui/material/Box';
 import { useAuth } from '../context/AuthContext';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { insightsApi } from '../api/insightsApi';
+import { opCoApi } from '../api/opCoApi';
 import { PageShell } from '../components/PageShell';
 import { SectionCard } from '../components/SectionCard';
 import { BenchmarkTable } from '../components/BenchmarkTable';
 import { CombinedBenchmarkTable } from '../components/CombinedBenchmarkTable';
 import { QuestionnaireExecutiveDetail, useQuestionnaireExecutiveData } from '../components/QuestionnaireExecutiveDetail';
+import { useCognitiveFilterState } from '../lib/cognitiveActivityFilters';
 import { exportRowsToXlsx } from '../lib/exportXlsx';
 import {
   buildOrganizationReportPdfSections,
   buildOrganizationReportSheets,
+  cognitiveFilterLabel,
   type OrganizationReportBenchmarkPart,
   type OrganizationReportDetail,
 } from '../lib/organizationReport';
@@ -61,12 +64,22 @@ export function ExecutivePage() {
   // undefined (queries disabled) outside the Core FM+Stability group case.
   const codeA = effectiveEntry?.questionnaireCodes[0];
   const codeB = effectiveEntry?.questionnaireCodes[1];
-  const detailA = useQuestionnaireExecutiveData(organizationId, codeA);
-  const detailB = useQuestionnaireExecutiveData(organizationId, isGroup ? codeB : undefined);
+  const { filtersFor, setFiltersFor } = useCognitiveFilterState(organizationId);
+  const detailA = useQuestionnaireExecutiveData(organizationId, codeA, undefined, filtersFor(codeA));
+  const detailB = useQuestionnaireExecutiveData(organizationId, isGroup ? codeB : undefined, undefined, filtersFor(codeB));
+  // NatCo names for the spider chart's filter label in the PDF (same query as the chart's own).
+  const opCosQuery = useQuery({ queryKey: ['opcos', organizationId], queryFn: () => opCoApi.list(organizationId) });
   const details = isGroup ? [detailA, detailB] : [detailA];
 
   const benchmarkReady = isGroup ? !!combinedQuery.data : !!(opCoBenchmarkQuery.data && questionnaireQuery.data);
-  const detailsReady = details.every((d) => d.questionnaireQuery.data && d.summaryQuery.data && d.drilldownQuery.data);
+  // The spider chart's data too (its PDF section) — or its error, which the PDF then reports.
+  const detailsReady = details.every(
+    (d) =>
+      d.questionnaireQuery.data &&
+      d.summaryQuery.data &&
+      d.drilldownQuery.data &&
+      (d.cognitiveActivityQuery.data || d.cognitiveActivityQuery.isError),
+  );
   const reportReady = !!effectiveEntry && benchmarkReady && detailsReady;
 
   function reportInputs(): { benchmark: OrganizationReportBenchmarkPart; details: OrganizationReportDetail[] } {
@@ -81,11 +94,21 @@ export function ExecutivePage() {
               showKeiColumn: questionnaireQuery.data.effectivenessIndicators.length > 0,
             }
           : null;
-    const reportDetails: OrganizationReportDetail[] = details.map((d) => ({
-      questionnaire: d.questionnaireQuery.data!,
-      summary: d.summaryQuery.data!,
-      drilldown: d.drilldownQuery.data,
-    }));
+    const reportDetails: OrganizationReportDetail[] = details.map((d) => {
+      const questionnaire = d.questionnaireQuery.data!;
+      return {
+        questionnaire,
+        summary: d.summaryQuery.data!,
+        drilldown: d.drilldownQuery.data,
+        cognitiveActivity: {
+          summary: d.cognitiveActivityQuery.data ?? null,
+          filterLabel: cognitiveFilterLabel(
+            filtersFor(questionnaire.code),
+            (id) => opCosQuery.data?.find((o) => o.id === id)?.name,
+          ),
+        },
+      };
+    });
     return { benchmark, details: reportDetails };
   }
 
@@ -161,7 +184,12 @@ export function ExecutivePage() {
 
           {effectiveEntry.questionnaireCodes.map((code) => (
             <Box key={code} sx={{ mb: 3 }}>
-              <QuestionnaireExecutiveDetail organizationId={organizationId} questionnaireCode={code} />
+              <QuestionnaireExecutiveDetail
+                organizationId={organizationId}
+                questionnaireCode={code}
+                cognitiveFilters={filtersFor(code)}
+                onCognitiveFiltersChange={setFiltersFor(code)}
+              />
             </Box>
           ))}
         </>
@@ -183,6 +211,8 @@ export function ExecutivePage() {
             <QuestionnaireExecutiveDetail
               organizationId={organizationId}
               questionnaireCode={questionnaireQuery.data.code}
+              cognitiveFilters={filtersFor(questionnaireQuery.data.code)}
+              onCognitiveFiltersChange={setFiltersFor(questionnaireQuery.data.code)}
             />
           </Box>
         </>

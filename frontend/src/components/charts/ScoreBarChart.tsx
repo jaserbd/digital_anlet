@@ -1,4 +1,6 @@
+import { useContext } from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { ChartAnimationContext } from './chartAnimation';
 
 export interface ScoreBarChartSeries {
   key: string;
@@ -39,6 +41,7 @@ export function ScoreBarChart({
   series: ScoreBarChartSeries[];
   maxValue?: number;
 }) {
+  const animate = useContext(ChartAnimationContext);
   if (data.length === 0) {
     return null;
   }
@@ -83,6 +86,7 @@ export function ScoreBarChart({
               fill={s.color ?? DEFAULT_COLORS[i % DEFAULT_COLORS.length]}
               radius={[0, 4, 4, 0]}
               barSize={barSize}
+              isAnimationActive={animate}
             />
           ))}
         </BarChart>
