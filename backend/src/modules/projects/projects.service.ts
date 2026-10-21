@@ -317,8 +317,8 @@ export async function importProject(
   const project = existingProject ?? (await createProject(input.projectName));
 
   // Questionnaires (sheet "Questionnaires", optional): names or codes of questionnaires or HVS
-  // groups. Replaces the selection when given; otherwise a new project keeps all of them and an
-  // existing one is left unchanged.
+  // groups. Replaces the selection when given; otherwise a new project keeps createProject's
+  // default (every questionnaire except those in review, "(R)") and an existing one is unchanged.
   if (input.questionnaires && input.questionnaires.length > 0) {
     const all = await prisma.questionnaire.findMany({
       where: { isActive: true },
