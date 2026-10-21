@@ -12,6 +12,7 @@ import {
   MembershipHasResponsesError,
   OtherOrganizationError,
   SeveralMembershipsError,
+  StaysInOrganizationError,
   SuperAdminRequiredError,
   addMembership,
   createUser,
@@ -44,7 +45,7 @@ const userIds: string[] = [];
 let adminId: string; // a regular admin
 let superAdminId: string;
 
-type MembershipSpec = { organizationId: string; projectId?: string; role: 'NORMAL_USER' | 'EXECUTIVE' };
+type MembershipSpec = { organizationId: string; projectId?: string; role: 'NORMAL_USER' | 'EXECUTIVE' | 'PROJECT_ADMIN' };
 
 async function createRawUser(
   label: string,
@@ -295,6 +296,32 @@ describe('memberships (real DB)', () => {
       OtherOrganizationError,
     );
     await prisma.opCo.delete({ where: { id: opCo.id } });
+  });
+
+  it('keeps consultants (Project Admins) and Application Admins in their own organization', async () => {
+    // Project Admin of a project in orgP, without a membership of their own organization (orgA).
+    const consultantId = await createRawUser('consultant-only-pa', {
+      organizationId: orgAId,
+      memberOf: [{ organizationId: orgPId, projectId: project1Id, role: 'PROJECT_ADMIN' }],
+    });
+    await expect(addMembership(adminId, consultantId, { organizationId: orgBId, role: 'EXECUTIVE' })).rejects.toBeInstanceOf(
+      OtherOrganizationError,
+    );
+    const placed = await addMembership(adminId, consultantId, { organizationId: orgAId, role: 'EXECUTIVE' });
+    const own = placed.memberships.find((m) => m.organizationId === orgAId)!;
+    await expect(updateMembership(adminId, consultantId, own.id, { organizationId: orgBId })).rejects.toBeInstanceOf(
+      StaysInOrganizationError,
+    );
+
+    const otherAdminId = await createRawUser('admin-member', {
+      organizationId: orgAId,
+      role: 'ADMIN',
+      memberOf: [{ organizationId: orgAId, role: 'EXECUTIVE' }],
+    });
+    const adminMembership = await prisma.membership.findFirstOrThrow({ where: { userId: otherAdminId } });
+    await expect(
+      updateMembership(superAdminId, otherAdminId, adminMembership.id, { organizationId: orgBId }),
+    ).rejects.toBeInstanceOf(StaysInOrganizationError);
   });
 
   it('moves a person to another organization only from their only membership', async () => {

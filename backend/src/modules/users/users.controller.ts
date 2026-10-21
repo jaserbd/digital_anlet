@@ -13,6 +13,7 @@ import {
   OrganizationNotInProjectError,
   OtherOrganizationError,
   SeveralMembershipsError,
+  StaysInOrganizationError,
   OutsideProjectError,
   ProjectAdminMembershipError,
   ProjectRequiredError,
@@ -189,6 +190,10 @@ function handlePlacementErrors(err: unknown, res: Response): boolean {
   // One organization per user (USERS_PER_ORGANIZATION_PLAN.md).
   if (err instanceof OtherOrganizationError) {
     res.status(409).json({ error: err.message });
+    return true;
+  }
+  if (err instanceof StaysInOrganizationError) {
+    res.status(409).json({ error: 'Application Admins and Project Admins stay in their own organization' });
     return true;
   }
   if (err instanceof SeveralMembershipsError) {

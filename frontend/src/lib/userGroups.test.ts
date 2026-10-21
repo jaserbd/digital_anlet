@@ -91,4 +91,13 @@ describe('addablePlacements / movePlacements', () => {
     const single = user('one@post.test', 'post', [membership('post', 'C056875', 'NORMAL_USER')]);
     expect(movePlacements(single, placements).map((p) => p.projectId)).toEqual(['C2027', 'T1', null]);
   });
+
+  it('keeps Application Admins and Project Admins in their own organization', () => {
+    expect(movePlacements(consultant, placements)).toEqual([]); // Detecon's only placement is taken
+    const adminMember = user('admin2@detecon.test', 'detecon', [membership('detecon', null, 'EXECUTIVE')], 'ADMIN');
+    expect(movePlacements(adminMember, placements)).toEqual([]);
+    // A consultant with only Project Admin memberships isn't "unplaced" either.
+    const onlyProjectAdmin = user('pa@detecon.test', 'detecon', [membership('post', 'C056875', 'PROJECT_ADMIN')]);
+    expect(addablePlacements(onlyProjectAdmin, placements).map((p) => p.organizationId)).toEqual(['detecon']);
+  });
 });

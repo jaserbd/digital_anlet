@@ -57,17 +57,20 @@ function freePlacements(user: UserDto, placements: Placement[]): Placement[] {
 }
 
 /** Where a user can be added: projects of their own organization — or anywhere for a non-admin
- * without any membership yet, who then belongs to that organization (same rule as the server). */
+ * without any membership at all yet (not even as Project Admin), who then belongs to that
+ * organization (same rule as the server). */
 export function addablePlacements(user: UserDto, placements: Placement[]): Placement[] {
   const free = freePlacements(user, placements);
-  if (user.role !== 'ADMIN' && memberMemberships(user).length === 0) return free;
+  if (user.role !== 'ADMIN' && user.memberships.length === 0) return free;
   return free.filter((p) => p.organizationId === user.organizationId);
 }
 
 /** Where a membership can move: another project of the organization, or — for the user's only
- * membership — another organization too (which moves the person). */
+ * membership — another organization too (which moves the person). Application Admins and
+ * Project Admins (consultants) stay in their own organization. */
 export function movePlacements(user: UserDto, placements: Placement[]): Placement[] {
   const free = freePlacements(user, placements);
-  if (memberMemberships(user).length === 1) return free;
+  const staysInOrganization = user.role === 'ADMIN' || user.memberships.some((m) => m.role === 'PROJECT_ADMIN');
+  if (!staysInOrganization && memberMemberships(user).length === 1) return free;
   return free.filter((p) => p.organizationId === user.organizationId);
 }

@@ -46,6 +46,8 @@ export class OtherOrganizationError extends Error {
 }
 // Moving to another organization moves the person, so it needs their only membership.
 export class SeveralMembershipsError extends Error {}
+// Application Admins and Project Admins (consultants) stay in their own organization.
+export class StaysInOrganizationError extends Error {}
 
 // Organization roles; Project Admins are added per project (projects.service.ts), never here.
 type MembershipRole = Extract<Role, 'NORMAL_USER' | 'EXECUTIVE' | 'PROJECT_ADMIN'>;
@@ -128,8 +130,8 @@ export async function assertPlacement(organizationId: string, projectId: string 
  * membership is in the user's own organization (`User.organizationId`); Project Admin memberships
  * in client organizations don't count (consultants stay members of their own organization).
  * Returns whether adding a membership in `organizationId` also moves the user there: allowed for a
- * non-admin without any membership yet, whose home organization is then just where they were
- * created.
+ * non-admin without any membership at all yet (not even as Project Admin), whose home organization
+ * is then just where they were created.
  */
 async function assertOwnOrganization(userId: string, organizationId: string): Promise<{ movesUser: boolean }> {
   const user = await prisma.user.findUnique({
@@ -138,7 +140,7 @@ async function assertOwnOrganization(userId: string, organizationId: string): Pr
       role: true,
       organizationId: true,
       organization: { select: { name: true } },
-      _count: { select: { memberships: { where: { role: { not: 'PROJECT_ADMIN' } } } } },
+      _count: { select: { memberships: true } },
     },
   });
   if (!user) throw new UserNotFoundError();
@@ -431,10 +433,14 @@ export async function updateMembership(
   // Another organization means moving the person (one organization per user), which only works
   // for their only membership.
   if (orgChanging) {
-    const others = await prisma.membership.count({
-      where: { userId, id: { not: membershipId }, role: { not: 'PROJECT_ADMIN' } },
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { role: true, memberships: { where: { id: { not: membershipId } }, select: { role: true } } },
     });
-    if (others > 0) throw new SeveralMembershipsError();
+    if (user.role === 'ADMIN' || user.memberships.some((m) => m.role === 'PROJECT_ADMIN')) {
+      throw new StaysInOrganizationError();
+    }
+    if (user.memberships.length > 0) throw new SeveralMembershipsError();
   }
 
   await prisma.$transaction(async (tx) => {

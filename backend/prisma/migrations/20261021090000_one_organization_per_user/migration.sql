@@ -39,8 +39,9 @@ SET "organizationId" = (SELECT "id" FROM "Organization" WHERE "name" = 'Detecon'
 FROM "Organization" o
 WHERE o."id" = m."organizationId" AND o."name" = 'Anlet (Internal)';
 
--- 4. Everyone's organization is the one their memberships are in; people whose organization was
---    Anlet (Internal) and who have no membership (admins) belong to Detecon.
+-- 4. Everyone's organization is the one their memberships are in — except Application Admins,
+--    who are never moved into a client organization this way (the guard stops instead); people
+--    whose organization was Anlet (Internal) (admins) belong to Detecon.
 UPDATE "User" u
 SET "organizationId" = sub."organizationId"
 FROM (
@@ -50,7 +51,7 @@ FROM (
   GROUP BY "userId"
   HAVING COUNT(DISTINCT "organizationId") = 1
 ) sub
-WHERE sub."userId" = u."id" AND u."organizationId" <> sub."organizationId";
+WHERE sub."userId" = u."id" AND u."organizationId" <> sub."organizationId" AND u."role" <> 'ADMIN';
 
 UPDATE "User" u
 SET "organizationId" = (SELECT "id" FROM "Organization" WHERE "name" = 'Detecon')
