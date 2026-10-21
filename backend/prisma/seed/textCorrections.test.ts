@@ -5,6 +5,7 @@ import { parseCoreFaultManagementXlsx, parseCoreStabilityXlsx } from './parseCor
 import { parseIpFmXlsx } from './parseIpFmXlsx';
 import { parseTransportMicrowaveXlsx, parseTransportOtnXlsx } from './parseTransportXlsx';
 import { parseFixedAccessXlsx } from './parseFixedAccessXlsx';
+import { parseReviewQuestionnaires } from './parseReviewQuestionnaires';
 import { TEXT_CORRECTIONS, applyTextCorrections, normalizeSpacing, type TextCorrection } from './textCorrections';
 
 const parsedAll: ParsedQuestionnaire[] = [
@@ -15,6 +16,7 @@ const parsedAll: ParsedQuestionnaire[] = [
   parseTransportMicrowaveXlsx(),
   parseTransportOtnXlsx(),
   parseFixedAccessXlsx(),
+  ...parseReviewQuestionnaires(),
 ];
 
 function allText(q: ParsedQuestionnaire): string {
@@ -39,7 +41,12 @@ describe('TEXT_CORRECTIONS', () => {
 
   it('leaves no known misspelling behind', () => {
     const text = corrected.map(allText).join('\n');
-    for (const typo of ['scenairo', 'identifty', 'intructions', 'petential', 'milisecond', 'serive', 'unaccessable', 'fileting', 'rogramable', 'nature language', 'Nature Language']) {
+    for (const typo of ['scenairo', 'identifty', 'intructions', 'petential', 'milisecond', 'serive', 'unaccessable', 'fileting', 'rogramable', 'nature language', 'Nature Language',
+      // In-review questionnaires (REVIEW_SPELLING_PLAN.md)
+      'bBroadband', 'Automatiion', 'behanivour', 'alliviate', 'guaranteee', 'transimission', 'requirment', 'excuted',
+      'optimiztaion', 'coverge', 'limiited', 'hourss', 'serveral', 'capabitlities', 'questionnarie', 'inculde', 'eveluates',
+      'quaity', 'indicactor', 'gardrails', 'peformed', 'Maintenace', 'deviaiton', 'confrmation', 'identifiying', 'occured',
+      'anomal ', 'manually defines rules', '、', '？', '）']) {
       expect(text).not.toContain(typo);
     }
   });
