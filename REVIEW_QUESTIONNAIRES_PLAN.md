@@ -169,4 +169,5 @@ layout options (listed under "Parser work").
 - Test-suite fix found on the way: `acceptingResponses.integration.test.ts` could fail its cleanup
   when another test file (running in parallel) created an organization, which backfills a
   QuestionnaireOrgSetting for the fixture questionnaire; the leftovers then broke every later run.
-  Cleanup is now name-based, race-tolerant and also runs before the tests.
+  Cleanup is now name-based, retries the questionnaire delete (code review: a parallel project or
+  organization can still add a referencing row in between) and also runs before the tests.

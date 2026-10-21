@@ -89,9 +89,9 @@ beforeAll(async () => {
   questionId = question.id;
 });
 
-// Removes this file's fixtures by their fixed names. Settings rows are deleted right before the
-// rows they reference: other test files run in parallel, and creating an organization there
-// backfills a QuestionnaireOrgSetting for every questionnaire — including this fixture one.
+// Removes this file's fixtures by their fixed names. Other test files run in parallel, and
+// creating an organization or project there adds QuestionnaireOrgSetting / ProjectQuestionnaire
+// rows for every questionnaire — including this fixture one — so its delete is retried.
 async function removeFixtures() {
   const questionnaire = await prisma.questionnaire.findUnique({ where: { code: QUESTIONNAIRE_CODE } });
   const orgs = await prisma.organization.findMany({ where: { name: { in: [ORG_NAME, OTHER_ORG_NAME] } } });
@@ -106,8 +106,17 @@ async function removeFixtures() {
   if (questionnaire) {
     await prisma.question.deleteMany({ where: { questionnaireId: questionnaire.id } });
     await prisma.subScenario.deleteMany({ where: { questionnaireId: questionnaire.id } });
-    await prisma.questionnaireOrgSetting.deleteMany({ where: { questionnaireId: questionnaire.id } });
-    await prisma.questionnaire.delete({ where: { id: questionnaire.id } });
+    // A parallel test can still add a settings / project row between the two deletes: retry.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await prisma.questionnaireOrgSetting.deleteMany({ where: { questionnaireId: questionnaire.id } });
+        await prisma.projectQuestionnaire.deleteMany({ where: { questionnaireId: questionnaire.id } });
+        await prisma.questionnaire.delete({ where: { id: questionnaire.id } });
+        break;
+      } catch (err) {
+        if (attempt >= 5) throw err;
+      }
+    }
   }
   await prisma.questionnaireOrgSetting.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
