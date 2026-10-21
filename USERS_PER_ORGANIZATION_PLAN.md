@@ -1,6 +1,6 @@
 # Users per organization, one organization per user
 
-**Status: in progress**
+**Status: done** — merged to `main`, deployed to `anlet-504115` as revision `anlet-00012-cp7` on 2026-10-21 after Cloud SQL backup `1792570246232` (rollback: revision `anlet-00011-zjm` + restore that backup, since the migration changes data). Verified on production read-only: migration applied, Detecon 10 / Post Luxemburg 9 users, nobody in two organizations; then the three test accounts were deleted (Detecon 7). Live smoke test: pages load, no error logs. Also includes PDF chart compression (6.1 MB → 0.2 MB locally).
 
 Source: `admin_management.md` line 30 (2026-10-21), clarified in discussion.
 
