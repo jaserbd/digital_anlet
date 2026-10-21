@@ -171,3 +171,15 @@ layout options (listed under "Parser work").
   QuestionnaireOrgSetting for the fixture questionnaire; the leftovers then broke every later run.
   Cleanup is now name-based, retries the questionnaire delete (code review: a parallel project or
   organization can still add a referencing row in between) and also runs before the tests.
+
+#### Batch B release (2026-10-21)
+
+- Merged to `main` (5213954); on-demand Cloud SQL backup "before review-questionnaires batch B".
+- Deployed revision **anlet-00014-xdx** (rollback target: **anlet-00013-dvb**).
+- `npm run db:seed:questionnaires` on production: 19 questionnaires with `inReview` + 7 released;
+  0 project selections include an (R) questionnaire.
+- Self-tests: all workspaces' tests (root `npm test` run repeatedly), lint, typecheck; local headless
+  walkthrough (service-layer HVS cards, GB1502D's single-answer question page); production smoke
+  check (home 200, `/api/auth/me` 401).
+- The source folder now holds only the 19 files the parser reads; older drafts and duplicates were
+  deleted on request.
