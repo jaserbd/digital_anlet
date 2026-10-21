@@ -114,7 +114,9 @@ export function exportSectionsToPdf(filename: string, title: string, sections: P
         doc.addPage();
         y = 18;
       }
-      doc.addImage(section.dataUrl, 'PNG', LEFT_MARGIN, y, drawWidth, drawHeight);
+      // 'FAST' = Flate-compress the pixels: without it jsPDF embeds each chart uncompressed
+      // (~2.3 MB per chart), which made reports tens of MB (EXECUTIVE_FEEDBACK_PLAN.md follow-up).
+      doc.addImage(section.dataUrl, 'PNG', LEFT_MARGIN, y, drawWidth, drawHeight, undefined, 'FAST');
       y += drawHeight + 8;
     } else {
       autoTable(doc, {
