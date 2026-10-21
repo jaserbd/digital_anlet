@@ -1,6 +1,6 @@
 # Spelling corrections for the in-review "(R)" questionnaires
 
-**Status: steps 1–4 done** (list approved 2026-10-21; content issues left as is by decision). Remaining: production deploy + questionnaires-only re-seed.
+**Status: done, live in production 2026-10-21** (list approved 2026-10-21; content issues left as is by decision).
 
 Follow-up to `SPELLING_PLAN.md`, which only covered the 7 released questionnaires. The 19 in-review
 questionnaires (`REVIEW_QUESTIONNAIRES_PLAN.md`) were seeded with only the generic spacing clean-up.
@@ -39,7 +39,7 @@ These are not spelling problems. Fixing them would change the content, so they a
 2. ~~Approval~~ — approved 2026-10-21; the content issues above stay as they are.
 3. ~~Branch `feature/review-questionnaire-spelling`: add the approved fixes to `textCorrections.ts`. `textCorrections.test.ts` already fails if a fix stops matching, and checks that codes, weights and criteria are untouched. Then typecheck, lint and test.~~ — done (231 entries, all 19 questionnaires added to `textCorrections.test.ts`; 736 tests pass).
 4. ~~Local `npm run db:seed:questionnaires`, merge, push~~ — done: typos gone from the DB and the API response, answers unchanged (row count and content hash identical).
-5. Take a Cloud SQL backup, build and deploy to `anlet-504115`, then run `db:seed:questionnaires` on production.
+5. ~~Backup + production re-seed~~ — done 2026-10-21: on-demand Cloud SQL backup `1792608033293`, then `db:seed:questionnaires` via the Cloud SQL proxy. No image build/deploy needed (the corrections run at seed time; the seed is not in the image) — Cloud Run stays on `anlet-00014-xdx`. Verified in the production DB: 0 typos left; 581 answers, 25 comments, 9 KEI answers unchanged (same content hash). Rollback: restore backup `1792608033293`, or revert the commit and re-run the questionnaires-only seed.
 
 ## Before / after list
 
