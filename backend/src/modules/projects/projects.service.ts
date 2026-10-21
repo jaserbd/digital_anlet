@@ -103,8 +103,18 @@ async function resolveQuestionnaireSelection(codes: string[]): Promise<string[]>
   return questionnaires.map((q) => q.id);
 }
 
-async function allActiveQuestionnaireIds(): Promise<string[]> {
-  const questionnaires = await prisma.questionnaire.findMany({ where: { isActive: true }, select: { id: true } });
+// The default for a new project: every active questionnaire except those still in review at
+// TM Forum, which Admins enable per project (REVIEW_QUESTIONNAIRES_PLAN.md).
+// "IP Change Management" matches the stored "IP Change Management (R)" too (seed.ts tags names).
+function withoutReviewTag(name: string): string {
+  return name.replace(/\s*\(R\)$/, '');
+}
+
+async function defaultQuestionnaireIds(): Promise<string[]> {
+  const questionnaires = await prisma.questionnaire.findMany({
+    where: { isActive: true, inReview: false },
+    select: { id: true },
+  });
   return questionnaires.map((q) => q.id);
 }
 
@@ -125,8 +135,9 @@ function findProjectByName(name: string) {
 
 export async function createProject(name: string): Promise<ProjectDto> {
   if (await findProjectByName(name)) throw new ProjectNameTakenError();
-  // A new project starts with every questionnaire; narrow it down afterwards.
-  const questionnaireIds = await allActiveQuestionnaireIds();
+  // A new project starts with every questionnaire except those still in review; narrow it
+  // down (or add those) afterwards.
+  const questionnaireIds = await defaultQuestionnaireIds();
   const project = await prisma.project.create({
     data: { name, questionnaires: { create: questionnaireIds.map((questionnaireId) => ({ questionnaireId })) } },
   });
@@ -322,7 +333,7 @@ export async function importProject(
       const group = HVS_GROUPS.find((g) => normalize(g.groupName) === key || normalize(g.groupCode) === key);
       const matches = group
         ? all.filter((q) => group.questionnaireCodes.includes(q.code))
-        : all.filter((q) => normalize(q.name) === key || normalize(q.code) === key);
+        : all.filter((q) => [q.name, withoutReviewTag(q.name), q.code].some((v) => normalize(v) === key));
       const base = { sheet: 'Questionnaires' as const, row: index + 1, label: group?.groupName ?? matches[0]?.name ?? raw.trim() };
       // A group's member listed on its own still selects the whole group (both halves are needed).
       const ownGroup = !group && matches[0] ? HVS_GROUPS.find((g) => g.questionnaireCodes.includes(matches[0]!.code)) : undefined;

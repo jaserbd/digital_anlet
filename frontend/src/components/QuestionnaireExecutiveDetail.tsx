@@ -13,6 +13,7 @@ import {
   NO_COGNITIVE_ACTIVITY_FILTERS,
   type CognitiveActivityFilters,
 } from '../lib/cognitiveActivityFilters';
+import { withReviewTag } from '../lib/inReview';
 
 // Fetches everything one member questionnaire's section of an organization overview needs.
 // Shared by ExecutivePage.tsx (own org) and OrganizationDeepDivePage.tsx (any org, ADMIN.md
@@ -161,7 +162,7 @@ export function QuestionnaireExecutiveDetail({
             ...buildKeiCommentRows(drilldownQuery.data?.keiResponses ?? [], questionnaire.effectivenessIndicators),
           ]}
           domain={questionnaire.networkType}
-          hvs={questionnaire.hvsCategory}
+          hvs={withReviewTag(questionnaire.hvsCategory, questionnaire.inReview)}
           title={`${questionnaire.name} — Comment Collection`}
           exportFileNamePrefix={`org-${organizationId}-${questionnaireCode}`}
           anonymized={anonymized}

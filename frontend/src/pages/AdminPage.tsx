@@ -18,6 +18,7 @@ import { BenchmarkTable } from '../components/BenchmarkTable';
 import { CombinedBenchmarkTable } from '../components/CombinedBenchmarkTable';
 import { buildCrossOrgCommentCollectionRows, CommentCollectionTable } from '../components/CommentCollectionTable';
 import { buildCrossOrgKeiCommentRows } from '../lib/keiDistribution';
+import { withReviewTag } from '../lib/inReview';
 
 export function AdminPage() {
   const navigate = useNavigate();
@@ -202,7 +203,7 @@ function CrossOrgCommentCollectionSection({ questionnaireCode }: { questionnaire
     <CommentCollectionTable
       rows={rows}
       domain={questionnaire.networkType}
-      hvs={questionnaire.hvsCategory}
+      hvs={withReviewTag(questionnaire.hvsCategory, questionnaire.inReview)}
       title={`${questionnaire.name} — Comment Collection (all organizations)`}
       showOrganizationColumn
       exportFileNamePrefix={`admin-${questionnaireCode}`}

@@ -8,6 +8,7 @@ import Box from '@mui/material/Box';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { PageShell } from '../components/PageShell';
 import { ChoiceCard } from '../components/ChoiceCard';
+import { IN_REVIEW_TOOLTIP, hvsLabel, withReviewTag } from '../lib/inReview';
 
 // HVS-category-first, then Domain (OVERVIEW.md item 1 — was Domain-first). Selecting a
 // (hvsCategory, networkType) pair resolves straight to its questionnaire when there's exactly
@@ -50,9 +51,17 @@ export function DomainPickerPage() {
             Choose an HVS
           </Typography>
           <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 2 }}>
-            {hvsCategories.map((hvs) => (
-              <ChoiceCard key={hvs} label={hvs} onClick={() => setSelectedHvs(hvs)} />
-            ))}
+            {hvsCategories.map((hvs) => {
+              const label = hvsLabel(hvs, questionnairesQuery.data);
+              return (
+                <ChoiceCard
+                  key={hvs}
+                  label={label}
+                  description={label !== hvs ? IN_REVIEW_TOOLTIP : undefined}
+                  onClick={() => setSelectedHvs(hvs)}
+                />
+              );
+            })}
           </Stack>
         </>
       ) : (
@@ -61,13 +70,17 @@ export function DomainPickerPage() {
             ← Back to HVS
           </Button>
           <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
-            {selectedHvs} — choose a domain
+            {hvsLabel(selectedHvs, questionnairesQuery.data)} — choose a domain
           </Typography>
           <Stack spacing={3}>
             {domainsInHvs.map((domain) => {
               const matches = questionnairesInHvs.filter((q) => q.networkType === domain);
               return matches.length === 1 ? (
-                <ChoiceCard key={domain} label={`${domain} Domain`} onClick={() => selectDomain(domain)} />
+                <ChoiceCard
+                  key={domain}
+                  label={withReviewTag(`${domain} Domain`, matches[0]!.inReview)}
+                  onClick={() => selectDomain(domain)}
+                />
               ) : (
                 <Box key={domain}>
                   <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>

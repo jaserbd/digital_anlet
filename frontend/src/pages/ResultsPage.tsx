@@ -69,7 +69,7 @@ export function ResultsPage() {
 
       <QuestionnaireResultDetail questionnaire={questionnaire} response={response} result={result} />
 
-      {questionnaire.networkType === 'Core' && <CoreDomainSummary />}
+      {questionnaire.networkType === 'Core' && <CoreDomainSummary questionnaireCode={questionnaire.code} />}
     </PageShell>
   );
 }

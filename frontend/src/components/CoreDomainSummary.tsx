@@ -2,7 +2,10 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { responsesApi } from '../api/responsesApi';
 
-export function CoreDomainSummary() {
+// `questionnaireCode`: hides the section unless it is one of the two halves of the Core Domain
+// score (Fault Management + Stability) — other Core questionnaires (e.g. Core Change Management
+// (R)) share networkType 'Core' but aren't part of it. Omitted on the combined Core HVS page.
+export function CoreDomainSummary({ questionnaireCode }: { questionnaireCode?: string }) {
   const query = useQuery({
     queryKey: ['core-domain-summary'],
     queryFn: responsesApi.getCoreDomainSummary,
@@ -19,6 +22,12 @@ export function CoreDomainSummary() {
     stabilityQuestionnaireCode,
     combinedScore,
   } = query.data;
+  if (
+    questionnaireCode &&
+    questionnaireCode !== faultManagementQuestionnaireCode && questionnaireCode !== stabilityQuestionnaireCode
+  ) {
+    return null;
+  }
 
   return (
     <section style={{ marginTop: '2rem', padding: '1rem', border: '1px solid #ccc' }}>

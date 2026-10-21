@@ -15,6 +15,7 @@ import { formatSubScenarioLabel } from '../lib/subScenarioCategories';
 import { questionPdfLines } from '../lib/questionText';
 import { KeiResultsTable } from './KeiResultsTable';
 import { buildKeiResultsPdfSection } from '../lib/kei';
+import { withReviewTag } from '../lib/inReview';
 
 // Builds the PDF export's content (MANAGEMENT_VIEW.md item 1) purely from data already on
 // this page — headline score, guideline text, per-question options/criteria, score
@@ -255,7 +256,7 @@ export function QuestionnaireResultDetail({
             subScenarios={questionnaire.subScenarios}
             comments={response.comments}
             domain={questionnaire.networkType}
-            hvs={questionnaire.hvsCategory}
+            hvs={withReviewTag(questionnaire.hvsCategory, questionnaire.inReview)}
           />
         </>
       )}

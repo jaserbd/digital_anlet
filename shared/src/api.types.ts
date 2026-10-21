@@ -117,6 +117,8 @@ export interface QuestionnaireDto {
   networkType: string;
   hvsCategory: string;
   hasE2ECheck: boolean;
+  // Still in review at TM Forum; its name already ends in " (R)" (REVIEW_QUESTIONNAIRES_PLAN.md).
+  inReview: boolean;
   // Questionnaire-level context from the source xlsx's Guideline sheet. Shown as a
   // collapsible section above the question flow.
   guidelineText: string | null;
@@ -141,6 +143,7 @@ export interface QuestionnaireSummaryDto {
   name: string;
   networkType: string;
   hvsCategory: string;
+  inReview: boolean;
 }
 
 export interface SetAcceptingResponsesRequestDto {

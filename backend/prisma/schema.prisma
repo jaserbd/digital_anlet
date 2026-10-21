@@ -244,6 +244,9 @@ model Questionnaire {
   // The source's note under its Key Effectiveness Indicator block (e.g. "proposed values are
   // intended for pilot use"). Null when the questionnaire has no KEIs.
   keiNote       String?  @db.Text
+  // Still "In Review" in TM Forum's questionnaire library (REVIEW_QUESTIONNAIRES_PLAN.md): the
+  // seed appends " (R)" to its name, and new projects don't get it by default (opt-in).
+  inReview      Boolean  @default(false)
   version       Int      @default(1)
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())

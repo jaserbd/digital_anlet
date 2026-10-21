@@ -31,6 +31,7 @@ import {
   type OrganizationReportDetail,
 } from '../lib/organizationReport';
 import { exportSectionsToPdf } from '../lib/exportPdf';
+import { withReviewTag } from '../lib/inReview';
 
 // Admin's per-organization deep-dive (THIRD_REVIEW.md item 8, brought to full parity with
 // ExecutivePage.tsx's own view by ADMIN.md item 2) — reached by typing/selecting an
@@ -306,7 +307,7 @@ export function OrganizationDeepDivePage() {
             subScenarios={questionnaireQuery.data.subScenarios}
             comments={commentEntries}
             domain={questionnaireQuery.data.networkType}
-            hvs={questionnaireQuery.data.hvsCategory}
+            hvs={withReviewTag(questionnaireQuery.data.hvsCategory, questionnaireQuery.data.inReview)}
           />
         </SectionCard>
       )}

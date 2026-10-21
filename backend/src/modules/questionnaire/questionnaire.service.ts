@@ -69,6 +69,7 @@ export async function listQuestionnaires(projectId: string | null = null): Promi
     name: q.name,
     networkType: q.networkType,
     hvsCategory: q.hvsCategory,
+    inReview: q.inReview,
   }));
 }
 
@@ -195,6 +196,7 @@ export async function getQuestionnaireByCode(
     networkType: questionnaire.networkType,
     hvsCategory: questionnaire.hvsCategory,
     hasE2ECheck: questionnaire.hasE2ECheck,
+    inReview: questionnaire.inReview,
     guidelineText: questionnaire.guidelineText,
     acceptingResponses,
     subScenarios: questionnaire.subScenarios.map((s) => ({

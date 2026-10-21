@@ -8,6 +8,7 @@ import { parseCoreFaultManagementXlsx, parseCoreStabilityXlsx } from './parseCor
 import { parseIpFmXlsx } from './parseIpFmXlsx';
 import { parseTransportMicrowaveXlsx, parseTransportOtnXlsx } from './parseTransportXlsx';
 import { parseFixedAccessXlsx } from './parseFixedAccessXlsx';
+import { parseNetworkLayerReviewQuestionnaires } from './parseReviewQuestionnaires';
 import countries from './data/countries.json';
 import { applyTextCorrections } from './textCorrections';
 import { CONSULTANCY_ORGANIZATION_NAME } from '../../src/modules/projects/projects.service';
@@ -66,10 +67,15 @@ async function seedSuperAdmin() {
 
 async function seedQuestionnaire(source: ParsedQuestionnaire) {
   const parsed = applyTextCorrections(source);
+  const inReview = parsed.inReview ?? false;
+  // "(R)" marks a questionnaire still in review at TM Forum (REVIEW_QUESTIONNAIRES_PLAN.md) —
+  // part of the stored name so every picker, header and Excel/PDF export shows it.
+  const name = inReview ? `${parsed.name} (R)` : parsed.name;
   const questionnaire = await prisma.questionnaire.upsert({
     where: { code: parsed.code },
     update: {
-      name: parsed.name,
+      name,
+      inReview,
       networkType: parsed.networkType,
       hvsCategory: parsed.hvsCategory,
       hasE2ECheck: parsed.hasE2ECheck,
@@ -78,7 +84,8 @@ async function seedQuestionnaire(source: ParsedQuestionnaire) {
     },
     create: {
       code: parsed.code,
-      name: parsed.name,
+      name,
+      inReview,
       networkType: parsed.networkType,
       hvsCategory: parsed.hvsCategory,
       hasE2ECheck: parsed.hasE2ECheck,
@@ -292,6 +299,10 @@ async function main() {
   await seedQuestionnaire(parseTransportMicrowaveXlsx());
   await seedQuestionnaire(parseTransportOtnXlsx());
   await seedQuestionnaire(parseFixedAccessXlsx());
+  // In review at TM Forum: tagged "(R)", opt-in per project (REVIEW_QUESTIONNAIRES_PLAN.md).
+  for (const parsed of parseNetworkLayerReviewQuestionnaires()) {
+    await seedQuestionnaire(parsed);
+  }
   if (!QUESTIONNAIRES_ONLY) {
     await seedReferenceLists();
   }

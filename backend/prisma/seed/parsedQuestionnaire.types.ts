@@ -46,6 +46,8 @@ export interface ParsedQuestionnaire {
   hvsCategory: string;
   // false only for Core Network Stability — see schema.prisma's Questionnaire.hasE2ECheck.
   hasE2ECheck: boolean;
+  // Still "In Review" in TM Forum's questionnaire library — tagged "(R)" (seed.ts). Omitted = false.
+  inReview?: boolean;
   // Questionnaire-level context from the xlsx's Guideline sheet (Introduction + Sub-scenarios
   // for RAN; the numbered Introduction for Core FM/Stability, which share one Guideline
   // sheet — see CLAUDE.md). Null only if a future questionnaire's source has no Guideline
