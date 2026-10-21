@@ -269,6 +269,8 @@ describe('project-level Project Admins (real DB)', () => {
           { organization: '', email: email('outsider'), role: 'PROJECT_ADMIN' },
           { organization: ORG_A, email: email('member-a'), role: 'NORMAL_USER' },
           { organization: `${PREFIX}-org-import__`, email: email('imp-exec'), role: 'EXECUTIVE' },
+          // Member B belongs to organization B — never to a second organization (USERS_PER_ORGANIZATION_PLAN.md).
+          { organization: ORG_A, email: email('member-b'), role: 'NORMAL_USER' },
         ],
       },
       adminId,
@@ -282,6 +284,7 @@ describe('project-level Project Admins (real DB)', () => {
     expect(byLabel.get(email('outsider'))?.status).toBe('error');
     expect(byLabel.get(email('member-a'))?.status).toBe('membership-added'); // a third project for member A
     expect(byLabel.get(email('imp-exec'))?.status).toBe('created');
+    expect(byLabel.get(email('member-b'))).toMatchObject({ status: 'error', error: expect.stringContaining(`Already belongs to ${ORG_B}`) });
     const newConsultant = await prisma.user.findUniqueOrThrow({ where: { email: email('new-consultant') }, include: { memberships: true } });
     expect(newConsultant.memberships.some((m) => m.organizationId === consultancyId && m.projectId === null)).toBe(true);
     expect(result.rows.filter((r) => r.sheet === 'Questionnaires').map((r) => r.status)).toEqual(['created', 'created', 'error']);

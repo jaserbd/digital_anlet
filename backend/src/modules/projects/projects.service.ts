@@ -9,7 +9,13 @@ import { prisma } from '../../lib/prisma';
 import { generatePassword } from '../../lib/generatePassword';
 import { createOrganization } from '../organizations/organizations.service';
 import { HVS_GROUPS } from '../questionnaire/hvsGroups';
-import { AlreadyMemberError, EmailTakenError, SuperAdminRequiredError, createUser } from '../users/users.service';
+import {
+  AlreadyMemberError,
+  EmailTakenError,
+  OtherOrganizationError,
+  SuperAdminRequiredError,
+  createUser,
+} from '../users/users.service';
 
 // Projects (PROJECTS_PLAN.md, PROJECTS_V2_PLAN.md): a client engagement with linked organizations
 // (an organization can be in several projects), a questionnaire selection and memberships that
@@ -225,12 +231,13 @@ export async function deleteProject(id: string): Promise<void> {
   await prisma.project.delete({ where: { id } });
 }
 
-/** Who can be picked as a Project Admin: Application Admins and members of Detecon. */
+/** Who can be picked as a Project Admin: Application Admins and Detecon's people (their own
+ * organization — one per user, USERS_PER_ORGANIZATION_PLAN.md). */
 export async function listProjectAdminCandidates(): Promise<ProjectAdminCandidateDto[]> {
   const users = await prisma.user.findMany({
     where: {
       isActive: true,
-      OR: [{ role: 'ADMIN' }, { memberships: { some: { organization: { name: CONSULTANCY_ORGANIZATION_NAME } } } }],
+      OR: [{ role: 'ADMIN' }, { organization: { name: CONSULTANCY_ORGANIZATION_NAME } }],
     },
     select: { id: true, email: true },
     orderBy: { email: 'asc' },
@@ -458,7 +465,9 @@ export async function importProject(
       const error =
         err instanceof EmailTakenError || err instanceof SuperAdminRequiredError
           ? 'This email belongs to an admin account'
-          : 'Failed to create user';
+          : err instanceof OtherOrganizationError
+            ? `Already belongs to ${err.organizationName} — a user is in one organization only`
+            : 'Failed to create user';
       rows.push({ ...base, organization: organization.name, status: 'error', error });
     }
   }

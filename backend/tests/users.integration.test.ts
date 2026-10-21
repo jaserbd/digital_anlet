@@ -10,6 +10,8 @@ import {
   CannotChangeOwnRoleError,
   CannotModifyAdminError,
   MembershipHasResponsesError,
+  OtherOrganizationError,
+  SeveralMembershipsError,
   SuperAdminRequiredError,
   addMembership,
   createUser,
@@ -28,14 +30,21 @@ import {
 
 const ORG_A_NAME = '__integration-test-users-org-a__';
 const ORG_B_NAME = '__integration-test-users-org-b__';
+// An organization in two projects (e.g. yearly rounds) — one organization, several memberships.
+const ORG_P_NAME = '__integration-test-users-org-p__';
+const PROJECT_1_NAME = '__integration-test-users-project-1__';
+const PROJECT_2_NAME = '__integration-test-users-project-2__';
 
 let orgAId: string;
 let orgBId: string;
+let orgPId: string;
+let project1Id: string;
+let project2Id: string;
 const userIds: string[] = [];
 let adminId: string; // a regular admin
 let superAdminId: string;
 
-type MembershipSpec = { organizationId: string; role: 'NORMAL_USER' | 'EXECUTIVE' };
+type MembershipSpec = { organizationId: string; projectId?: string; role: 'NORMAL_USER' | 'EXECUTIVE' };
 
 async function createRawUser(
   label: string,
@@ -62,6 +71,14 @@ beforeAll(async () => {
   ]);
   orgAId = orgA.id;
   orgBId = orgB.id;
+  orgPId = (await prisma.organization.create({ data: { name: ORG_P_NAME } })).id;
+  [project1Id, project2Id] = await Promise.all(
+    [PROJECT_1_NAME, PROJECT_2_NAME].map(async (name) => {
+      const project = await prisma.project.create({ data: { name } });
+      await prisma.projectOrganization.create({ data: { projectId: project.id, organizationId: orgPId } });
+      return project.id;
+    }),
+  );
   adminId = await createRawUser('caller-admin', { organizationId: orgAId, role: 'ADMIN' });
   superAdminId = await createRawUser('caller-super', { organizationId: orgAId, role: 'ADMIN', isSuperAdmin: true });
 });
@@ -69,7 +86,9 @@ beforeAll(async () => {
 afterAll(async () => {
   await prisma.questionnaireResponse.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } }); // memberships cascade
-  await prisma.organization.deleteMany({ where: { id: { in: [orgAId, orgBId] } } });
+  await prisma.projectOrganization.deleteMany({ where: { organizationId: orgPId } });
+  await prisma.project.deleteMany({ where: { id: { in: [project1Id, project2Id] } } });
+  await prisma.organization.deleteMany({ where: { id: { in: [orgAId, orgBId, orgPId] } } });
   await prisma.$disconnect();
 });
 
@@ -120,10 +139,12 @@ describe('global Admin role (real DB)', () => {
 });
 
 describe('memberships (real DB)', () => {
-  it('creating a user with an existing email adds a membership instead of failing', async () => {
+  // USERS_PER_ORGANIZATION_PLAN.md: a user belongs to one organization — more projects of it, but
+  // never a second organization.
+  it('creating a user with an existing email adds a project of their organization, never another organization', async () => {
     const email = '__integration-test-users-multi__@example.com';
     const first = await createUser(
-      { email, password: 'first-password-123', role: 'EXECUTIVE', organizationId: orgAId },
+      { email, password: 'first-password-123', role: 'EXECUTIVE', organizationId: orgPId, projectId: project1Id },
       adminId,
     );
     userIds.push(first.user.id);
@@ -131,46 +152,62 @@ describe('memberships (real DB)', () => {
     expect(first.user.role).toBe('NORMAL_USER'); // global role; Executive lives on the membership
 
     const second = await createUser(
-      { email, password: 'ignored-password', role: 'NORMAL_USER', organizationId: orgBId },
+      { email, password: 'ignored-password', role: 'NORMAL_USER', organizationId: orgPId, projectId: project2Id },
       adminId,
     );
     expect(second.status).toBe('membership-added');
     expect(second.user.id).toBe(first.user.id);
-    expect(second.user.memberships.map((m) => `${m.organizationName}:${m.role}`).sort()).toEqual(
-      [`${ORG_A_NAME}:EXECUTIVE`, `${ORG_B_NAME}:NORMAL_USER`].sort(),
+    expect(second.user.memberships.map((m) => `${m.projectName}:${m.role}`).sort()).toEqual(
+      [`${PROJECT_1_NAME}:EXECUTIVE`, `${PROJECT_2_NAME}:NORMAL_USER`].sort(),
     );
     // Password unchanged by the second create.
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: first.user.id } });
     expect(await verifyPassword('first-password-123', stored.passwordHash)).toBe(true);
 
     await expect(
-      createUser({ email, password: 'x-password-123', role: 'NORMAL_USER', organizationId: orgBId }, adminId),
+      createUser({ email, password: 'x-password-123', role: 'NORMAL_USER', organizationId: orgPId, projectId: project2Id }, adminId),
     ).rejects.toBeInstanceOf(AlreadyMemberError);
+    await expect(
+      createUser({ email, password: 'x-password-123', role: 'NORMAL_USER', organizationId: orgBId }, adminId),
+    ).rejects.toBeInstanceOf(OtherOrganizationError);
   });
 
-  it('lets any admin add, change and remove memberships of a non-admin user', async () => {
+  it('lets any admin add, change and remove memberships of a non-admin user within their organization', async () => {
     const userId = await createRawUser('membership-crud', {
-      organizationId: orgAId,
-      memberOf: [{ organizationId: orgAId, role: 'NORMAL_USER' }],
+      organizationId: orgPId,
+      memberOf: [{ organizationId: orgPId, projectId: project1Id, role: 'NORMAL_USER' }],
     });
 
-    let user = await addMembership(adminId, userId, { organizationId: orgBId, role: 'EXECUTIVE' });
-    const inB = user.memberships.find((m) => m.organizationId === orgBId)!;
-    expect(inB.role).toBe('EXECUTIVE');
+    await expect(addMembership(adminId, userId, { organizationId: orgBId, role: 'EXECUTIVE' })).rejects.toBeInstanceOf(
+      OtherOrganizationError,
+    );
+    let user = await addMembership(adminId, userId, { organizationId: orgPId, projectId: project2Id, role: 'EXECUTIVE' });
+    const inP2 = user.memberships.find((m) => m.projectId === project2Id)!;
+    expect(inP2.role).toBe('EXECUTIVE');
 
-    user = await updateMembership(adminId, userId, inB.id, { role: 'NORMAL_USER' });
-    expect(user.memberships.find((m) => m.id === inB.id)?.role).toBe('NORMAL_USER');
+    user = await updateMembership(adminId, userId, inP2.id, { role: 'NORMAL_USER' });
+    expect(user.memberships.find((m) => m.id === inP2.id)?.role).toBe('NORMAL_USER');
 
-    user = await removeMembership(adminId, userId, inB.id);
-    expect(user.memberships.map((m) => m.organizationId)).toEqual([orgAId]);
+    user = await removeMembership(adminId, userId, inP2.id);
+    expect(user.memberships.map((m) => m.projectId)).toEqual([project1Id]);
   });
 
-  it("lets only the super admin (or that admin themself) change an admin account's memberships", async () => {
+  it('places a user without any membership yet in the organization they are added to', async () => {
+    const userId = await createRawUser('membership-first', { organizationId: orgAId });
+    const user = await addMembership(adminId, userId, { organizationId: orgBId, role: 'EXECUTIVE' });
+    expect(user.organizationId).toBe(orgBId);
+    expect(user.memberships.map((m) => m.organizationId)).toEqual([orgBId]);
+  });
+
+  it("lets only the super admin (or that admin themself) change an admin account's memberships — in their own organization", async () => {
     await expect(
-      addMembership(adminId, superAdminId, { organizationId: orgBId, role: 'EXECUTIVE' }),
+      addMembership(adminId, superAdminId, { organizationId: orgAId, role: 'EXECUTIVE' }),
     ).rejects.toBeInstanceOf(SuperAdminRequiredError);
-    const self = await addMembership(superAdminId, superAdminId, { organizationId: orgBId, role: 'EXECUTIVE' });
-    expect(self.memberships.some((m) => m.organizationId === orgBId)).toBe(true);
+    await expect(
+      addMembership(superAdminId, superAdminId, { organizationId: orgBId, role: 'EXECUTIVE' }),
+    ).rejects.toBeInstanceOf(OtherOrganizationError);
+    const self = await addMembership(superAdminId, superAdminId, { organizationId: orgAId, role: 'EXECUTIVE' });
+    expect(self.memberships.some((m) => m.organizationId === orgAId)).toBe(true);
   });
 
   it('blocks removing a membership whose responses hold answers, but not one with only empty responses', async () => {
@@ -253,12 +290,30 @@ describe('memberships (real DB)', () => {
     });
     expect(moved.membership.organizationId).toBe(orgBId);
 
-    // Not into an organization the user already belongs to.
-    await addMembership(adminId, userId, { organizationId: orgAId, role: 'NORMAL_USER' });
-    await expect(updateMembership(adminId, userId, membership.id, { organizationId: orgAId })).rejects.toBeInstanceOf(
-      AlreadyMemberError,
+    // Back into the old organization the user no longer belongs to: refused — they're in orgB now.
+    await expect(addMembership(adminId, userId, { organizationId: orgAId, role: 'NORMAL_USER' })).rejects.toBeInstanceOf(
+      OtherOrganizationError,
     );
     await prisma.opCo.delete({ where: { id: opCo.id } });
+  });
+
+  it('moves a person to another organization only from their only membership', async () => {
+    const userId = await createRawUser('move-several', {
+      organizationId: orgPId,
+      memberOf: [
+        { organizationId: orgPId, projectId: project1Id, role: 'NORMAL_USER' },
+        { organizationId: orgPId, projectId: project2Id, role: 'NORMAL_USER' },
+      ],
+    });
+    const inP1 = await prisma.membership.findFirstOrThrow({ where: { userId, projectId: project1Id } });
+    await expect(updateMembership(adminId, userId, inP1.id, { organizationId: orgBId })).rejects.toBeInstanceOf(
+      SeveralMembershipsError,
+    );
+    // Another project of the same organization is fine.
+    const p2 = await prisma.membership.findFirstOrThrow({ where: { userId, projectId: project2Id } });
+    await removeMembership(adminId, userId, p2.id);
+    const user = await updateMembership(adminId, userId, inP1.id, { organizationId: orgPId, projectId: project2Id });
+    expect(user.memberships.map((m) => m.projectId)).toEqual([project2Id]);
   });
 
   it('lists users with their memberships, narrowed to one organization', async () => {

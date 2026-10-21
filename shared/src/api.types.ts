@@ -319,8 +319,10 @@ export interface UserDto {
   // Global role only: ADMIN, or NORMAL_USER for every non-admin (whose per-organization roles
   // are in `memberships`).
   role: Role;
-  // Home organization (the internal org for admins).
+  // The organization the user belongs to — exactly one (USERS_PER_ORGANIZATION_PLAN.md); all
+  // Executive / Normal User memberships are in it.
   organizationId: string;
+  organizationName: string;
   firstName: string | null;
   lastName: string | null;
   isSuperAdmin: boolean;
