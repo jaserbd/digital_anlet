@@ -43,6 +43,7 @@ async function createUser(label: string, forOrgId: string) {
 }
 
 beforeAll(async () => {
+  await removeFixtures(); // leftovers of an aborted earlier run
   const org = await prisma.organization.create({ data: { name: ORG_NAME } });
   orgId = org.id;
   const otherOrg = await prisma.organization.create({ data: { name: OTHER_ORG_NAME } });
@@ -88,15 +89,32 @@ beforeAll(async () => {
   questionId = question.id;
 });
 
+// Removes this file's fixtures by their fixed names. Settings rows are deleted right before the
+// rows they reference: other test files run in parallel, and creating an organization there
+// backfills a QuestionnaireOrgSetting for every questionnaire — including this fixture one.
+async function removeFixtures() {
+  const questionnaire = await prisma.questionnaire.findUnique({ where: { code: QUESTIONNAIRE_CODE } });
+  const orgs = await prisma.organization.findMany({ where: { name: { in: [ORG_NAME, OTHER_ORG_NAME] } } });
+  const orgIds = orgs.map((o) => o.id);
+  const users = await prisma.user.findMany({ where: { organizationId: { in: orgIds } }, select: { id: true } });
+  const fixtureUserIds = [...new Set([...userIds, ...users.map((u) => u.id)])];
+  if (questionnaire) {
+    await prisma.questionnaireResponse.deleteMany({ where: { questionnaireId: questionnaire.id } });
+  }
+  await prisma.questionnaireResponse.deleteMany({ where: { userId: { in: fixtureUserIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: fixtureUserIds } } });
+  if (questionnaire) {
+    await prisma.question.deleteMany({ where: { questionnaireId: questionnaire.id } });
+    await prisma.subScenario.deleteMany({ where: { questionnaireId: questionnaire.id } });
+    await prisma.questionnaireOrgSetting.deleteMany({ where: { questionnaireId: questionnaire.id } });
+    await prisma.questionnaire.delete({ where: { id: questionnaire.id } });
+  }
+  await prisma.questionnaireOrgSetting.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+}
+
 afterAll(async () => {
-  await prisma.questionnaireResponse.deleteMany({ where: { userId: { in: userIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-  await prisma.questionnaireOrgSetting.deleteMany({ where: { questionnaireId } });
-  await prisma.question.deleteMany({ where: { questionnaireId } });
-  await prisma.subScenario.deleteMany({ where: { questionnaireId } });
-  await prisma.questionnaire.delete({ where: { id: questionnaireId } });
-  await prisma.organization.delete({ where: { id: orgId } });
-  await prisma.organization.delete({ where: { id: otherOrgId } });
+  await removeFixtures();
   await prisma.$disconnect();
 });
 

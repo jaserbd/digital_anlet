@@ -148,7 +148,25 @@ layout options (listed under "Parser work").
   questionnaires); production smoke check (home 200, `/api/auth/me` 401). A logged-in production
   walkthrough needs an account I can't sign in with.
 
-### Batch B — service layer (next)
+### Batch B — service layer (7 questionnaires) — built 2026-10-21
 
-GB1502D, GB1503B, GB1503H, GB1504A, GB1504B, GB1505A, plus GB1503A once its file is in
-`review_questionnaires/`. GB1502D has no sub-scenarios (single `OVERALL` like Core Stability).
+- GB1502D Private Line Service Delivery (Domain "Private Line"), GB1503A / GB1503B / GB1503H
+  Service Assurance (Individual Services / Home Broadband / IP Private Line), GB1504A / GB1504B
+  Complaint Handling (Individual Services / Home Broadband), GB1505A Service Fault Management
+  (Individual Services). Same parser (`SERVICE_LAYER_REVIEW_QUESTIONNAIRES`).
+- GB1502D has no sub-scenarios → single synthetic `OVERALL` (the Core Stability model) and no
+  Guideline sheet → no context text. Its Scoring sheet applies **no compensation at all** (3.2 for
+  the demo answers); the general rule gives 3.5 (test documents both). Weights partly typed "10%".
+- GB1503B: weights only on the Scoring sheet, names carry "(35%)"; its answering-guideline table is
+  empty in the source; its two KEIs (MTTR, E2E Automation Ratio) have **no criteria anywhere** —
+  scored A-D = 4/3/2/1 like every other in-review KEI (`KeiLayout.fixedCriteria`).
+- GB1503H: answered per sub-scenario (plan decision 3).
+- GB1505A option texts start "(A) …" — the letter prefix is stripped (generic in fmSheetParser).
+- GB1503B / GB1505A Scoring sheets re-word one Service Capability each — the row guard accepts
+  either the capability or the question-text column.
+- Golden masters: GB1503B demo 3.91 / E2E 0.7, GB1503A / GB1504A / GB1504B 4 / 1, GB1503H's single
+  scored column 4.
+- Test-suite fix found on the way: `acceptingResponses.integration.test.ts` could fail its cleanup
+  when another test file (running in parallel) created an organization, which backfills a
+  QuestionnaireOrgSetting for the fixture questionnaire; the leftovers then broke every later run.
+  Cleanup is now name-based, race-tolerant and also runs before the tests.

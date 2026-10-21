@@ -18,6 +18,8 @@
 //   the questionnaire defines 3 weighted sub-scenarios — answered per sub-scenario here.
 // - "Other sub-scenarios (to be defined)" columns with weight 0 or "% TBD" (GB1524A, GB1525E)
 //   are dropped; weighted ones (GB1524B, GB1528A, GB1529) stay.
+// - GB1502D's Scoring sheet applies no compensation at all; GB1503B's has no KEI criteria (scored
+//   A-D = 4/3/2/1 like every other in-review KEI).
 // - GB1524A / GB1526A / GB1525A label a blended "High Value Scenario score" (GB1526A even
 //   carries 0.75 / 0.25 weights) but compute none — the KEI score stays separate, as for IP.
 import XLSX from 'xlsx';
@@ -36,6 +38,8 @@ export const REVIEW_QUESTIONNAIRE_DIR = 'review_questionnaires';
 
 type Guideline =
   | { kind: 'standard' }
+  // GB1502D has no Guideline sheet at all — no context text is invented.
+  | { kind: 'none' }
   // An IP-style "Introduction" sheet: numbered points in one column, no per-question guidance.
   | { kind: 'introduction'; sheet: string; column: number; rows: [number, number] };
 
@@ -49,6 +53,9 @@ export interface ReviewQuestionnaireConfig {
   layout: Omit<FmSheetLayout, 'fileLabel'>;
   kei?: Omit<KeiLayout, 'fileLabel' | 'questionSheet' | 'scoringSheet'>;
   guideline: Guideline;
+  /** No sub-scenarios: answered once per question, as a single synthetic "Overall" sub-scenario
+   * (the Core Stability model). */
+  singleAnswer?: boolean;
   /** Demo answers typed into the workbook, for the golden-master tests. */
   demo: { firstQuestionRow: number; firstSubScenarioColumn: number };
 }
@@ -334,6 +341,171 @@ export const NETWORK_LAYER_REVIEW_QUESTIONNAIRES: ReviewQuestionnaireConfig[] = 
   },
 ];
 
+// Service layer (batch B). Domains are the service the questionnaire covers.
+export const SERVICE_LAYER_REVIEW_QUESTIONNAIRES: ReviewQuestionnaireConfig[] = [
+  {
+    code: 'SERVICE_DELIVERY_PRIVATE_LINE_GB1502D',
+    name: 'Private Line Service Delivery',
+    networkType: 'Private Line',
+    hvsCategory: 'Service Delivery',
+    hasE2ECheck: false,
+    fileName: 'GB1502D_Private_Line_Service_Delivery_Questionnaire_V1.0.0.xlsx',
+    layout: {
+      ...COMMON,
+      questionSheet: 'Private Line Service Delivery',
+      scoringSheet: 'Scoring',
+      subScenarioNameRow: 1,
+      subScenarioWeightRow: 2,
+      subScenarioColumnStart: 9,
+      subScenarioCount: 0, // no answer columns: answered once per question
+      questionRows: [3, 11],
+      scoringRowOffset: 1,
+      scoringTextCheckColumn: 2,
+    },
+    singleAnswer: true,
+    kei: { rows: [16, 19], scoringRowOffset: -1, scoringCriteriaColumn: 5, noteRow: 21 },
+    guideline: { kind: 'none' },
+    demo: { firstQuestionRow: 3, firstSubScenarioColumn: 9 },
+  },
+  {
+    code: 'SERVICE_ASSURANCE_INDIVIDUAL_GB1503A',
+    name: 'Individual Services Service Assurance',
+    networkType: 'Individual Services',
+    hvsCategory: 'Service Assurance',
+    hasE2ECheck: false,
+    fileName: 'GB1503A_Individual_Services_Service_Assurance_Questionnaire_v2.0.0.xlsx',
+    layout: {
+      ...COMMON,
+      questionSheet: 'Service Assurance Questionnaire',
+      scoringSheet: 'Scoring',
+      subScenarioNameRow: 1,
+      subScenarioWeightRow: 2,
+      subScenarioColumnStart: 10, // K
+      subScenarioCount: 3,
+      questionRows: [3, 10],
+      scoringRowOffset: 1,
+      standardSourceColumn: 9, // J
+    },
+    guideline: { kind: 'standard' },
+    demo: { firstQuestionRow: 3, firstSubScenarioColumn: 10 },
+  },
+  {
+    code: 'SERVICE_ASSURANCE_HBB_GB1503B',
+    name: 'Home Broadband Service Assurance',
+    networkType: 'Home Broadband',
+    hvsCategory: 'Service Assurance',
+    hasE2ECheck: true,
+    fileName: 'GB1503B_Home_Broadband_Service_Assurance_Questionnaire_v2.0.0 (1).xlsx',
+    layout: {
+      ...COMMON,
+      questionSheet: 'HBB Servie Assurance', // sic
+      scoringSheet: 'Scoring',
+      subScenarioNameRow: 1, // "Stuttering/lag (35%)"
+      subScenarioDescriptionRow: 2,
+      subScenarioWeightRow: null,
+      scoringSubScenarioWeights: { row: 2, columns: [12, 15, 18] },
+      subScenarioColumnStart: 13, // N
+      subScenarioCount: 3,
+      questionRows: [3, 9],
+      scoringRowOffset: 1,
+      scoringTextCheckColumn: [2, 4], // Service Capability or question text (one is re-worded)
+    },
+    // The Scoring sheet has no KEI block: A-D scored 4/3/2/1 like every other in-review KEI.
+    kei: { rows: [14, 15], scoringRowOffset: 0, scoringCriteriaColumn: 5, noteRow: null, fixedCriteria: { A: 4, B: 3, C: 2, D: 1 } },
+    guideline: { kind: 'standard' },
+    demo: { firstQuestionRow: 3, firstSubScenarioColumn: 13 },
+  },
+  {
+    code: 'SERVICE_ASSURANCE_IP_PRIVATE_LINE_GB1503H',
+    name: 'IP Private Line Service Assurance',
+    networkType: 'IP Private Line',
+    hvsCategory: 'Service Assurance',
+    hasE2ECheck: false,
+    fileName: 'GB1503H_IP Private Line_Service Assurance_Questionnaire_v1.0.0.xlsx',
+    layout: {
+      ...COMMON,
+      questionSheet: 'Service Assurance Questionnaire',
+      scoringSheet: 'Scoring',
+      subScenarioNameRow: 1,
+      subScenarioWeightRow: 2,
+      subScenarioColumnStart: 9, // J — the Scoring sheet only scores this first column
+      subScenarioCount: 5,
+      questionRows: [3, 10],
+      scoringRowOffset: 0,
+    },
+    guideline: { kind: 'standard' },
+    demo: { firstQuestionRow: 3, firstSubScenarioColumn: 9 },
+  },
+  {
+    code: 'COMPLAINT_HANDLING_INDIVIDUAL_GB1504A',
+    name: 'Individual Services Complaint Handling',
+    networkType: 'Individual Services',
+    hvsCategory: 'Complaint Handling',
+    hasE2ECheck: false,
+    fileName: 'GB1504A_Individual_Services_Complaint_Handling_Questionnaire_v1.1.0_0422(with tracking version).xlsx',
+    layout: {
+      ...COMMON,
+      questionSheet: 'Customer Complaint(Clear)',
+      scoringSheet: 'Scoring',
+      subScenarioNameRow: 1,
+      subScenarioWeightRow: 2,
+      subScenarioColumnStart: 9, // J
+      subScenarioCount: 3,
+      questionRows: [3, 11],
+      scoringRowOffset: 1,
+    },
+    guideline: { kind: 'standard' },
+    demo: { firstQuestionRow: 3, firstSubScenarioColumn: 9 },
+  },
+  {
+    code: 'COMPLAINT_HANDLING_HBB_GB1504B',
+    name: 'Home Broadband Complaint Handling',
+    networkType: 'Home Broadband',
+    hvsCategory: 'Complaint Handling',
+    hasE2ECheck: true,
+    fileName: 'GB1504B_HBB_Complaint_Handling_Questionnaire_v2.0.0_Beta.xlsx',
+    layout: {
+      ...COMMON,
+      questionSheet: 'HBB Complaint Handling',
+      scoringSheet: 'Scoring',
+      subScenarioNameRow: 0, // "No Connectivity\n(Sub-Scenario-1)"
+      subScenarioWeightRow: 1,
+      subScenarioColumnStart: 13, // N
+      subScenarioCount: 3,
+      questionRows: [3, 10],
+      scoringRowOffset: 1,
+      scoringTextCheckColumn: 2,
+    },
+    guideline: { kind: 'standard' },
+    demo: { firstQuestionRow: 3, firstSubScenarioColumn: 13 },
+  },
+  {
+    code: 'SERVICE_FM_INDIVIDUAL_GB1505A',
+    name: 'Individual Service Fault Management',
+    networkType: 'Individual Services',
+    hvsCategory: 'Service Fault Management',
+    hasE2ECheck: true,
+    fileName: 'GB1505A_Individual_Service_Fault_Management_Questionnaire_v2.0.0NEW NEWNEW.xlsx',
+    layout: {
+      ...COMMON,
+      questionSheet: 'Fault Management',
+      scoringSheet: 'Scoring',
+      subScenarioNameRow: 1,
+      subScenarioWeightRow: 2,
+      subScenarioColumnStart: 11, // L
+      subScenarioCount: 2,
+      questionRows: [3, 10],
+      scoringRowOffset: 1,
+      scoringTextCheckColumn: [2, 4], // Service Capability or question text (one is re-worded)
+      complianceColumn: 9, // J
+      standardSourceColumn: 10, // K
+    },
+    kei: { rows: [17, 18], scoringRowOffset: -1, scoringCriteriaColumn: 5, noteRow: null },
+    guideline: { kind: 'standard' },
+    demo: { firstQuestionRow: 3, firstSubScenarioColumn: 11 },
+  },
+];
+
 export function reviewQuestionnairePath(fileName: string): string {
   return repoRootXlsxPath(`${REVIEW_QUESTIONNAIRE_DIR}/${fileName}`);
 }
@@ -343,13 +515,13 @@ export function parseReviewQuestionnaire(config: ReviewQuestionnaireConfig): Par
   const workbook = XLSX.readFile(reviewQuestionnairePath(config.fileName));
   const { subScenarios, questions } = readFmSheets(workbook, { fileLabel, ...config.layout });
 
-  let guidelineText: string | null;
+  let guidelineText: string | null = null;
   let answeringGuidelines = new Map<number, string>();
   if (config.guideline.kind === 'standard') {
     const guideline = readStandardGuideline(workbook, fileLabel, questions);
     guidelineText = guideline.text;
     answeringGuidelines = guideline.answeringGuidelines;
-  } else {
+  } else if (config.guideline.kind === 'introduction') {
     const rows = readSheetRows(workbook, config.guideline.sheet, fileLabel);
     guidelineText = joinColumnText(rows, config.guideline.column, [config.guideline.rows]);
   }
@@ -363,10 +535,12 @@ export function parseReviewQuestionnaire(config: ReviewQuestionnaireConfig): Par
     hasE2ECheck: config.hasE2ECheck,
     inReview: true,
     guidelineText,
-    subScenarios: subScenarios.map((s) => ({
-      ...s,
-      description: subScenarioLines.get(s.sortOrder + 1) ?? s.description,
-    })),
+    subScenarios: config.singleAnswer
+      ? [{ code: 'OVERALL', name: 'Overall', description: '', category: null, faultDistributionWeight: 1, sortOrder: 0 }]
+      : subScenarios.map((s) => ({
+          ...s,
+          description: subScenarioLines.get(s.sortOrder + 1) ?? s.description,
+        })),
     questions: questions.map((q) => ({
       ...q,
       answeringGuideline: answeringGuidelines.get(q.sortOrder) ?? null,
@@ -382,6 +556,11 @@ export function parseReviewQuestionnaire(config: ReviewQuestionnaireConfig): Par
   };
 }
 
-export function parseNetworkLayerReviewQuestionnaires(): ParsedQuestionnaire[] {
-  return NETWORK_LAYER_REVIEW_QUESTIONNAIRES.map(parseReviewQuestionnaire);
+export const REVIEW_QUESTIONNAIRES = [
+  ...NETWORK_LAYER_REVIEW_QUESTIONNAIRES,
+  ...SERVICE_LAYER_REVIEW_QUESTIONNAIRES,
+];
+
+export function parseReviewQuestionnaires(): ParsedQuestionnaire[] {
+  return REVIEW_QUESTIONNAIRES.map(parseReviewQuestionnaire);
 }

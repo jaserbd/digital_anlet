@@ -2,24 +2,27 @@ import { describe, expect, it } from 'vitest';
 import type { AnswerOption } from '@anlet/shared';
 import {
   NETWORK_LAYER_REVIEW_QUESTIONNAIRES,
+  REVIEW_QUESTIONNAIRES,
   REVIEW_QUESTIONNAIRE_DIR,
+  SERVICE_LAYER_REVIEW_QUESTIONNAIRES,
   parseReviewQuestionnaire,
   type ReviewQuestionnaireConfig,
 } from './parseReviewQuestionnaires';
 import { scoreAnswers, scoreDemoAnswers } from './demoAnswers.testUtils';
 import type { ParsedQuestionnaire } from './parsedQuestionnaire.types';
 
-const byCode = Object.fromEntries(NETWORK_LAYER_REVIEW_QUESTIONNAIRES.map((c) => [c.code, c]));
+const byCode = Object.fromEntries(REVIEW_QUESTIONNAIRES.map((c) => [c.code, c]));
 const parsed = Object.fromEntries(
-  NETWORK_LAYER_REVIEW_QUESTIONNAIRES.map((c) => [c.code, parseReviewQuestionnaire(c)]),
+  REVIEW_QUESTIONNAIRES.map((c) => [c.code, parseReviewQuestionnaire(c)]),
 ) as Record<string, ParsedQuestionnaire>;
 
-function demoScore(code: string) {
+function demoScore(code: string, sheet?: { questionSheet: string; firstQuestionRow: number; firstSubScenarioColumn: number }) {
   const config = byCode[code] as ReviewQuestionnaireConfig;
   return scoreDemoAnswers(parsed[code]!, {
     fileName: `${REVIEW_QUESTIONNAIRE_DIR}/${config.fileName}`,
     questionSheet: config.layout.questionSheet,
     ...config.demo,
+    ...sheet,
   });
 }
 
@@ -48,11 +51,21 @@ const STRUCTURE: [string, string, string, boolean, number, [string, number][], n
   ['RAN_ENERGY_EFF_GB1526A', 'RAN', 'Energy Efficiency Optimization', false, 9, [['Intra-RAT intra-frequency multi-Site energy saving', 0.2], ['Intra-RAT inter-frequency multi-Site energy saving', 0.4], ['Inter-RAT multi-Site energy saving', 0.4]], 1],
   ['RAN_ROUTINE_MAINT_GB1528A', 'RAN', 'Routine Maintenance', false, 8, [['Network Capacity & Utilization', 0.4], ['Configuration & Software Levels', 0.3], ['Access Control', 0.25], ['Other Sub-scenarios', 0.05]], 0],
   ['PROACTIVE_SECURITY_GB1529', 'Security', 'Proactive Security', false, 9, [['Threat Hunting', 0.35], ['Pen Testing', 0.3], ['Posture Management', 0.3], ['Other sub-scenarios', 0.05]], 0],
+  // Service layer (batch B)
+  ['SERVICE_DELIVERY_PRIVATE_LINE_GB1502D', 'Private Line', 'Service Delivery', false, 9, [['Overall', 1]], 4],
+  ['SERVICE_ASSURANCE_INDIVIDUAL_GB1503A', 'Individual Services', 'Service Assurance', false, 8, [['Anomaly & Stability', 0.2], ['Performance', 0.4], ['Experience', 0.4]], 0],
+  ['SERVICE_ASSURANCE_HBB_GB1503B', 'Home Broadband', 'Service Assurance', true, 7, [['Stuttering/lag', 0.35], ['Slowness', 0.35], ['Disconnection', 0.3]], 2],
+  ['SERVICE_ASSURANCE_IP_PRIVATE_LINE_GB1503H', 'IP Private Line', 'Service Assurance', false, 8, [['Bandwidth', 0.2], ['Latency/Jitter', 0.2], ['Packet Loss', 0.2], ['Availability', 0.2], ['Security', 0.2]], 0],
+  ['COMPLAINT_HANDLING_INDIVIDUAL_GB1504A', 'Individual Services', 'Complaint Handling', false, 9, [['Data Services Complaint', 0.55], ['Voice Services Complaint', 0.35], ['Other Network-Related Complaint', 0.1]], 0],
+  ['COMPLAINT_HANDLING_HBB_GB1504B', 'Home Broadband', 'Complaint Handling', true, 8, [['No Connectivity', 0.4], ['Degraded Quality', 0.35], ['Intermittent / Instability', 0.25]], 0],
+  ['SERVICE_FM_INDIVIDUAL_GB1505A', 'Individual Services', 'Service Fault Management', true, 8, [['Service outages', 0.7], ['Service degradation', 0.3]], 2],
 ];
 
-describe('parseReviewQuestionnaires — network layer (REVIEW_QUESTIONNAIRES_PLAN.md batch A)', () => {
-  it('covers exactly the 12 network-layer questionnaires', () => {
-    expect(NETWORK_LAYER_REVIEW_QUESTIONNAIRES.map((c) => c.code).sort()).toEqual(STRUCTURE.map((s) => s[0]).sort());
+describe('parseReviewQuestionnaires (REVIEW_QUESTIONNAIRES_PLAN.md)', () => {
+  it('covers the 12 network-layer and 7 service-layer questionnaires', () => {
+    expect(NETWORK_LAYER_REVIEW_QUESTIONNAIRES).toHaveLength(12);
+    expect(SERVICE_LAYER_REVIEW_QUESTIONNAIRES).toHaveLength(7);
+    expect(REVIEW_QUESTIONNAIRES.map((c) => c.code).sort()).toEqual(STRUCTURE.map((s) => s[0]).sort());
   });
 
   describe.each(STRUCTURE)('%s', (code, networkType, hvsCategory, hasE2ECheck, questionCount, subScenarios, keiCount) => {
@@ -88,8 +101,9 @@ describe('parseReviewQuestionnaires — network layer (REVIEW_QUESTIONNAIRES_PLA
       }
     });
 
-    it('takes its context text from the source', () => {
-      expect(p.guidelineText).toBeTruthy();
+    it('takes its context text from the source (GB1502D has no Guideline sheet)', () => {
+      if (code === 'SERVICE_DELIVERY_PRIVATE_LINE_GB1502D') expect(p.guidelineText).toBeNull();
+      else expect(p.guidelineText).toBeTruthy();
     });
 
     it('reaches the full score of 4 when every answer is A (compensation)', () => {
@@ -102,10 +116,13 @@ describe('parseReviewQuestionnaires — network layer (REVIEW_QUESTIONNAIRES_PLA
     });
   });
 
-  it('gives every question answering guidance from its Guideline sheet (GB1525E has none)', () => {
+  it('gives every question answering guidance from its Guideline sheet, where the source has any', () => {
+    // GB1525E has an Introduction sheet only, GB1502D no Guideline sheet, and GB1503B's
+    // answering table lists the Cognitive Activities with every other cell empty.
+    const without = ['IP_QUALITY_OPT_GB1525E', 'SERVICE_DELIVERY_PRIVATE_LINE_GB1502D', 'SERVICE_ASSURANCE_HBB_GB1503B'];
     for (const p of Object.values(parsed)) {
       const withGuidance = p.questions.filter((q) => q.answeringGuideline).length;
-      expect([p.code, withGuidance]).toEqual([p.code, p.code === 'IP_QUALITY_OPT_GB1525E' ? 0 : p.questions.length]);
+      expect([p.code, withGuidance]).toEqual([p.code, without.includes(p.code) ? 0 : p.questions.length]);
     }
   });
 
@@ -157,6 +174,10 @@ describe('parseReviewQuestionnaires — network layer (REVIEW_QUESTIONNAIRES_PLA
     ['RAN_ENERGY_EFF_GB1526A', 4, 1],
     ['RAN_ROUTINE_MAINT_GB1528A', 4, 1],
     ['PROACTIVE_SECURITY_GB1529', 4, 1],
+    ['SERVICE_ASSURANCE_INDIVIDUAL_GB1503A', 4, 1],
+    ['SERVICE_ASSURANCE_HBB_GB1503B', 3.91, 0.7],
+    ['COMPLAINT_HANDLING_INDIVIDUAL_GB1504A', 4, 1],
+    ['COMPLAINT_HANDLING_HBB_GB1504B', 4, 1],
   ])("reproduces %s's cached demo score %d (E2E rate %d)", (code, finalScore, e2eRate) => {
     const result = demoScore(code);
     expect(result.finalScore).toBeCloseTo(finalScore, 4);
@@ -191,6 +212,33 @@ describe('parseReviewQuestionnaires — network layer (REVIEW_QUESTIONNAIRES_PLA
     expect(result.subScenarioScores.map((s) => s.overallScore)).toEqual([4, 0, null]);
     // (0.6·4 + 0.25·0) / (0.6 + 0.25)
     expect(result.finalScore).toBeCloseTo(2.4 / 0.85, 4);
+  });
+
+  it("scores the IP Private Line demo's single scored column like the sheet (4), per sub-scenario", () => {
+    // GB1503H's Scoring sheet scores one answer column only; the demo answers just that one.
+    expect(demoScore('SERVICE_ASSURANCE_IP_PRIVATE_LINE_GB1503H').subScenarioScores.map((s) => s.overallScore)).toEqual([4, null, null, null, null]);
+  });
+
+  it('scores Private Line Service Delivery once per question, compensated: demo BABAAAAAA → 3.5 (the sheet, without compensation, gives 3.2)', () => {
+    // Demo answers live in the Scoring sheet's J column (linked from another workbook).
+    // Originals 3,3,3,3,3,4,3,4,3; ceiling-4 average (3+3+4+4)/4 = 3.5 compensates the five
+    // top-3 questions: 0.1·3 + 0.1·3.5 + 0.1·3 + 0.15·3.5 + 0.15·3.5 + 0.1·4 + 0.1·3.5 + 0.1·4 + 0.1·3.5
+    const result = demoScore('SERVICE_DELIVERY_PRIVATE_LINE_GB1502D', { questionSheet: 'Scoring', firstQuestionRow: 4, firstSubScenarioColumn: 9 });
+    expect(result.finalScore).toBeCloseTo(3.5, 4);
+    expect(parsed.SERVICE_DELIVERY_PRIVATE_LINE_GB1502D!.questions.map((q) => q.weight)).toEqual([0.1, 0.1, 0.1, 0.15, 0.15, 0.1, 0.1, 0.1, 0.1]);
+  });
+
+  it('strips "(A)" prefixes from option texts and "(35%)" / "(Sub-Scenario-1)" from sub-scenario headers', () => {
+    expect(parsed.SERVICE_FM_INDIVIDUAL_GB1505A!.questions[0]!.optionText.A).toMatch(/^The operations/);
+    expect(parsed.COMPLAINT_HANDLING_HBB_GB1504B!.subScenarios[0]!.description).toBe('No Connectivity');
+    expect(parsed.SERVICE_ASSURANCE_HBB_GB1503B!.subScenarios[0]!.description).toMatch(/^Specific scenarios: gaming/);
+  });
+
+  it('scores the Home Broadband KEIs, which have no Scoring-sheet criteria, A-D = 4/3/2/1', () => {
+    expect(parsed.SERVICE_ASSURANCE_HBB_GB1503B!.effectivenessIndicators.map((k) => [k.name, k.weight, k.optionCriteria])).toEqual([
+      ['Mean Time to Recovery (MTTR)', 0.5, { A: 4, B: 3, C: 2, D: 1 }],
+      ['End-to-End Automation Ratio', 0.5, { A: 4, B: 3, C: 2, D: 1 }],
+    ]);
   });
 
   it('parses KEIs with criteria from the Scoring sheet', () => {

@@ -8,7 +8,7 @@ import { parseCoreFaultManagementXlsx, parseCoreStabilityXlsx } from './parseCor
 import { parseIpFmXlsx } from './parseIpFmXlsx';
 import { parseTransportMicrowaveXlsx, parseTransportOtnXlsx } from './parseTransportXlsx';
 import { parseFixedAccessXlsx } from './parseFixedAccessXlsx';
-import { parseNetworkLayerReviewQuestionnaires } from './parseReviewQuestionnaires';
+import { parseReviewQuestionnaires } from './parseReviewQuestionnaires';
 import countries from './data/countries.json';
 import { applyTextCorrections } from './textCorrections';
 import { CONSULTANCY_ORGANIZATION_NAME } from '../../src/modules/projects/projects.service';
@@ -300,7 +300,7 @@ async function main() {
   await seedQuestionnaire(parseTransportOtnXlsx());
   await seedQuestionnaire(parseFixedAccessXlsx());
   // In review at TM Forum: tagged "(R)", opt-in per project (REVIEW_QUESTIONNAIRES_PLAN.md).
-  for (const parsed of parseNetworkLayerReviewQuestionnaires()) {
+  for (const parsed of parseReviewQuestionnaires()) {
     await seedQuestionnaire(parsed);
   }
   if (!QUESTIONNAIRES_ONLY) {
