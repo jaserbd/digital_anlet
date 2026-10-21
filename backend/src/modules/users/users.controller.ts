@@ -11,6 +11,9 @@ import {
   SuperAdminRequiredError,
   OrganizationNotFoundError,
   OrganizationNotInProjectError,
+  OtherOrganizationError,
+  SeveralMembershipsError,
+  StaysInOrganizationError,
   OutsideProjectError,
   ProjectAdminMembershipError,
   ProjectRequiredError,
@@ -182,6 +185,21 @@ function handlePlacementErrors(err: unknown, res: Response): boolean {
   }
   if (err instanceof OrganizationNotInProjectError) {
     res.status(400).json({ error: 'The organization is not part of that project' });
+    return true;
+  }
+  // One organization per user (USERS_PER_ORGANIZATION_PLAN.md).
+  if (err instanceof OtherOrganizationError) {
+    res.status(409).json({ error: err.message });
+    return true;
+  }
+  if (err instanceof StaysInOrganizationError) {
+    res.status(409).json({ error: 'Application Admins and Project Admins stay in their own organization' });
+    return true;
+  }
+  if (err instanceof SeveralMembershipsError) {
+    res.status(409).json({
+      error: 'This user takes part in several projects — remove the other memberships before moving them to another organization',
+    });
     return true;
   }
   return false;

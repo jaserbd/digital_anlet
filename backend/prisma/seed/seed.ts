@@ -10,8 +10,7 @@ import { parseTransportMicrowaveXlsx, parseTransportOtnXlsx } from './parseTrans
 import { parseFixedAccessXlsx } from './parseFixedAccessXlsx';
 import countries from './data/countries.json';
 import { applyTextCorrections } from './textCorrections';
-
-const INTERNAL_ORG_NAME = 'Anlet (Internal)';
+import { CONSULTANCY_ORGANIZATION_NAME } from '../../src/modules/projects/projects.service';
 
 // Non-exhaustive starting points for the two categories with no universal standard list
 // (unlike Country, which is seeded from countries.json) — Admin extends these further via
@@ -38,11 +37,13 @@ const STARTER_DESIGNATIONS = [
   'CTO',
 ];
 
-async function seedInternalOrgAndAdmin() {
+// The super admin belongs to Detecon (USERS_PER_ORGANIZATION_PLAN.md — "Anlet (Internal)" is
+// gone). An existing super admin keeps whatever organization they have; only a new one is placed.
+async function seedSuperAdmin() {
   const org = await prisma.organization.upsert({
-    where: { name: INTERNAL_ORG_NAME },
+    where: { name: CONSULTANCY_ORGANIZATION_NAME },
     update: {},
-    create: { name: INTERNAL_ORG_NAME },
+    create: { name: CONSULTANCY_ORGANIZATION_NAME },
   });
 
   const passwordHash = await hashPassword(env.ADMIN_PASSWORD);
@@ -50,7 +51,7 @@ async function seedInternalOrgAndAdmin() {
     where: { email: env.ADMIN_EMAIL },
     // The bootstrap admin is the super admin (ADMIN_MANAGEMENT_PLAN.md) — in production
     // ADMIN_EMAIL is jaserbin.rahman@detecon.com.
-    update: { passwordHash, role: 'ADMIN', isSuperAdmin: true, organizationId: org.id },
+    update: { passwordHash, role: 'ADMIN', isSuperAdmin: true },
     create: {
       email: env.ADMIN_EMAIL,
       passwordHash,
@@ -60,7 +61,7 @@ async function seedInternalOrgAndAdmin() {
     },
   });
 
-  console.log(`Seeded internal org "${INTERNAL_ORG_NAME}" and super admin "${env.ADMIN_EMAIL}"`);
+  console.log(`Seeded super admin "${env.ADMIN_EMAIL}" (${CONSULTANCY_ORGANIZATION_NAME})`);
 }
 
 async function seedQuestionnaire(source: ParsedQuestionnaire) {
@@ -282,7 +283,7 @@ const QUESTIONNAIRES_ONLY = process.argv.includes('--questionnaires-only');
 
 async function main() {
   if (!QUESTIONNAIRES_ONLY) {
-    await seedInternalOrgAndAdmin();
+    await seedSuperAdmin();
   }
   await seedQuestionnaire(parseRanFmXlsx());
   await seedQuestionnaire(parseCoreFaultManagementXlsx());
