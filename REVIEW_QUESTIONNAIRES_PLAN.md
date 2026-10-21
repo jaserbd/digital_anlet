@@ -135,3 +135,20 @@ layout options (listed under "Parser work").
   normalized; its E2E rate maxes out at 0.9, as Core FM's does); GB1525E's "Perceived" Cognitive
   Activity is kept as its own group; GB1526A's Scoring sheet has unused "% of Autonomy 0.75 / % of
   Indicators 0.25" cells.
+
+#### Batch A release (2026-10-21)
+
+- Merged to `main` (e3123b9); on-demand Cloud SQL backup "before review-questionnaires batch A".
+- Deployed revision **anlet-00013-dvb** (rollback target: **anlet-00012-cp7** — the old code ignores
+  the new `inReview` column, so traffic can simply be moved back).
+- `npm run db:seed:questionnaires` on production: 12 questionnaires with `inReview` + 7 released;
+  0 project selections include an (R) questionnaire (opt-in per project).
+- Self-tests: all workspaces' tests, lint and typecheck; local headless walkthrough (HVS picker
+  with (R) cards, an (R) questionnaire page, submit → results, project member not seeing (R)
+  questionnaires); production smoke check (home 200, `/api/auth/me` 401). A logged-in production
+  walkthrough needs an account I can't sign in with.
+
+### Batch B — service layer (next)
+
+GB1502D, GB1503B, GB1503H, GB1504A, GB1504B, GB1505A, plus GB1503A once its file is in
+`review_questionnaires/`. GB1502D has no sub-scenarios (single `OVERALL` like Core Stability).
