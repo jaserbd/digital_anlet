@@ -19,6 +19,7 @@ import {
   carryForward,
   cellText,
   criteriaForOfferedOptions,
+  joinColumnText,
   optionMap,
   parseYesNo,
   readSheetRows,
@@ -31,9 +32,17 @@ export interface FmSheetLayout {
   scoringSheet: string;
   /** 0-based row index of the header row holding sub-scenario categories, if the sheet has one. */
   categoryRow: number | null;
-  /** 0-based row indices of the sub-scenario name and weight header rows. */
+  /** 0-based row indices of the sub-scenario name and weight header rows. A null weight row
+   * means the weights live on the Scoring sheet instead (`scoringSubScenarioWeights`). */
   subScenarioNameRow: number;
-  subScenarioWeightRow: number;
+  subScenarioWeightRow: number | null;
+  /** Sub-scenario weights from the Scoring sheet: one 0-based column per sub-scenario. */
+  scoringSubScenarioWeights?: { row: number; columns: number[] };
+  /** Optional row with a longer description below each sub-scenario name. */
+  subScenarioDescriptionRow?: number;
+  /** Drops "Other sub-scenarios (to be defined)" columns whose weight is 0 or not a number
+   * ("% TBD") — placeholders nobody can answer meaningfully (REVIEW_QUESTIONNAIRES_PLAN.md). */
+  dropPlaceholderSubScenarios?: boolean;
   /** 0-based column index of the first sub-scenario answer column, and how many there are. */
   subScenarioColumnStart: number;
   subScenarioCount: number;
@@ -41,6 +50,11 @@ export interface FmSheetLayout {
   questionRows: [number, number];
   /** Scoring sheet row index = questionnaire row index + this offset. */
   scoringRowOffset: number;
+  /** 0-based column of the Scoring sheet's Option A criterion (B-D follow). Default 5 (F). */
+  scoringCriteriaColumn?: number;
+  /** When set, the Scoring sheet cell in this column must repeat the question's text (or its
+   * Service Capability) — a guard against the row offset drifting in a revised file. */
+  scoringTextCheckColumn?: number;
   /** 0-based columns for the standards-compliance flag and source text, if present. */
   complianceColumn: number | null;
   standardSourceColumn: number | null;
@@ -53,7 +67,21 @@ const SERVICE_CAPABILITY_COLUMN = 2;
 const WEIGHT_COLUMN = 3;
 const QUESTION_TEXT_COLUMN = 4;
 const OPTION_TEXT_COLUMNS = [5, 6, 7, 8] as const;
-const SCORING_CRITERIA_COLUMNS = [5, 6, 7, 8] as const;
+const DEFAULT_SCORING_CRITERIA_COLUMN = 5;
+
+/** A weight cell as a number — some sources type weights as text ("10%", "0.15 "). */
+export function parseWeight(value: unknown): number | null {
+  if (typeof value === 'number') return value;
+  const text = cellText(value);
+  if (!text) return null;
+  const match = /^(\d+(?:\.\d+)?)\s*(%?)$/.exec(text);
+  if (!match) return null;
+  return match[2] ? Number(match[1]) / 100 : Number(match[1]);
+}
+
+function normalizedPrefix(text: string | null, length = 25): string {
+  return (text ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, length);
+}
 
 export interface FmSheetData {
   subScenarios: ParsedSubScenario[];
@@ -74,25 +102,52 @@ export function readFmSheets(workbook: XLSX.WorkBook, layout: FmSheetLayout): Fm
       ? columns.map(() => null)
       : carryForward(columns.map((c) => cellText(questionRows[layout.categoryRow!]?.[c])));
 
-  const subScenarios: ParsedSubScenario[] = columns.map((column, i) => {
+  const weightCell = (i: number, column: number): unknown =>
+    layout.subScenarioWeightRow != null
+      ? questionRows[layout.subScenarioWeightRow]?.[column]
+      : scoringRows[layout.scoringSubScenarioWeights!.row]?.[
+          layout.scoringSubScenarioWeights!.columns[i]!
+        ];
+
+  const subScenarios: ParsedSubScenario[] = [];
+  columns.forEach((column, i) => {
     const header = cellText(questionRows[layout.subScenarioNameRow]?.[column]);
-    const weight = questionRows[layout.subScenarioWeightRow]?.[column];
-    if (!header || typeof weight !== 'number') {
+    const weight = parseWeight(weightCell(i, column));
+    if (
+      layout.dropPlaceholderSubScenarios &&
+      header &&
+      /^other\b/i.test(header) &&
+      (weight == null || weight === 0)
+    ) {
+      return;
+    }
+    if (!header || weight == null) {
       throw new Error(
         `${layout.fileLabel}: sub-scenario column ${column} has no name or numeric weight`,
       );
     }
     // Some headers carry a parenthetical scope note on a second line, e.g. "Hardware
-    // Failure\n(should include but not limit to ...)" — the first line is the name.
-    const name = header.split(/\r?\n/)[0]!.trim();
-    return {
+    // Failure\n(should include but not limit to ...)" — the first line is the name. A
+    // "Sub-scenario-1:" prefix and a trailing weight ("Slowness (35%)") are dropped.
+    const name = header
+      .replace(/^sub-?scenario[\s-]*\d+\s*:\s*/i, '')
+      .split(/\r?\n/)[0]!
+      .replace(/\s*\(\d+(?:\.\d+)?\s*%\)\s*$/, '')
+      // "RAN Voice KPIs (including but not limited to …)" — the scope note stays in the description.
+      .replace(/\s*\(including\b.*$/i, '')
+      .trim();
+    const description =
+      layout.subScenarioDescriptionRow != null
+        ? cellText(questionRows[layout.subScenarioDescriptionRow]?.[column])
+        : null;
+    subScenarios.push({
       code: toSubScenarioCode(name),
       name,
-      description: header.replace(/\s+/g, ' '),
+      description: (description ?? header).replace(/\s+/g, ' '),
       category: categories[i] ?? null,
       faultDistributionWeight: weight,
-      sortOrder: i,
-    };
+      sortOrder: subScenarios.length,
+    });
   });
 
   const questions: FmSheetData['questions'] = [];
@@ -103,14 +158,22 @@ export function readFmSheets(workbook: XLSX.WorkBook, layout: FmSheetLayout): Fm
     const sRow = scoringRows[row + layout.scoringRowOffset]!;
 
     // Cognitive activity is only set on the first row of each IAADE group (merged cells).
-    const cognitiveActivity = cellText(qRow[COGNITIVE_ACTIVITY_COLUMN]) ?? lastCognitiveActivity;
+    // Capitalized: one source types "analysis" on a continuation row of "Analysis".
+    const ownActivity = cellText(qRow[COGNITIVE_ACTIVITY_COLUMN]);
+    const cognitiveActivity = ownActivity
+      ? ownActivity.charAt(0).toUpperCase() + ownActivity.slice(1)
+      : lastCognitiveActivity;
     lastCognitiveActivity = cognitiveActivity;
 
     const optionText = optionMap(
       OPTION_TEXT_COLUMNS.map((c) => cellText(qRow[c])) as [string, string, string, string],
     );
+    const criteriaColumn = layout.scoringCriteriaColumn ?? DEFAULT_SCORING_CRITERIA_COLUMN;
     const scoringCriteria = optionMap(
-      SCORING_CRITERIA_COLUMNS.map((c) => sRow[c] as number | null) as [
+      [0, 1, 2, 3].map((i) => {
+        const value = sRow[criteriaColumn + i];
+        return typeof value === 'number' ? value : null;
+      }) as [
         number,
         number,
         number,
@@ -120,11 +183,22 @@ export function readFmSheets(workbook: XLSX.WorkBook, layout: FmSheetLayout): Fm
 
     const serviceCapability = cellText(qRow[SERVICE_CAPABILITY_COLUMN]);
     const questionText = cellText(qRow[QUESTION_TEXT_COLUMN]);
-    const weight = qRow[WEIGHT_COLUMN];
-    if (!serviceCapability || !questionText || typeof weight !== 'number') {
+    const weight = parseWeight(qRow[WEIGHT_COLUMN]);
+    if (!serviceCapability || !questionText || weight == null) {
       throw new Error(
         `${layout.fileLabel}: question row ${row + 1} is missing capability, text or weight`,
       );
+    }
+    if (layout.scoringTextCheckColumn != null) {
+      const scoringText = normalizedPrefix(cellText(sRow[layout.scoringTextCheckColumn]));
+      if (
+        scoringText !== normalizedPrefix(questionText) &&
+        scoringText !== normalizedPrefix(serviceCapability)
+      ) {
+        throw new Error(
+          `${layout.fileLabel}: ${layout.scoringSheet} row ${row + layout.scoringRowOffset + 1} doesn't match question row ${row + 1} ("${serviceCapability}")`,
+        );
+      }
     }
 
     questions.push({
@@ -158,7 +232,8 @@ export function extractNumberedSubScenarioLines(texts: (string | null)[]): Map<n
   for (const text of texts) {
     for (const line of (text ?? '').split(/\r?\n|\r/)) {
       // Both spellings occur in the sources ("Sub-scenario 1:", "Sub-scenairo-1:").
-      const match = /^\s*Sub-scen(?:ario|airo)[\s-]*(\d+)\s*:\s*(.+)$/i.exec(line);
+      // ... and "Sub-scenario1:" / "Sub-scenario-1." in the in-review questionnaires.
+      const match = /^\s*Sub-scen(?:ario|airo)[\s-]*(\d+)\s*[:.]\s*(.+)$/i.exec(line);
       if (match) result.set(Number(match[1]), match[2]!.trim());
     }
   }
@@ -176,8 +251,9 @@ export interface KeiLayout {
   scoringRowOffset: number;
   /** 0-based column of the Scoring sheet's Option A criterion (B-D follow). */
   scoringCriteriaColumn: number;
-  /** 0-based questionnaire-sheet row holding the "Note: ..." under the KEI block. */
-  noteRow: number;
+  /** 0-based questionnaire-sheet row (or inclusive row range) holding the note(s) under the
+   * KEI block, if any. */
+  noteRow: number | [number, number] | null;
 }
 
 const KEI_NAME_COLUMN = 0; // A
@@ -201,9 +277,9 @@ export function readKeis(
   const [first, last] = layout.rows;
   for (let row = first; row <= last; row++) {
     const name = cellText(rows[row]?.[KEI_NAME_COLUMN]);
-    const weight = rows[row]?.[KEI_WEIGHT_COLUMN];
+    const weight = parseWeight(rows[row]?.[KEI_WEIGHT_COLUMN]);
     const description = cellText(rows[row]?.[KEI_DESCRIPTION_COLUMN]);
-    if (!name || typeof weight !== 'number' || !description) {
+    if (!name || weight == null || !description) {
       throw new Error(
         `${layout.fileLabel}: KEI row ${row + 1} is missing its name, weight or description`,
       );
@@ -238,6 +314,13 @@ export function readKeis(
 
   return {
     effectivenessIndicators,
-    keiNote: cellText(rows[layout.noteRow]?.[KEI_NAME_COLUMN]),
+    keiNote:
+      layout.noteRow == null
+        ? null
+        : joinColumnText(
+            rows,
+            KEI_NAME_COLUMN,
+            [typeof layout.noteRow === 'number' ? [layout.noteRow, layout.noteRow] : layout.noteRow],
+          ),
   };
 }

@@ -386,6 +386,23 @@ describe('Project Admin scoping over HTTP (real DB)', () => {
     expect(adminViewB.json.respondents.find((r: { email: string }) => r.email === email('member-a'))?.status).toBe('IN_PROGRESS');
   });
 
+  it('leaves questionnaires still in review out of a new project until an Admin selects them', async () => {
+    const inReview = await prisma.questionnaire.create({
+      data: { code: `${PREFIX}-in-review__`, name: 'In-review test questionnaire (R)', networkType: 'RAN', hvsCategory: 'Test', inReview: true },
+    });
+    try {
+      const project = await createProject(`${PREFIX}-project-in-review__`);
+      expect(project.questionnaireCodes).not.toContain(inReview.code);
+      expect(project.questionnaireCodes).toContain(RAN);
+      const updated = await updateProject(project.id, { questionnaireCodes: [...project.questionnaireCodes, inReview.code] });
+      expect(updated.questionnaireCodes).toContain(inReview.code);
+      await deleteProject(project.id);
+    } finally {
+      await prisma.projectQuestionnaire.deleteMany({ where: { questionnaireId: inReview.id } });
+      await prisma.questionnaire.delete({ where: { id: inReview.id } });
+    }
+  });
+
   it('limits questionnaires to the project selection, keeping existing responses reachable', async () => {
     const existing = await api('POST', '/responses', asProjectAdmin, { questionnaireCode: QUESTIONNAIRE });
     expect(existing.status).toBe(200);
