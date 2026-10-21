@@ -52,9 +52,10 @@ export interface FmSheetLayout {
   scoringRowOffset: number;
   /** 0-based column of the Scoring sheet's Option A criterion (B-D follow). Default 5 (F). */
   scoringCriteriaColumn?: number;
-  /** When set, the Scoring sheet cell in this column must repeat the question's text (or its
-   * Service Capability) — a guard against the row offset drifting in a revised file. */
-  scoringTextCheckColumn?: number;
+  /** When set, a Scoring sheet cell in this column (or one of these columns) must repeat the
+   * question's text or its Service Capability — a guard against the row offset drifting in a
+   * revised file. Several columns help where a source re-words one of them. */
+  scoringTextCheckColumn?: number | number[];
   /** 0-based columns for the standards-compliance flag and source text, if present. */
   complianceColumn: number | null;
   standardSourceColumn: number | null;
@@ -77,6 +78,11 @@ export function parseWeight(value: unknown): number | null {
   const match = /^(\d+(?:\.\d+)?)\s*(%?)$/.exec(text);
   if (!match) return null;
   return match[2] ? Number(match[1]) / 100 : Number(match[1]);
+}
+
+/** "(A) The operations …" → "The operations …" — the UI shows the letter as a badge already. */
+function withoutOptionLetter(text: string | null): string | null {
+  return text?.replace(/^\(\s*[A-D]\s*\)\s*/, '') || null;
 }
 
 function normalizedPrefix(text: string | null, length = 25): string {
@@ -143,7 +149,9 @@ export function readFmSheets(workbook: XLSX.WorkBook, layout: FmSheetLayout): Fm
     subScenarios.push({
       code: toSubScenarioCode(name),
       name,
-      description: (description ?? header).replace(/\s+/g, ' '),
+      description: (description ?? header)
+        .replace(/\s*\(Sub-?Scenario[\s-]*\d+\)/i, '')
+        .replace(/\s+/g, ' '),
       category: categories[i] ?? null,
       faultDistributionWeight: weight,
       sortOrder: subScenarios.length,
@@ -166,7 +174,12 @@ export function readFmSheets(workbook: XLSX.WorkBook, layout: FmSheetLayout): Fm
     lastCognitiveActivity = cognitiveActivity;
 
     const optionText = optionMap(
-      OPTION_TEXT_COLUMNS.map((c) => cellText(qRow[c])) as [string, string, string, string],
+      OPTION_TEXT_COLUMNS.map((c) => withoutOptionLetter(cellText(qRow[c]))) as [
+        string,
+        string,
+        string,
+        string,
+      ],
     );
     const criteriaColumn = layout.scoringCriteriaColumn ?? DEFAULT_SCORING_CRITERIA_COLUMN;
     const scoringCriteria = optionMap(
@@ -190,11 +203,15 @@ export function readFmSheets(workbook: XLSX.WorkBook, layout: FmSheetLayout): Fm
       );
     }
     if (layout.scoringTextCheckColumn != null) {
-      const scoringText = normalizedPrefix(cellText(sRow[layout.scoringTextCheckColumn]));
-      if (
-        scoringText !== normalizedPrefix(questionText) &&
-        scoringText !== normalizedPrefix(serviceCapability)
-      ) {
+      const checkColumns = ([] as number[]).concat(layout.scoringTextCheckColumn);
+      const matches = checkColumns.some((column) => {
+        const scoringText = normalizedPrefix(cellText(sRow[column]));
+        return (
+          scoringText === normalizedPrefix(questionText) ||
+          scoringText === normalizedPrefix(serviceCapability)
+        );
+      });
+      if (!matches) {
         throw new Error(
           `${layout.fileLabel}: ${layout.scoringSheet} row ${row + layout.scoringRowOffset + 1} doesn't match question row ${row + 1} ("${serviceCapability}")`,
         );
@@ -251,6 +268,9 @@ export interface KeiLayout {
   scoringRowOffset: number;
   /** 0-based column of the Scoring sheet's Option A criterion (B-D follow). */
   scoringCriteriaColumn: number;
+  /** Criteria for every KEI when the Scoring sheet has no KEI block at all (GB1503B) — the
+   * scale the other in-review sources use; skips the Scoring-sheet name check. */
+  fixedCriteria?: Partial<Record<AnswerOption, number>>;
   /** 0-based questionnaire-sheet row (or inclusive row range) holding the note(s) under the
    * KEI block, if any. */
   noteRow: number | [number, number] | null;
@@ -286,7 +306,7 @@ export function readKeis(
     }
     const sRow = scoringRows[row + layout.scoringRowOffset];
     const scoringName = cellText(sRow?.[KEI_NAME_COLUMN]);
-    if (scoringName?.replace(/\s+/g, ' ') !== name.replace(/\s+/g, ' ')) {
+    if (!layout.fixedCriteria && scoringName?.replace(/\s+/g, ' ') !== name.replace(/\s+/g, ' ')) {
       throw new Error(
         `${layout.fileLabel}: ${layout.scoringSheet} row ${row + layout.scoringRowOffset + 1} is "${scoringName}", expected KEI "${name}"`,
       );
@@ -308,7 +328,7 @@ export function readKeis(
       description,
       weight,
       optionText,
-      optionCriteria: criteriaForOfferedOptions(optionText, criteria),
+      optionCriteria: criteriaForOfferedOptions(optionText, layout.fixedCriteria ?? criteria),
     });
   }
 
