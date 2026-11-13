@@ -1,6 +1,6 @@
 # Project Admin member import (Excel), with NatCo / Country / Working Domain / Designation
 
-**Status: done locally** — merged to `main` and pushed; not yet deployed to `anlet-504115`. Verified by `projectMemberImport.integration.test.ts` (6), template tests (10 total) and a local headless-Chrome walkthrough as a Project Admin (template download → fill → upload across two organizations → imported users skip the profile step when NatCo/working domain/designation were given).
+**Status: done** — merged to `main`, deployed to `anlet-504115` as revision `anlet-00015-vx8` on 2026-11-13 after on-demand Cloud SQL backup `1794590114234` (rollback: revision `anlet-00014-xdx`; no migration, so the backup is only needed to undo imported data). Live smoke test: pages 200, `/api/project-members/*` 401 without a session, no pending migrations, no error logs. Verified by `projectMemberImport.integration.test.ts` (6), template tests (10 total) and a local headless-Chrome walkthrough as a Project Admin (template download → fill → upload across two organizations → imported users skip the profile step when NatCo/working domain/designation were given).
 
 Source: `admin_management.md` line 32 (2026-11-13), clarified in discussion.
 
