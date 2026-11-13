@@ -36,9 +36,10 @@ export function ProfilePage() {
     queryFn: () => opCoApi.list(user!.organizationId),
   });
 
-  const [opCoId, setOpCoId] = useState('');
-  const [workingDomain, setWorkingDomain] = useState('');
-  const [designation, setDesignation] = useState('');
+  // Prefilled with whatever an Excel import already set (PROJECT_ADMIN_IMPORT_PLAN.md).
+  const [opCoId, setOpCoId] = useState(user!.opCoId ?? '');
+  const [workingDomain, setWorkingDomain] = useState(user!.workingDomain ?? '');
+  const [designation, setDesignation] = useState(user!.designation ?? '');
   const [error, setError] = useState<string | null>(null);
 
   const updateProfile = useMutation({

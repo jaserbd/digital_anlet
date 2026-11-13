@@ -247,20 +247,42 @@ export interface UpdateProjectRequestDto {
 // when missing and reused otherwise.
 export type ProjectMemberRole = Extract<Role, 'PROJECT_ADMIN' | 'EXECUTIVE' | 'NORMAL_USER'>;
 
+// One Members row. NatCo / Country / Working domain / Designation are optional
+// (PROJECT_ADMIN_IMPORT_PLAN.md): they fill the membership's profile (empty fields only for
+// existing members); an unknown NatCo is created when a Country is given.
+export interface ProjectImportMemberDto {
+  // Ignored (may be empty) for Project Admins, who administer the whole project.
+  organization: string;
+  email: string;
+  role: ProjectMemberRole;
+  firstName?: string;
+  lastName?: string;
+  natCo?: string;
+  country?: string;
+  workingDomain?: string;
+  designation?: string;
+}
+
 export interface ProjectImportRequestDto {
   projectName: string;
   organizations: string[];
   // Questionnaire or HVS names/codes; omitted or empty = all for a new project, unchanged for an existing one.
   questionnaires?: string[];
   natCos: { organization: string; name: string; country: string }[];
-  members: {
-    // Ignored (may be empty) for Project Admins, who administer the whole project.
-    organization: string;
-    email: string;
-    role: ProjectMemberRole;
-    firstName?: string;
-    lastName?: string;
-  }[];
+  members: ProjectImportMemberDto[];
+}
+
+// A Project Admin's member import (PROJECT_ADMIN_IMPORT_PLAN.md) into the project of their active
+// context — any of its organizations; Executives and Normal Users only.
+export interface ProjectMembersImportRequestDto {
+  members: ProjectImportMemberDto[];
+}
+
+// What the Project Admin's template needs: the project's organizations with their NatCos.
+export interface ProjectMemberImportContextDto {
+  projectId: string;
+  projectName: string;
+  organizations: { id: string; name: string; natCos: { name: string; country: string }[] }[];
 }
 
 export interface ProjectImportResultRowDto {
@@ -272,10 +294,17 @@ export interface ProjectImportResultRowDto {
   organization?: string;
   tempPassword?: string; // only for a newly created account
   error?: string;
+  // The row was imported, but part of it wasn't (e.g. an unknown NatCo without a country).
+  warning?: string;
 }
 
 export interface ProjectImportResultDto {
   project: ProjectDto;
+  rows: ProjectImportResultRowDto[];
+}
+
+export interface ProjectMembersImportResultDto {
+  projectName: string;
   rows: ProjectImportResultRowDto[];
 }
 

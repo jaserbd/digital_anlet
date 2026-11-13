@@ -113,6 +113,20 @@ export async function deleteProjectHandler(req: Request, res: Response) {
 }
 
 const nameSchema = z.string().trim().min(1).max(200);
+const optionalText = (max: number) => z.string().trim().max(max).optional();
+// One Members row (also the Project Admin member import's, with a narrower role).
+export const importMemberSchema = z.object({
+  // Empty is fine for Project Admins, who administer the whole project.
+  organization: z.string().trim().max(200),
+  email: z.string().trim().email(),
+  role: z.enum(['PROJECT_ADMIN', 'EXECUTIVE', 'NORMAL_USER']),
+  firstName: optionalText(100),
+  lastName: optionalText(100),
+  natCo: optionalText(200),
+  country: optionalText(100),
+  workingDomain: optionalText(200),
+  designation: optionalText(200),
+});
 const importProjectSchema = z.object({
   projectName: projectNameSchema,
   organizations: z.array(nameSchema).min(1).max(50),
@@ -121,16 +135,7 @@ const importProjectSchema = z.object({
     .array(z.object({ organization: nameSchema, name: nameSchema, country: z.string().trim().min(1).max(100) }))
     .max(500),
   members: z
-    .array(
-      z.object({
-        // Empty is fine for Project Admins, who administer the whole project.
-        organization: z.string().trim().max(200),
-        email: z.string().trim().email(),
-        role: z.enum(['PROJECT_ADMIN', 'EXECUTIVE', 'NORMAL_USER']),
-        firstName: z.string().trim().max(100).optional(),
-        lastName: z.string().trim().max(100).optional(),
-      }),
-    )
+    .array(importMemberSchema)
     .max(2000),
 });
 

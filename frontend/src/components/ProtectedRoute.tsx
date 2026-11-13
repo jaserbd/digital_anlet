@@ -33,15 +33,14 @@ export function ProtectedRoute({ allowedRoles, requireProfile = true }: Protecte
     return <Navigate to="/" replace />;
   }
   // NORMAL_USER always needs an OpCo before answering. EXECUTIVE's OpCo is optional
-  // (MANAGEMENT_REVIEW2.md item 2), but Working Domain/Designation are still collected once —
-  // checking workingDomain alone is a reliable "has completed the profile step" signal since
-  // it's always submitted together with designation in the same call (same pattern the
-  // opCoId-only check already relies on for Normal User). Admins never answer questionnaires
+  // (MANAGEMENT_REVIEW2.md item 2). Working Domain and Designation are collected for both — an
+  // Excel import may have filled some fields already (PROJECT_ADMIN_IMPORT_PLAN.md), so each is
+  // checked rather than one standing in for the whole step. Admins never answer questionnaires
   // and skip this entirely. Guards against a redirect loop when already on /profile itself.
   if (requireProfile && location.pathname !== '/profile') {
     const needsProfile =
-      (user.role === 'NORMAL_USER' && user.opCoId == null) ||
-      (user.role === 'EXECUTIVE' && user.workingDomain == null);
+      (user.role === 'NORMAL_USER' || user.role === 'EXECUTIVE') &&
+      ((user.role === 'NORMAL_USER' && user.opCoId == null) || user.workingDomain == null || user.designation == null);
     if (needsProfile) {
       return <Navigate to="/profile" replace />;
     }

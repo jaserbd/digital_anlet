@@ -151,6 +151,13 @@ Supersedes the "one project per organization" and "Project Admin = PROJECT_ADMIN
 - **Import**: organizations already in other projects are simply linked; Project Admin rows ignore the organization (new people are created as Detecon members, then added as Project Admins).
 - **Migration of existing data**: each organization's single project became a link and its memberships got that project, except Detecon — its PROJECT_ADMIN memberships in project P became Project Admin memberships in P's other organizations, and the Detecon membership itself became a project-less Executive one (keeping any answers).
 
+### Project Admin member import, profile columns (`PROJECT_ADMIN_IMPORT_PLAN.md`)
+
+- **Project Admins import members from Excel** (`MembersImportSection` on Manage project; `GET /project-members/context`, `POST /project-members/import` — own router, since `/projects` has a blanket Application-Admin check): Executives / Normal Users into **any organization of the active project**, not only the active one. Template = Instructions / Members / NatCos (existing ones) / Lists (`buildMembersTemplate`, `parseMembersWorkbook`).
+- **Members columns** (both imports): Organization · Email · Role · First name · Last name + optional **NatCo · Country · Working domain · Designation** (old files without them still parse). Shared backend loop `projects/memberImport.ts`'s `importMembers` (also used by `importProject`).
+- **Matching** via `labelKey` (case, spacing and punctuation ignored): NatCo against the organization's OpCos — an unknown one is created (plus its NATCO_NAME entry) when a valid Country is given, otherwise the row gets a `warning`; Working domain / Designation against the global lists — unknown values are **added** (existing spelling wins). Existing members: **only empty profile fields are filled** ("Kept the existing …" warning).
+- **Profile gate** (`ProtectedRoute`): Executives and Normal Users are sent to `/profile` while Working Domain **or** Designation is missing (plus NatCo for Normal Users); `ProfilePage` prefills imported values.
+
 ### One organization per user, users table per organization (`USERS_PER_ORGANIZATION_PLAN.md`)
 
 Supersedes the "same person in several organizations" parts of "Multi-organization memberships" and "Projects v2" above.
