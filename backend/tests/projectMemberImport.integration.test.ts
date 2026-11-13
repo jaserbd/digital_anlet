@@ -7,11 +7,13 @@ import { createApp } from '../src/app';
 import { AUTH_COOKIE_NAME } from '../src/middleware/auth';
 import { addProjectAdmin, createProject, importProject, updateProject } from '../src/modules/projects/projects.service';
 import { labelKey } from '../src/modules/projects/memberImport';
+import { QuestionnaireNotInProjectError, getOrCreateResponse } from '../src/modules/responses/responses.service';
 
 // Integration test against the real local Postgres for PROJECT_ADMIN_IMPORT_PLAN.md: a Project
 // Admin's Excel member import over HTTP (any organization of the project, NatCo / working domain /
 // designation matching and creation, fill-empty-only) and the same columns on the Application
-// Admin's project import.
+// Admin's project import — and the Project Admin's questionnaire selection
+// (PROJECT_ADMIN_QUESTIONNAIRES_PLAN.md).
 
 const PREFIX = '__integration-test-pmi';
 const ORG_A = `${PREFIX}-org-a__`;
@@ -110,6 +112,7 @@ beforeAll(async () => {
 afterAll(async () => {
   server.close();
   const users = await prisma.user.findMany({ where: { email: { startsWith: PREFIX } }, select: { id: true } });
+  await prisma.questionnaireResponse.deleteMany({ where: { userId: { in: users.map((u) => u.id) } } });
   await prisma.user.deleteMany({ where: { id: { in: users.map((u) => u.id) } } });
   const orgIds = (await prisma.organization.findMany({ where: { name: { startsWith: PREFIX } }, select: { id: true } })).map((o) => o.id);
   await prisma.membership.deleteMany({ where: { organizationId: { in: orgIds } } });
@@ -121,6 +124,7 @@ afterAll(async () => {
   await prisma.questionnaireProjectSetting.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.projectOrganization.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+  await prisma.projectQuestionnaire.deleteMany({ where: { project: { name: { startsWith: PREFIX } } } });
   await prisma.project.deleteMany({ where: { name: { startsWith: PREFIX } } });
   await prisma.$disconnect();
 });
@@ -227,5 +231,52 @@ describe('Application Admin project import with profile columns (real DB)', () =
     );
     expect(result.rows.find((r) => r.sheet === 'Members')).toMatchObject({ status: 'created', row: 1 });
     expect(await profileOf('imported', orgAId)).toMatchObject({ designation: DESIGNATION, opCo: { name: `${PREFIX} Kenya` } });
+  });
+});
+
+describe('Project Admin questionnaire selection over HTTP (real DB)', () => {
+  const RAN = 'RAN_FM_GB1059A';
+  const IP = 'IP_FM_GB1523E';
+  const RAN_QO_REVIEW = 'RAN_QUALITY_OPT_GB1525A';
+
+  it('lists every questionnaire, in-review ones included, with the project selection', async () => {
+    const { status, json } = await api('GET', '/project-members/questionnaires', asProjectAdmin);
+    expect(status).toBe(200);
+    const codes = json.entries.flatMap((e: { questionnaireCodes: string[] }) => e.questionnaireCodes);
+    expect(codes).toContain(RAN_QO_REVIEW);
+    expect(json.questionnaireCodes).toContain(RAN);
+    expect(json.questionnaireCodes).not.toContain(RAN_QO_REVIEW); // a new project starts without (R)
+  });
+
+  it('changes the selection, which the project members then see', async () => {
+    const { status, json } = await api('PUT', '/project-members/questionnaires', asProjectAdmin, {
+      questionnaireCodes: [RAN, RAN_QO_REVIEW],
+    });
+    expect(status).toBe(200);
+    expect(json.questionnaireCodes).toEqual([RAN, RAN_QO_REVIEW].sort());
+    const visible = await api('GET', '/questionnaires', asExecutive);
+    expect(visible.json.map((q: { code: string }) => q.code).sort()).toEqual([RAN, RAN_QO_REVIEW].sort());
+  });
+
+  it('refuses an empty selection or half of an HVS group, and non-Project-Admins', async () => {
+    expect((await api('PUT', '/project-members/questionnaires', asProjectAdmin, { questionnaireCodes: [] })).status).toBe(400);
+    expect(
+      (await api('PUT', '/project-members/questionnaires', asProjectAdmin, { questionnaireCodes: ['CORE_FM_GB1059B'] })).status,
+    ).toBe(400);
+    expect((await api('PUT', '/project-members/questionnaires', asExecutive, { questionnaireCodes: [RAN] })).status).toBe(403);
+    expect((await api('GET', '/project-members/questionnaires', { userId: adminId, membershipId: null })).status).toBe(403);
+  });
+
+  it('keeps existing responses reachable after deselecting, but starts no new ones', async () => {
+    const started = await getOrCreateResponse({ sub: asExecutive.userId, membershipId: asExecutive.membershipId }, RAN);
+    await api('PUT', '/project-members/questionnaires', asProjectAdmin, { questionnaireCodes: [IP] });
+    const again = await getOrCreateResponse({ sub: asExecutive.userId, membershipId: asExecutive.membershipId }, RAN);
+    expect(again.id).toBe(started.id);
+    const engineer = await prisma.membership.findFirstOrThrow({
+      where: { organizationId: orgAId, projectId, user: { email: email('eng-a') } },
+    });
+    await expect(getOrCreateResponse({ sub: engineer.userId, membershipId: engineer.id }, RAN)).rejects.toBeInstanceOf(
+      QuestionnaireNotInProjectError,
+    );
   });
 });

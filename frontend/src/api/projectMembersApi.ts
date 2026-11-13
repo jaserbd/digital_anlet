@@ -2,6 +2,7 @@ import type {
   ProjectImportMemberDto,
   ProjectMemberImportContextDto,
   ProjectMembersImportResultDto,
+  ProjectQuestionnaireSelectionDto,
 } from '@anlet/shared';
 import { apiClient } from './client';
 
@@ -10,4 +11,8 @@ export const projectMembersApi = {
   context: () => apiClient.get<ProjectMemberImportContextDto>('/project-members/context'),
   import: (members: ProjectImportMemberDto[]) =>
     apiClient.post<ProjectMembersImportResultDto>('/project-members/import', { members }),
+  // The project's questionnaire selection (PROJECT_ADMIN_QUESTIONNAIRES_PLAN.md).
+  questionnaires: () => apiClient.get<ProjectQuestionnaireSelectionDto>('/project-members/questionnaires'),
+  setQuestionnaires: (questionnaireCodes: string[]) =>
+    apiClient.put<ProjectQuestionnaireSelectionDto>('/project-members/questionnaires', { questionnaireCodes }),
 };

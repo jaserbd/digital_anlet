@@ -165,6 +165,12 @@ Supersedes the "one project per organization" and "Project Admin = PROJECT_ADMIN
 - **Create user**: Generate (random 12-character one-time password, shown in clear with Copy) and, for Application Admins placing someone in Detecon (or creating an Application Admin), "Project Admin of" projects — added through the existing `POST /projects/:id/project-admins` after the account is created; failures are reported per project.
 - Line 34 of `admin_management.md` (Application Admin import = Project Admin process + project/organization creation) needed no change: the full project import already does that.
 
+### Project Admins choose the project's questionnaires (`PROJECT_ADMIN_QUESTIONNAIRES_PLAN.md`)
+
+- `GET` / `PUT /project-members/questionnaires` (Project Admin only, project of the active context): every active questionnaire as HVS items (in-review "(R)" ones included, `listHvsEntries(null)`) plus the selection; saving goes through `updateProject`, so the same rules apply (at least one, Core FM + Stability together; deselecting keeps existing responses reachable, `getOrCreateResponse` only refuses new ones).
+- `components/QuestionnaireSelection.tsx` is shared by the Application Admin's Projects list and the Project Admin's "Questionnaires" section (`ProjectQuestionnairesSection`, Manage project).
+- Project dashboard cards list Project Admins only after clicking "Project Admins (n)".
+
 ### One organization per user, users table per organization (`USERS_PER_ORGANIZATION_PLAN.md`)
 
 Supersedes the "same person in several organizations" parts of "Multi-organization memberships" and "Projects v2" above.

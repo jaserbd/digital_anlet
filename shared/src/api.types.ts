@@ -306,6 +306,14 @@ export interface ProjectImportResultDto {
   rows: ProjectImportResultRowDto[];
 }
 
+// A Project Admin's questionnaire selection (PROJECT_ADMIN_QUESTIONNAIRES_PLAN.md): every
+// questionnaire as HVS items (in-review ones included) and the project's current selection.
+export interface ProjectQuestionnaireSelectionDto {
+  projectName: string;
+  entries: HvsListItemDto[];
+  questionnaireCodes: string[];
+}
+
 export interface ProjectMembersImportResultDto {
   projectName: string;
   rows: ProjectImportResultRowDto[];
