@@ -1,6 +1,6 @@
 # Project dashboard, collapsible sections, generated passwords + Project Admin on creation
 
-**Status: done locally** — merged to `main` and pushed; not yet deployed to `anlet-504115`. Verified by tests (backend 697, frontend 52 incl. `questionnaireInitials.test.ts` and new dashboard-count assertions in `projects.integration.test.ts`) and a local headless-Chrome walkthrough as Application Admin (both dashboard views, collapse + view remembered across reload, Generate password, new Detecon user made Project Admin of two projects).
+**Status: done** — merged to `main`, deployed to `anlet-504115` as revision `anlet-00016-wqs` on 2026-11-13 after on-demand Cloud SQL backup `1794594291053` (rollback: revision `anlet-00015-vx8`; no migration). Live smoke test: pages 200, APIs 401 without a session, no pending migrations, no error logs. Verified by tests (backend 697, frontend 52 incl. `questionnaireInitials.test.ts` and new dashboard-count assertions in `projects.integration.test.ts`) and a local headless-Chrome walkthrough as Application Admin (both dashboard views, collapse + view remembered across reload, Generate password, new Detecon user made Project Admin of two projects).
 
 Source: `admin_management.md` lines 34–37 (2026-11-13), clarified in discussion.
 
