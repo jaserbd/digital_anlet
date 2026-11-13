@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { OrganizationDto, ProjectDto, QuestionnaireSummaryDto } from '@anlet/shared';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Collapse from '@mui/material/Collapse';
 import Chip from '@mui/material/Chip';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
@@ -10,6 +12,7 @@ import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { projectsApi } from '../api/projectsApi';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { questionnaireInitials } from '../lib/questionnaireInitials';
@@ -17,7 +20,8 @@ import { SectionCard } from './SectionCard';
 
 // Application Admin's project dashboard (ADMIN_DASHBOARD_PLAN.md): every project at a glance,
 // not as a table — as cards, or grouped by organization (e.g. yearly rounds of one client).
-// Questionnaires show as Domain + HVS badges (RAN-FM, Core-ST, …) with the full name on hover.
+// Questionnaires show as Domain + HVS badges (RAN-FM, Core-ST, …) with the full name on hover;
+// Project Admins are listed only after clicking their count.
 
 type View = 'cards' | 'organizations';
 const VIEW_STORAGE_KEY = 'anlet.projectDashboardView';
@@ -165,10 +169,42 @@ function ProjectCard({ project, questionnaires }: { project: ProjectDto; questio
       <OrganizationChips organizations={project.organizations} />
       <QuestionnaireBadges codes={project.questionnaireCodes} questionnaires={questionnaires} />
       <ProgressLine project={project} />
-      <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
-        Project Admins: {project.projectAdmins.length > 0 ? project.projectAdmins.map((a) => a.email).join(', ') : 'none yet'}
-      </Typography>
+      <ProjectAdminsToggle admins={project.projectAdmins} />
     </Paper>
+  );
+}
+
+/** Project Admins collapsed behind their count; names only after a click (admin_management.md line 44). */
+function ProjectAdminsToggle({ admins }: { admins: ProjectDto['projectAdmins'] }) {
+  const [open, setOpen] = useState(false);
+  if (admins.length === 0) {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        No Project Admin yet
+      </Typography>
+    );
+  }
+  return (
+    <Box>
+      <Button
+        size="small"
+        onClick={() => setOpen((was) => !was)}
+        aria-expanded={open}
+        endIcon={<ExpandMoreIcon sx={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} />}
+        sx={{ ml: -0.5, px: 0.5 }}
+      >
+        Project Admins ({admins.length})
+      </Button>
+      <Collapse in={open} timeout="auto">
+        <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
+          {admins.map((a) => (
+            <Typography key={a.userId} component="li" variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+              {a.email}
+            </Typography>
+          ))}
+        </Box>
+      </Collapse>
+    </Box>
   );
 }
 

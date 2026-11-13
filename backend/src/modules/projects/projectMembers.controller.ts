@@ -1,6 +1,12 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { getMemberImportContext, importProjectMembers } from './projectMembers.service';
+import {
+  getMemberImportContext,
+  getProjectQuestionnaireSelection,
+  importProjectMembers,
+  setProjectQuestionnaireSelection,
+} from './projectMembers.service';
+import { InvalidQuestionnaireSelectionError } from './projects.service';
 import { importMemberSchema } from './projects.controller';
 
 // The Project Admin's project is the active context's (requireRole('PROJECT_ADMIN') on the router).
@@ -28,4 +34,30 @@ export async function importProjectMembersHandler(req: Request, res: Response) {
   }
   const projectId = activeProjectId(req, res);
   if (projectId) res.status(201).json(await importProjectMembers(projectId, parsed.data.members, req.user!.sub));
+}
+
+export async function getProjectQuestionnairesHandler(req: Request, res: Response) {
+  const projectId = activeProjectId(req, res);
+  if (projectId) res.json(await getProjectQuestionnaireSelection(projectId));
+}
+
+const projectQuestionnairesSchema = z.object({ questionnaireCodes: z.array(z.string().min(1).max(100)).max(100) });
+
+export async function setProjectQuestionnairesHandler(req: Request, res: Response) {
+  const parsed = projectQuestionnairesSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request body' });
+    return;
+  }
+  const projectId = activeProjectId(req, res);
+  if (!projectId) return;
+  try {
+    res.json(await setProjectQuestionnaireSelection(projectId, parsed.data.questionnaireCodes));
+  } catch (err) {
+    if (err instanceof InvalidQuestionnaireSelectionError) {
+      res.status(400).json({ error: 'Select at least one questionnaire; Core Fault Management and Core Stability go together' });
+      return;
+    }
+    throw err;
+  }
 }
