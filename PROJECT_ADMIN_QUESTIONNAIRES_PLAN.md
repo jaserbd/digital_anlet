@@ -1,6 +1,6 @@
 # Project Admins choose the project's questionnaires; Project Admins collapsed on dashboard cards
 
-**Status: done locally** — merged to `main` and pushed; not yet deployed to `anlet-504115`. Verified by 4 new integration tests in `projectMemberImport.integration.test.ts` (backend 701, frontend 52 passing) and a local headless-Chrome walkthrough (Project Admin deselects IP FM and selects RAN QO (R), Save disabled with nothing selected, their answer picker follows; the Application Admin's card shows the change and lists Project Admins only after a click).
+**Status: done** — merged to `main`, deployed to `anlet-504115` as revision `anlet-00017-vs7` on 2026-11-13 after on-demand Cloud SQL backup `1794597210433` (rollback: revision `anlet-00016-wqs`; no migration). Live smoke test: pages 200, APIs 401 without a session, no pending migrations, no error logs. Verified by 4 new integration tests in `projectMemberImport.integration.test.ts` (backend 701, frontend 52 passing) and a local headless-Chrome walkthrough (Project Admin deselects IP FM and selects RAN QO (R), Save disabled with nothing selected, their answer picker follows; the Application Admin's card shows the change and lists Project Admins only after a click).
 
 Source: `admin_management.md` lines 42 and 44 (2026-11-13), clarified in discussion.
 
