@@ -158,6 +158,13 @@ Supersedes the "one project per organization" and "Project Admin = PROJECT_ADMIN
 - **Matching** via `labelKey` (case, spacing and punctuation ignored): NatCo against the organization's OpCos — an unknown one is created (plus its NATCO_NAME entry) when a valid Country is given, otherwise the row gets a `warning`; Working domain / Designation against the global lists — unknown values are **added** (existing spelling wins). Existing members: **only empty profile fields are filled** ("Kept the existing …" warning).
 - **Profile gate** (`ProtectedRoute`): Executives and Normal Users are sent to `/profile` while Working Domain **or** Designation is missing (plus NatCo for Normal Users); `ProfilePage` prefills imported values.
 
+### Project dashboard, collapsible sections, generated passwords (`ADMIN_DASHBOARD_PLAN.md`)
+
+- **Project dashboard** (`ProjectDashboardSection`, top of the Admin page): not a table — **Cards** (project, organization chips linking to the Deep-Dive, questionnaire badges, members, submitted / in-progress responses, Project Admins) or **By organization** (organizations with their projects as tiles); the view is remembered in `localStorage`. Badges = Domain + HVS initials from `lib/questionnaireInitials.ts` (RAN-FM, Core-ST, TR-MW-FM, "(R)" for in-review), full name on hover. `ProjectDto.submittedResponses` / `inProgressResponses` count Executive + Normal User memberships only.
+- **Collapsible sections**: every titled `SectionCard` collapses from its title (`collapsible={false}` opts out, `collapseKey` overrides the remembered key); `CollapsibleBlock` for sub-blocks (benchmark "Chart"); `CommentCollectionTable` collapses from its title. Open by default; collapsed ones remembered per page + section via `lib/rememberedOpen.ts` (guarded `localStorage`). Content stays mounted while collapsed.
+- **Create user**: Generate (random 12-character one-time password, shown in clear with Copy) and, for Application Admins placing someone in Detecon (or creating an Application Admin), "Project Admin of" projects — added through the existing `POST /projects/:id/project-admins` after the account is created; failures are reported per project.
+- Line 34 of `admin_management.md` (Application Admin import = Project Admin process + project/organization creation) needed no change: the full project import already does that.
+
 ### One organization per user, users table per organization (`USERS_PER_ORGANIZATION_PLAN.md`)
 
 Supersedes the "same person in several organizations" parts of "Multi-organization memberships" and "Projects v2" above.

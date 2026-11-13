@@ -6,6 +6,7 @@ import Link from '@mui/material/Link';
 import { ScoreBar } from './ScoreBar';
 import { SortableTable, type SortableTableColumn } from './SortableTable';
 import { OrganizationAutocomplete } from './OrganizationAutocomplete';
+import { CollapsibleBlock } from './CollapsibleBlock';
 import { ScoreBarChart } from './charts/ScoreBarChart';
 import { exportRowsToXlsx } from '../lib/exportXlsx';
 import { buildBenchmarkSheet } from '../lib/sheetBuilders';
@@ -194,15 +195,17 @@ export function BenchmarkTable({
           emptyMessage="No data yet."
           onFilteredRowsChange={setVisibleRows}
         />
-        <ScoreBarChart
-          data={visibleRows.map((r) => ({
-            label: hideOrganizationColumn
-              ? r.opCoName
-              : `${r.projectName ? `${r.projectName} · ` : ''}${r.organizationName} — ${r.opCoName}`,
-            score: r.averageFinalScore,
-          }))}
-          series={[{ key: 'score', name: 'Avg. final score' }]}
-        />
+        <CollapsibleBlock title="Chart" id="benchmark-chart">
+          <ScoreBarChart
+            data={visibleRows.map((r) => ({
+              label: hideOrganizationColumn
+                ? r.opCoName
+                : `${r.projectName ? `${r.projectName} · ` : ''}${r.organizationName} — ${r.opCoName}`,
+              score: r.averageFinalScore,
+            }))}
+            series={[{ key: 'score', name: 'Avg. final score' }]}
+          />
+        </CollapsibleBlock>
       </div>
     </div>
   );

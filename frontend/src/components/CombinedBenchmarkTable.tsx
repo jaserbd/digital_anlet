@@ -4,6 +4,7 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import { ScoreBar } from './ScoreBar';
 import { SortableTable, type SortableTableColumn } from './SortableTable';
+import { CollapsibleBlock } from './CollapsibleBlock';
 import { ScoreBarChart } from './charts/ScoreBarChart';
 import { exportRowsToXlsx } from '../lib/exportXlsx';
 import { buildCombinedBenchmarkSheet } from '../lib/sheetBuilders';
@@ -93,21 +94,23 @@ export function CombinedBenchmarkTable({
           emptyMessage="No data yet."
           onFilteredRowsChange={setVisibleRows}
         />
-        <ScoreBarChart
-          data={visibleRows.map((r) => ({
-            label: hideOrganizationColumn
-              ? r.opCoName
-              : `${r.projectName ? `${r.projectName} · ` : ''}${r.organizationName} — ${r.opCoName}`,
-            faultManagement: r.faultManagement.averageFinalScore,
-            stability: r.stability.averageFinalScore,
-            combined: r.combinedAverageFinalScore,
-          }))}
-          series={[
-            { key: 'faultManagement', name: 'Fault Mgmt avg' },
-            { key: 'stability', name: 'Stability avg' },
-            { key: 'combined', name: 'Combined avg' },
-          ]}
-        />
+        <CollapsibleBlock title="Chart" id="benchmark-chart">
+          <ScoreBarChart
+            data={visibleRows.map((r) => ({
+              label: hideOrganizationColumn
+                ? r.opCoName
+                : `${r.projectName ? `${r.projectName} · ` : ''}${r.organizationName} — ${r.opCoName}`,
+              faultManagement: r.faultManagement.averageFinalScore,
+              stability: r.stability.averageFinalScore,
+              combined: r.combinedAverageFinalScore,
+            }))}
+            series={[
+              { key: 'faultManagement', name: 'Fault Mgmt avg' },
+              { key: 'stability', name: 'Stability avg' },
+              { key: 'combined', name: 'Combined avg' },
+            ]}
+          />
+        </CollapsibleBlock>
       </div>
     </div>
   );
