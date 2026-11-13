@@ -2,12 +2,16 @@ import { useState } from 'react';
 import type { CommentDrilldownEntryDto, CrossOrgCommentEntryDto, QuestionDto, SubScenarioDto } from '@anlet/shared';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Collapse from '@mui/material/Collapse';
+import IconButton from '@mui/material/IconButton';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import Typography from '@mui/material/Typography';
 import { SortableTable, type SortableTableColumn } from './SortableTable';
 import { exportRowsToXlsx, type XlsxSheet } from '../lib/exportXlsx';
 import { formatSubScenarioLabel } from '../lib/subScenarioCategories';
 import { respondentColumnHeader, withoutDesignation } from '../lib/respondentIdentity';
 import { formatQuestionNumberLabel } from '../lib/cognitiveActivity';
+import { useRememberedOpen } from '../lib/rememberedOpen';
 
 export interface CommentCollectionRow {
   key: string;
@@ -171,6 +175,9 @@ export function CommentCollectionTable({
     { key: 'comment', header: 'Comment', getValue: (r) => r.comment, filterable: true },
   ], anonymized);
 
+  // Collapsible from its title (ADMIN_DASHBOARD_PLAN.md), open by default.
+  const [open, toggle] = useRememberedOpen(`comments:${title}`);
+
   function handleExport() {
     if (!exportFileNamePrefix) return;
     exportRowsToXlsx(`${exportFileNamePrefix}-comments`, [buildCommentCollectionSheet(visibleRows, showOrganizationColumn, anonymized)]);
@@ -179,23 +186,35 @@ export function CommentCollectionTable({
   return (
     <div>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="h6">{title}</Typography>
-        {exportFileNamePrefix && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer' }} onClick={toggle}>
+          <IconButton
+            size="small"
+            aria-label={open ? 'Collapse comments' : 'Expand comments'}
+            aria-expanded={open}
+            sx={{ ml: -1, transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform 150ms' }}
+          >
+            <ExpandMoreIcon />
+          </IconButton>
+          <Typography variant="h6">{title}</Typography>
+        </Box>
+        {open && exportFileNamePrefix && (
           <Button variant="outlined" onClick={handleExport} disabled={visibleRows.length === 0}>
             Export to Excel
           </Button>
         )}
       </Box>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-        Domain: {domain} · HVS: {hvs}
-      </Typography>
-      <SortableTable
-        columns={columns}
-        rows={rows}
-        rowKey={(r) => r.key}
-        onFilteredRowsChange={setVisibleRows}
-        emptyMessage="No comments collected yet."
-      />
+      <Collapse in={open} timeout="auto">
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          Domain: {domain} · HVS: {hvs}
+        </Typography>
+        <SortableTable
+          columns={columns}
+          rows={rows}
+          rowKey={(r) => r.key}
+          onFilteredRowsChange={setVisibleRows}
+          emptyMessage="No comments collected yet."
+        />
+      </Collapse>
     </div>
   );
 }

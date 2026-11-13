@@ -18,6 +18,7 @@ import Paper from '@mui/material/Paper';
 import { organizationsApi } from '../api/organizationsApi';
 import { opCoApi } from '../api/opCoApi';
 import { usersApi } from '../api/usersApi';
+import { projectsApi } from '../api/projectsApi';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { ApiError } from '../api/client';
 import { PageShell } from '../components/PageShell';
@@ -430,35 +431,74 @@ export function QuestionnaireSettingsSection() {
   );
 }
 
+// Same organization name the backend uses for Project Admin candidates (projects.service.ts).
+const CONSULTANCY_ORGANIZATION_NAME = 'Detecon';
+
+/** A random 12-character password, like the server-generated temporary ones. */
+function randomPassword(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(9));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_');
+}
+
 export function CreateUserForm() {
   const places = usePlacements();
+  const queryClient = useQueryClient();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const { user: currentUser } = useAuth();
+  const isApplicationAdmin = currentUser?.role === 'ADMIN';
   const [role, setRole] = useState<Role>('NORMAL_USER');
   const [selectedKey, setSelectedKey] = useState('');
+  const [adminOfProjectIds, setAdminOfProjectIds] = useState<string[]>([]);
   const placement = places.fixed ?? places.placements?.find((p) => placementKey(p) === selectedKey) ?? null;
-  const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [message, setMessage] = useState<{ kind: 'success' | 'error' | 'warning'; text: string } | null>(null);
+  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: projectsApi.list, enabled: isApplicationAdmin });
+
+  // New Detecon consultants (and Application Admins) can be made Project Admins right away
+  // (ADMIN_DASHBOARD_PLAN.md).
+  const canBeProjectAdmin =
+    isApplicationAdmin && (role === 'ADMIN' || placement?.organizationName === CONSULTANCY_ORGANIZATION_NAME);
 
   const createUser = useMutation({
-    mutationFn: () =>
-      usersApi.create({
+    mutationFn: async () => {
+      const result = await usersApi.create({
         email,
         password,
         role,
         organizationId: placement!.organizationId,
         projectId: role === 'ADMIN' ? null : placement!.projectId,
-      }),
-    onSuccess: (result) => {
+      });
+      const added: string[] = [];
+      const failed: string[] = [];
+      for (const projectId of canBeProjectAdmin ? adminOfProjectIds : []) {
+        const name = projectsQuery.data?.find((p) => p.id === projectId)?.name ?? projectId;
+        try {
+          await projectsApi.addProjectAdmin(projectId, result.user.id);
+          added.push(name);
+        } catch (err) {
+          failed.push(`${name}${err instanceof ApiError ? ` (${err.message})` : ''}`);
+        }
+      }
+      return { result, added, failed, generatedPassword: showPassword ? password : null };
+    },
+    onSuccess: ({ result, added, failed, generatedPassword }) => {
+      const created =
+        result.status === 'membership-added'
+          ? `"${result.user.email}" already existed — added to ${placementLabel(placement!)} (password unchanged)`
+          : `Created user "${result.user.email}"${generatedPassword ? ` with password ${generatedPassword} (to be changed at first login)` : ''}`;
+      const admin = added.length > 0 ? `. Project Admin of ${added.join(', ')}` : '';
       setMessage({
-        kind: 'success',
-        text:
-          result.status === 'membership-added'
-            ? `"${result.user.email}" already existed — added to ${placementLabel(placement!)} (password unchanged)`
-            : `Created user "${result.user.email}"`,
+        kind: failed.length > 0 ? 'warning' : 'success',
+        text: `${created}${admin}${failed.length > 0 ? `. Not added as Project Admin of ${failed.join(', ')}` : ''}.`,
       });
       setEmail('');
       setPassword('');
+      setShowPassword(false);
+      setAdminOfProjectIds([]);
+      void queryClient.invalidateQueries({ queryKey: ['users'] });
+      void queryClient.invalidateQueries({ queryKey: ['projects'] });
+      void queryClient.invalidateQueries({ queryKey: ['project-admin-candidates'] });
     },
     onError: (err) => {
       setMessage({
@@ -474,12 +514,18 @@ export function CreateUserForm() {
     createUser.mutate();
   }
 
+  function handleGenerate() {
+    setPassword(randomPassword());
+    setShowPassword(true);
+  }
+
   return (
     <SectionCard title="Create user">
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Adds one person to a project and organization (or an organization outside projects, e.g.
-        Detecon). An existing email is simply added there. Project Admins are chosen on the
-        Projects list.
+        Detecon). An existing email is simply added there. Generate creates a one-time password
+        to forward; the person sets their own at first login.
+        {isApplicationAdmin && ' A new Detecon consultant can be made Project Admin of projects right away.'}
       </Typography>
       <Stack component="form" onSubmit={handleSubmit} spacing={2} sx={{ maxWidth: 420 }}>
         <TextField
@@ -489,14 +535,28 @@ export function CreateUserForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-        <TextField
-          label="Password"
-          type="password"
-          required
-          slotProps={{ htmlInput: { minLength: 8 } }}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
+          <TextField
+            label="Password"
+            type={showPassword ? 'text' : 'password'}
+            required
+            fullWidth
+            slotProps={{ htmlInput: { minLength: 8, style: showPassword ? { fontFamily: 'monospace' } : undefined } }}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <Button variant="outlined" onClick={handleGenerate} sx={{ height: 56, flexShrink: 0 }}>
+            Generate
+          </Button>
+          {showPassword && password && (
+            <Button
+              onClick={() => void navigator.clipboard?.writeText(password).catch(() => undefined)}
+              sx={{ height: 56, flexShrink: 0 }}
+            >
+              Copy
+            </Button>
+          )}
+        </Stack>
         <TextField
           select
           label="Role"
@@ -529,12 +589,37 @@ export function CreateUserForm() {
             ))}
           </TextField>
         )}
+        {canBeProjectAdmin && (
+          <TextField
+            select
+            label="Project Admin of (optional)"
+            value={adminOfProjectIds}
+            onChange={(e) => {
+              const value = e.target.value as unknown as string[] | string;
+              setAdminOfProjectIds(typeof value === 'string' ? value.split(',') : value);
+            }}
+            slotProps={{
+              select: {
+                multiple: true,
+                renderValue: (selected) =>
+                  (selected as string[]).map((id) => projectsQuery.data?.find((p) => p.id === id)?.name ?? id).join(', '),
+              },
+            }}
+            helperText="Gives them Project Admin rights in every organization of these projects."
+          >
+            {projectsQuery.data?.map((p) => (
+              <MenuItem key={p.id} value={p.id}>
+                {p.name}
+              </MenuItem>
+            ))}
+          </TextField>
+        )}
         <Button type="submit" variant="contained" disabled={createUser.isPending || !placement}>
           {createUser.isPending ? 'Creating…' : 'Create user'}
         </Button>
       </Stack>
       {message && (
-        <Alert severity={message.kind === 'error' ? 'error' : 'success'} sx={{ mt: 2 }}>
+        <Alert severity={message.kind} sx={{ mt: 2 }}>
           {message.text}
         </Alert>
       )}

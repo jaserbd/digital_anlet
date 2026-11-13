@@ -14,6 +14,7 @@ import { insightsApi } from '../api/insightsApi';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { PageShell } from '../components/PageShell';
 import { SectionCard } from '../components/SectionCard';
+import { ProjectDashboardSection } from '../components/ProjectDashboardSection';
 import { BenchmarkTable } from '../components/BenchmarkTable';
 import { CombinedBenchmarkTable } from '../components/CombinedBenchmarkTable';
 import { buildCrossOrgCommentCollectionRows, CommentCollectionTable } from '../components/CommentCollectionTable';
@@ -27,6 +28,7 @@ export function AdminPage() {
       <Button variant="contained" onClick={() => navigate('/admin/management')} sx={{ mb: 3 }}>
         Management Console →
       </Button>
+      <ProjectDashboardSection />
       <OrganizationsSection />
       <BenchmarkingSection />
     </PageShell>

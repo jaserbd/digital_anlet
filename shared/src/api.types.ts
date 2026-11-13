@@ -221,6 +221,9 @@ export interface ProjectDto {
   memberCount: number;
   // The questionnaires its organizations work with (PROJECT_QUESTIONNAIRES_PLAN.md).
   questionnaireCodes: string[];
+  // Responses of its Executives + Normal Users (project dashboard, ADMIN_DASHBOARD_PLAN.md).
+  submittedResponses: number;
+  inProgressResponses: number;
 }
 
 // Who can be picked as a Project Admin (PROJECTS_V2_PLAN.md): Application Admins and members of

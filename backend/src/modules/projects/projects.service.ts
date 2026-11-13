@@ -51,7 +51,9 @@ const PROJECT_SELECT = {
     select: { organization: { select: { id: true, name: true } } },
     orderBy: { organization: { name: 'asc' as const } },
   },
-  memberships: { select: { role: true, user: { select: { id: true, email: true } } } },
+  memberships: {
+    select: { role: true, user: { select: { id: true, email: true } }, responses: { select: { status: true } } },
+  },
 } as const;
 
 type ProjectRow = NonNullable<Awaited<ReturnType<typeof findProjectRow>>>;
@@ -65,6 +67,9 @@ function toProjectDto(project: ProjectRow): ProjectDto {
   for (const m of project.memberships) {
     if (m.role === 'PROJECT_ADMIN') admins.set(m.user.id, m.user.email);
   }
+  // Project Admins' test answers never count (PROJECTS_PLAN.md).
+  const counted = project.memberships.filter((m) => m.role !== 'PROJECT_ADMIN');
+  const countedResponses = counted.flatMap((m) => m.responses);
   return {
     id: project.id,
     name: project.name,
@@ -72,8 +77,10 @@ function toProjectDto(project: ProjectRow): ProjectDto {
     projectAdmins: [...admins]
       .map(([userId, email]) => ({ userId, email }))
       .sort((a, b) => a.email.localeCompare(b.email)),
-    memberCount: project.memberships.filter((m) => m.role !== 'PROJECT_ADMIN').length,
+    memberCount: counted.length,
     questionnaireCodes: project.questionnaires.map((q) => q.questionnaire.code).sort(),
+    submittedResponses: countedResponses.filter((r) => r.status === 'SUBMITTED').length,
+    inProgressResponses: countedResponses.filter((r) => r.status === 'IN_PROGRESS').length,
   };
 }
 

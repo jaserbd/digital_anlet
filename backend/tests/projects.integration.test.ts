@@ -384,6 +384,11 @@ describe('Project Admin scoping over HTTP (real DB)', () => {
       asAdmin(),
     );
     expect(adminViewB.json.respondents.find((r: { email: string }) => r.email === email('member-a'))?.status).toBe('IN_PROGRESS');
+
+    // Project dashboard counts: members' responses only, never the Project Admin's test answers.
+    const projects = await listProjects();
+    expect(projects.find((p) => p.id === projectAId)).toMatchObject({ submittedResponses: 1, inProgressResponses: 0 });
+    expect(projects.find((p) => p.id === projectBId)).toMatchObject({ submittedResponses: 0, inProgressResponses: 1 });
   });
 
   it('leaves questionnaires still in review out of a new project until an Admin selects them', async () => {
