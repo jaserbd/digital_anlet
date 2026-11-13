@@ -9,13 +9,8 @@ import { prisma } from '../../lib/prisma';
 import { generatePassword } from '../../lib/generatePassword';
 import { createOrganization } from '../organizations/organizations.service';
 import { HVS_GROUPS } from '../questionnaire/hvsGroups';
-import {
-  AlreadyMemberError,
-  EmailTakenError,
-  OtherOrganizationError,
-  SuperAdminRequiredError,
-  createUser,
-} from '../users/users.service';
+import { createUser } from '../users/users.service';
+import { type ImportOrganization, importMembers, labelKey } from './memberImport';
 
 // Projects (PROJECTS_PLAN.md, PROJECTS_V2_PLAN.md): a client engagement with linked organizations
 // (an organization can be in several projects), a questionnaire selection and memberships that
@@ -356,11 +351,11 @@ export async function importProject(
   const linked = new Set(
     (await prisma.projectOrganization.findMany({ where: { projectId: project.id } })).map((l) => l.organizationId),
   );
-  const orgIdByName = new Map<string, { id: string; name: string }>();
+  const orgIdByName = new Map<string, ImportOrganization>(); // by labelKey
   for (const [index, rawName] of input.organizations.entries()) {
     const name = rawName.trim();
     const base = { sheet: 'Project' as const, row: index + 1, label: name };
-    if (orgIdByName.has(normalize(name))) {
+    if (orgIdByName.has(labelKey(name))) {
       rows.push({ ...base, status: 'error', error: 'Listed twice' });
       continue;
     }
@@ -370,11 +365,11 @@ export async function importProject(
     });
     const organization = existing ?? (await createOrganization(name));
     await linkOrganization(project.id, organization.id);
-    orgIdByName.set(normalize(name), { id: organization.id, name: organization.name });
+    orgIdByName.set(labelKey(name), { id: organization.id, name: organization.name });
     rows.push({ ...base, label: organization.name, status: existing && linked.has(existing.id) ? 'existing' : 'created' });
   }
 
-  const resolveOrganization = (name: string) => orgIdByName.get(normalize(name));
+  const resolveOrganization = (name: string) => orgIdByName.get(labelKey(name));
   const unknownOrganization = (name: string) => `Organization "${name}" is not listed on the Project sheet`;
 
   // NatCos — each one also needs its name in the organization's NatCo Name list, and its
@@ -421,67 +416,27 @@ export async function importProject(
     where: { name: CONSULTANCY_ORGANIZATION_NAME },
     select: { id: true },
   });
+  const memberRows: ProjectImportResultRowDto[] = [];
   for (const [index, member] of input.members.entries()) {
+    if (member.role !== 'PROJECT_ADMIN') continue;
     const email = member.email.trim();
-    const base = { sheet: 'Members' as const, row: index + 1, label: email, role: member.role };
-
-    if (member.role === 'PROJECT_ADMIN') {
-      rows.push({ ...base, organization: input.projectName, ...(await importProjectAdmin(project.id, email, consultancy?.id, callerId)) });
-      continue;
-    }
-
-    const organization = resolveOrganization(member.organization);
-    if (!organization) {
-      rows.push({ ...base, organization: member.organization, status: 'error', error: unknownOrganization(member.organization) });
-      continue;
-    }
-    const password = generatePassword();
-    try {
-      const result = await createUser(
-        {
-          email,
-          password,
-          role: member.role,
-          organizationId: organization.id,
-          projectId: project.id,
-          firstName: member.firstName?.trim() || undefined,
-          lastName: member.lastName?.trim() || undefined,
-        },
-        callerId,
-      );
-      rows.push({
-        ...base,
-        organization: organization.name,
-        status: result.status,
-        ...(result.status === 'created' ? { tempPassword: password } : {}),
-      });
-    } catch (err) {
-      if (err instanceof AlreadyMemberError) {
-        const membership = await prisma.membership.findFirst({
-          where: { organizationId: organization.id, projectId: project.id, user: { email } },
-          select: { role: true },
-        });
-        rows.push(
-          membership?.role === member.role
-            ? { ...base, organization: organization.name, status: 'existing' }
-            : {
-                ...base,
-                organization: organization.name,
-                status: 'error',
-                error: `Already in this project with another role (${membership?.role ?? 'unknown'}) — change it under Existing users`,
-              },
-        );
-        continue;
-      }
-      const error =
-        err instanceof EmailTakenError || err instanceof SuperAdminRequiredError
-          ? 'This email belongs to an admin account'
-          : err instanceof OtherOrganizationError
-            ? `Already belongs to ${err.organizationName} — a user is in one organization only`
-            : 'Failed to create user';
-      rows.push({ ...base, organization: organization.name, status: 'error', error });
-    }
+    memberRows.push({
+      sheet: 'Members',
+      row: index + 1,
+      label: email,
+      role: member.role,
+      organization: input.projectName,
+      ...(await importProjectAdmin(project.id, email, consultancy?.id, callerId)),
+    });
   }
+  const clientMembers = input.members.flatMap((m, i) => (m.role === 'PROJECT_ADMIN' ? [] : [{ member: m, row: i + 1 }]));
+  const clientRows = await importMembers(
+    clientMembers.map((c) => c.member),
+    { projectId: project.id, organizations: orgIdByName, callerId, asProjectAdmin: false, unknownOrganization },
+  );
+  // Back to file row numbers (importMembers numbers the rows it was given).
+  memberRows.push(...clientRows.map((r) => ({ ...r, row: clientMembers[r.row - 1]!.row })));
+  rows.push(...memberRows.sort((a, b) => a.row - b.row));
 
   return { project: await loadProjectDto(project.id), rows };
 }
