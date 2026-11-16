@@ -105,14 +105,14 @@ export function QuestionCommentEditor({
 
   return (
     <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #eee' }}>
-      <label>
+      <label style={{ fontWeight: 600 }}>
         Comment
         <textarea
           value={local.commentText}
           onChange={(e) => handleTextChange(e.target.value)}
           rows={2}
           placeholder="Optional — required if you leave any sub-scenario unanswered above"
-          style={{ display: 'block', width: '100%' }}
+          style={{ display: 'block', width: '100%', marginTop: 4, fontWeight: 400 }}
         />
       </label>
       {local.commentText.trim().length > 0 && (

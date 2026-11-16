@@ -30,6 +30,7 @@ import { SectionCard } from './SectionCard';
 import { accountEmailOutcomeText } from '../lib/accountEmails';
 import { CollapsibleTable } from './CollapsibleTable';
 import { SortableTable, type SortableTableColumn } from './SortableTable';
+import { InlineLoading } from './Loading';
 
 type MembershipRole = Extract<Role, 'NORMAL_USER' | 'EXECUTIVE'>;
 
@@ -172,7 +173,7 @@ export function ManageUsersSection() {
         </Alert>
       )}
       {usersQuery.isLoading || places.isLoading ? (
-        <Typography color="text.secondary">Loading…</Typography>
+        <InlineLoading />
       ) : !usersQuery.data || !places.placements ? (
         <Typography color="text.secondary">Something went wrong loading users.</Typography>
       ) : (

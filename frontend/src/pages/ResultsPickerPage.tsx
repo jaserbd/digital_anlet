@@ -7,6 +7,8 @@ import Button from '@mui/material/Button';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { PageShell } from '../components/PageShell';
 import { ChoiceCard } from '../components/ChoiceCard';
+import { domainIcon } from '../lib/choiceIcons';
+import { PageLoading } from '../components/Loading';
 
 // Domain -> HVS picker for viewing results (FORTH_REVIEW.md items 5/6) — a structural copy
 // of DomainPickerPage.tsx's click-based two-level list, but sourced from listHvsEntries so
@@ -20,7 +22,7 @@ export function ResultsPickerPage() {
   const hvsEntriesQuery = useQuery({ queryKey: ['hvs-entries'], queryFn: questionnaireApi.listHvsEntries });
 
   if (hvsEntriesQuery.isLoading) {
-    return <p>Loading…</p>;
+    return <PageLoading />;
   }
   if (!hvsEntriesQuery.data) {
     return <p>Something went wrong loading the available assessments.</p>;
@@ -42,7 +44,7 @@ export function ResultsPickerPage() {
           </Typography>
           <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 2 }}>
             {domains.map((domain) => (
-              <ChoiceCard key={domain} label={`${domain} Domain`} onClick={() => setSelectedDomain(domain)} />
+              <ChoiceCard key={domain} label={`${domain} Domain`} icon={domainIcon(domain)} onClick={() => setSelectedDomain(domain)} />
             ))}
           </Stack>
         </>
@@ -56,7 +58,7 @@ export function ResultsPickerPage() {
           </Typography>
           <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 2 }}>
             {entriesInDomain.map((entry) => (
-              <ChoiceCard key={entry.key} label={entry.name} onClick={() => goToEntry(entry)} />
+              <ChoiceCard key={entry.key} label={entry.name} icon={domainIcon(entry.networkType)} onClick={() => goToEntry(entry)} />
             ))}
             {entriesInDomain.length === 0 && <Typography>No assessments available in this domain yet.</Typography>}
           </Stack>

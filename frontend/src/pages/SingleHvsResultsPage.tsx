@@ -7,6 +7,7 @@ import Link from '@mui/material/Link';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { responsesApi } from '../api/responsesApi';
 import { PageShell } from '../components/PageShell';
+import { PageLoading } from '../components/Loading';
 
 // Landing page for a single (non-grouped) HVS reached from the new Results picker
 // (FORTH_REVIEW.md item 6). getOrCreate is idempotent regardless of response status — if
@@ -33,7 +34,7 @@ export function SingleHvsResultsPage() {
   }, [responseQuery.data, navigate]);
 
   if (questionnaireQuery.isLoading || responseQuery.isLoading) {
-    return <Typography color="text.secondary">Loading…</Typography>;
+    return <PageLoading />;
   }
   if (!questionnaireQuery.data || !responseQuery.data) {
     return <Typography color="text.secondary">Something went wrong loading this assessment.</Typography>;

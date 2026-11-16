@@ -8,7 +8,9 @@ import Box from '@mui/material/Box';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { PageShell } from '../components/PageShell';
 import { ChoiceCard } from '../components/ChoiceCard';
+import { domainIcon, hvsIcon } from '../lib/choiceIcons';
 import { IN_REVIEW_TOOLTIP, hvsLabel, withReviewTag } from '../lib/inReview';
+import { PageLoading } from '../components/Loading';
 
 // HVS-category-first, then Domain (OVERVIEW.md item 1 — was Domain-first). Selecting a
 // (hvsCategory, networkType) pair resolves straight to its questionnaire when there's exactly
@@ -25,7 +27,7 @@ export function DomainPickerPage() {
   });
 
   if (questionnairesQuery.isLoading) {
-    return <p>Loading…</p>;
+    return <PageLoading />;
   }
   if (!questionnairesQuery.data) {
     return <p>Something went wrong loading the available assessments.</p>;
@@ -57,6 +59,7 @@ export function DomainPickerPage() {
                 <ChoiceCard
                   key={hvs}
                   label={label}
+                  icon={hvsIcon(hvs)}
                   description={label !== hvs ? IN_REVIEW_TOOLTIP : undefined}
                   onClick={() => setSelectedHvs(hvs)}
                 />
@@ -79,6 +82,7 @@ export function DomainPickerPage() {
                 <ChoiceCard
                   key={domain}
                   label={withReviewTag(`${domain} Domain`, matches[0]!.inReview)}
+                  icon={domainIcon(domain)}
                   onClick={() => selectDomain(domain)}
                 />
               ) : (
@@ -88,7 +92,7 @@ export function DomainPickerPage() {
                   </Typography>
                   <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 2 }}>
                     {matches.map((q) => (
-                      <ChoiceCard key={q.code} label={q.name} onClick={() => navigate(`/questionnaire/${q.code}`)} />
+                      <ChoiceCard key={q.code} label={q.name} icon={domainIcon(domain)} onClick={() => navigate(`/questionnaire/${q.code}`)} />
                     ))}
                   </Stack>
                 </Box>

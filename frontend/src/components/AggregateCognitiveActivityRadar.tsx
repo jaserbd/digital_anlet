@@ -13,6 +13,7 @@ import {
   NO_COGNITIVE_ACTIVITY_FILTERS,
   type CognitiveActivityFilters,
 } from '../lib/cognitiveActivityFilters';
+import { InlineLoading } from './Loading';
 
 export interface OrganizationSwitcher {
   organizations: OrganizationDto[];
@@ -121,7 +122,7 @@ export function AggregateCognitiveActivityRadar({
       </Box>
 
       {summaryQuery.isLoading ? (
-        <Typography color="text.secondary">Loading…</Typography>
+        <InlineLoading />
       ) : !summaryQuery.data || summaryQuery.data.sampleSize === 0 ? (
         <Typography color="text.secondary">No submitted responses match this filter yet.</Typography>
       ) : (
