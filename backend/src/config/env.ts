@@ -21,7 +21,7 @@ const envSchema = z.object({
   // Reverse proxies in front of the app (Cloud Run's front end, Vite's dev proxy): how many
   // X-Forwarded-For hops to trust, so rate limiting sees the real client address.
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(1),
-  COOKIE_SECURE: booleanString.default('true'),
+  COOKIE_SECURE: booleanString.default(true),
   // Seed-time bootstrap admin account (idempotent upsert, see prisma/seed/seed.ts).
   ADMIN_EMAIL: z.string().email(),
   ADMIN_PASSWORD: z.string().min(8),
@@ -36,7 +36,7 @@ const envSchema = z.object({
   SMTP_FROM_NAME: z.string().min(1).default('ANLET'),
   // Off unless explicitly "true": dev, CI and a production without real SMTP credentials only
   // log instead of attempting to send (lib/mailer.ts).
-  MAIL_ENABLED: booleanString.default('false'),
+  MAIL_ENABLED: booleanString.default(false),
   // 32 random bytes, base64 — encrypts the mailbox password saved in the Management Console
   // (lib/secretBox.ts, ONBOARDING_SECURITY_PLAN.md Phase 2b). Without it the settings are read-only.
   MAIL_ENCRYPTION_KEY: z

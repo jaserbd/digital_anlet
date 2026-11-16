@@ -103,6 +103,11 @@ Trade-off to know: the account pause lets someone who knows an address keep that
 
 All 15 findings are closed.
 
+### Library follow-up (2026-11-16, `feature/library-updates`)
+
+- zod 3 → 4.6.7 (only change needed: `.default()` on the env booleans now takes the parsed value), vitest 3 → 4.1.12 (vitest 5 needs Node 22; we run Node 20), `uuid` under `exceljs` overridden to 11.1.1 (root `package.json` `overrides`).
+- Left, with no compatible fix and no exposure: `deepmerge-ts` 7.1.5 (pinned by Prisma 6's CLI config loader — fixed only by Prisma 7; no user input reaches it), `esbuild` 0.27 under `tsup` (affects a dev server on Windows only), `minimatch` 10 under typescript-eslint (lint tooling only). `npm audit --omit=dev` shows only deepmerge-ts.
+
 ## Order
 
 1 → 2 → 3 (email depends on normalized addresses) · 4 independent · 5 after 4 (touches the same review UI) · 6 last (also reviews the new email code). Each phase: tests, typecheck, lint, browser walkthrough, commit on a feature branch.
