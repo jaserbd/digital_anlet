@@ -3,6 +3,7 @@ import Typography from '@mui/material/Typography';
 import { projectMembersApi } from '../api/projectMembersApi';
 import { QuestionnaireSelection } from './QuestionnaireSelection';
 import { SectionCard } from './SectionCard';
+import { InlineLoading } from './Loading';
 
 // A Project Admin's questionnaire selection for the project of the active context
 // (PROJECT_ADMIN_QUESTIONNAIRES_PLAN.md): every questionnaire, in-review "(R)" ones included.
@@ -32,7 +33,7 @@ export function ProjectQuestionnairesSection() {
           showSelectedChips
         />
       ) : (
-        <Typography color="text.secondary">Loading…</Typography>
+        <InlineLoading />
       )}
     </SectionCard>
   );

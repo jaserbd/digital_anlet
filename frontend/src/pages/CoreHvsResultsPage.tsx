@@ -1,3 +1,4 @@
+import Box from '@mui/material/Box';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import Button from '@mui/material/Button';
@@ -6,9 +7,9 @@ import Link from '@mui/material/Link';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { responsesApi } from '../api/responsesApi';
 import { PageShell } from '../components/PageShell';
-import { SectionCard } from '../components/SectionCard';
 import { CoreDomainSummary } from '../components/CoreDomainSummary';
 import { QuestionnaireResultDetail } from '../components/QuestionnaireResultDetail';
+import { PageLoading } from '../components/Loading';
 
 // One HVS-group member's detail section — a SUBMITTED response gets the full
 // QuestionnaireResultDetail; an IN_PROGRESS one is simply omitted from the detail (no
@@ -29,7 +30,7 @@ function CoreHvsMemberDetail({ questionnaireCode }: { questionnaireCode: string 
   });
 
   if (questionnaireQuery.isLoading || responseQuery.isLoading) {
-    return <Typography color="text.secondary">Loading…</Typography>;
+    return <PageLoading />;
   }
   if (!questionnaireQuery.data || !responseQuery.data) {
     return null;
@@ -39,13 +40,17 @@ function CoreHvsMemberDetail({ questionnaireCode }: { questionnaireCode: string 
   }
 
   return (
-    <SectionCard title={`${questionnaireQuery.data.name} — detail`}>
+    // A heading, not a SectionCard: the detail is itself a stack of cards.
+    <Box sx={{ mt: 4 }}>
+      <Typography variant="h5" sx={{ mb: 2 }}>
+        {questionnaireQuery.data.name} — detail
+      </Typography>
       <QuestionnaireResultDetail
         questionnaire={questionnaireQuery.data}
         response={responseQuery.data}
         result={resultQuery.data}
       />
-    </SectionCard>
+    </Box>
   );
 }
 
@@ -62,7 +67,7 @@ export function CoreHvsResultsPage() {
   const entry = hvsEntriesQuery.data?.find((e) => e.key === groupCode && e.kind === 'group');
 
   if (hvsEntriesQuery.isLoading) {
-    return <Typography color="text.secondary">Loading…</Typography>;
+    return <PageLoading />;
   }
   if (!entry) {
     return <Typography color="text.secondary">This HVS group wasn&apos;t found.</Typography>;

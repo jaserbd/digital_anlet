@@ -69,6 +69,22 @@ export function LoginPage() {
             <Box component="img" src="/branding/tm-forum-logo.png" alt="TM Forum" sx={{ height: 32 }} />
           </Paper>
         </Stack>
+        {/* Original line-art illustration (ONBOARDING_SECURITY_PLAN.md Phase 5): cell tower, core
+            and network mesh beside the L0-L5 autonomy scale. Hidden on phones, where the panel
+            is a short banner above the sign-in form. */}
+        <Box
+          component="img"
+          src="/branding/login-illustration.svg"
+          alt="A cell tower and core network linked by a network mesh, beside a rising L0 to L5 autonomy scale"
+          sx={{
+            display: { xs: 'none', md: 'block' },
+            width: '100%',
+            maxWidth: 560,
+            my: 4,
+            alignSelf: 'center',
+            filter: 'drop-shadow(0 12px 32px rgba(80,0,40,0.25))',
+          }}
+        />
         <Box>
           <Typography variant="h3" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
             Anlet

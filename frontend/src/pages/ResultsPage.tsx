@@ -10,6 +10,7 @@ import { CoreDomainSummary } from '../components/CoreDomainSummary';
 import { PageShell } from '../components/PageShell';
 import { QuestionnaireResultDetail } from '../components/QuestionnaireResultDetail';
 import { ResetAnswersButton } from '../components/ResetAnswersButton';
+import { PageLoading } from '../components/Loading';
 
 export function ResultsPage() {
   const { responseId } = useParams<{ responseId: string }>();
@@ -34,7 +35,7 @@ export function ResultsPage() {
   });
 
   if (responseQuery.isLoading || resultQuery.isLoading || questionnaireQuery.isLoading) {
-    return <Typography color="text.secondary">Loading…</Typography>;
+    return <PageLoading />;
   }
   if (
     !responseQuery.data ||

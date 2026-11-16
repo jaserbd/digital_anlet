@@ -17,6 +17,7 @@ import { projectsApi } from '../api/projectsApi';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { questionnaireInitials } from '../lib/questionnaireInitials';
 import { SectionCard } from './SectionCard';
+import { InlineLoading } from './Loading';
 
 // Application Admin's project dashboard (ADMIN_DASHBOARD_PLAN.md): every project at a glance,
 // not as a table — as cards, or grouped by organization (e.g. yearly rounds of one client).
@@ -74,7 +75,7 @@ export function ProjectDashboardSection() {
       }
     >
       {projectsQuery.isLoading ? (
-        <Typography color="text.secondary">Loading…</Typography>
+        <InlineLoading />
       ) : projects.length === 0 ? (
         <Typography color="text.secondary">No projects yet — create one in the Management Console.</Typography>
       ) : (

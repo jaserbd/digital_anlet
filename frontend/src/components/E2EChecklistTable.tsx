@@ -30,20 +30,20 @@ export function E2EChecklistTable({
       <table style={{ borderCollapse: 'collapse', width: '100%' }}>
         <thead>
           <tr>
-            <th style={cellStyle} rowSpan={headerRowSpan}>
+            <th style={headCellStyle} rowSpan={headerRowSpan}>
               Cognitive Activity
             </th>
-            <th style={cellStyle} rowSpan={headerRowSpan}>
+            <th style={headCellStyle} rowSpan={headerRowSpan}>
               Service Capability
             </th>
             {showCategories
               ? groupSubScenariosByCategory(subScenarios).map((g, i) => (
-                  <th key={`${g.category}-${i}`} style={cellStyle} colSpan={g.subScenarios.length}>
+                  <th key={`${g.category}-${i}`} style={headCellStyle} colSpan={g.subScenarios.length}>
                     {g.category ?? ''}
                   </th>
                 ))
               : subScenarios.map((s) => (
-                  <th key={s.id} style={cellStyle}>
+                  <th key={s.id} style={headCellStyle}>
                     {s.name}
                   </th>
                 ))}
@@ -51,7 +51,7 @@ export function E2EChecklistTable({
           {showCategories && (
             <tr>
               {subScenarios.map((s) => (
-                <th key={s.id} style={cellStyle}>
+                <th key={s.id} style={headCellStyle}>
                   {s.name}
                 </th>
               ))}
@@ -108,7 +108,15 @@ export function E2EChecklistTable({
 }
 
 const cellStyle: CSSProperties = {
-  border: '1px solid #ccc',
+  border: '1px solid #ebe4e8',
   padding: '0.4rem 0.6rem',
   fontSize: '0.9em',
+};
+
+// Same soft brand header as the MUI tables (theme.ts).
+const headCellStyle: CSSProperties = {
+  ...cellStyle,
+  background: '#fbeef5',
+  color: '#5c0030',
+  borderBottom: '2px solid #e20074',
 };

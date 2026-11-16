@@ -59,7 +59,7 @@ export function QuestionStepper({
           <Box key={group.name} sx={{ mb: 1.5 }}>
             <Typography
               sx={{
-                fontSize: '1.05em',
+                fontSize: '0.98em',
                 fontWeight: 700,
                 color: groupColors.fg,
                 background: groupColors.bg,
@@ -83,16 +83,9 @@ export function QuestionStepper({
                   <Button
                     key={q.id}
                     onClick={() => onSelect(i)}
-                    variant={i === currentIndex ? 'outlined' : 'text'}
+                    variant="outlined"
                     size="small"
-                    sx={{
-                      fontWeight: i === currentIndex ? 700 : 400,
-                      textDecoration: isComplete(q.id) ? 'underline' : 'none',
-                      borderLeft: `3px solid ${colors.border}`,
-                      borderRadius: 1,
-                      color: colors.fg,
-                      ...(i === currentIndex ? { borderColor: colors.border } : {}),
-                    }}
+                    sx={stepButtonSx(colors, i === currentIndex)}
                   >
                     {i + 1}. {q.serviceCapability} {isComplete(q.id) ? '✓' : ''}
                   </Button>
@@ -120,7 +113,7 @@ function KeiStepButton({
     <Box sx={{ mb: 1.5 }}>
       <Typography
         sx={{
-          fontSize: '1.05em',
+          fontSize: '0.98em',
           fontWeight: 700,
           color: colors.fg,
           background: colors.bg,
@@ -135,19 +128,27 @@ function KeiStepButton({
       </Typography>
       <Button
         onClick={() => onSelect(index)}
-        variant={isCurrent ? 'outlined' : 'text'}
+        variant="outlined"
         size="small"
-        sx={{
-          fontWeight: isCurrent ? 700 : 400,
-          textDecoration: complete ? 'underline' : 'none',
-          borderLeft: `3px solid ${colors.border}`,
-          borderRadius: 1,
-          color: colors.fg,
-          ...(isCurrent ? { borderColor: colors.border } : {}),
-        }}
+        sx={stepButtonSx(colors, isCurrent)}
       >
         Effectiveness indicators ({answeredCount}/{total} answered) {complete ? '✓' : ''}
       </Button>
     </Box>
   );
+}
+
+// Pill per step, in its coverage color (a status signal — see above); the current step is filled.
+// Completion shows as the trailing ✓.
+function stepButtonSx(colors: { fg: string; bg: string; border: string }, isCurrent: boolean) {
+  return {
+    fontWeight: isCurrent ? 700 : 500,
+    borderRadius: 999,
+    px: 1.5,
+    color: colors.fg,
+    borderColor: colors.border,
+    bgcolor: isCurrent ? colors.bg : '#ffffff',
+    boxShadow: isCurrent ? `0 0 0 2px ${colors.border}` : 'none',
+    '&:hover': { borderColor: colors.border, bgcolor: colors.bg },
+  };
 }

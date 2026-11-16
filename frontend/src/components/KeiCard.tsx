@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AnswerOption, EffectivenessIndicatorDto, KeiAnswerDto } from '@anlet/shared';
 import { isKeiCovered } from '../lib/kei';
+import { cardStyle, legendStyle, ordinalStyle, weightStyle } from './questionCardStyles';
 import { OptionCard, QuestionText } from './QuestionContent';
 
 interface KeiCardProps {
@@ -56,18 +57,16 @@ export function KeiCard({ indicator, ordinal, answer, onChange }: KeiCardProps) 
   return (
     <fieldset
       style={{
-        marginBottom: '1.25rem',
-        padding: '1rem',
-        border: covered ? '1px solid #ccc' : '1px solid #f0ad4e',
-        background: covered ? undefined : '#fffaf2',
+        ...cardStyle,
+        ...(covered ? {} : { borderColor: '#f0ad4e', borderTopColor: '#f0ad4e', background: '#fffaf2' }),
       }}
     >
-      <legend>
-        <strong>
-          {ordinal}. {indicator.name}
-        </strong>{' '}
-        — weight {(indicator.weight * 100).toFixed(0)}%
+      <legend style={legendStyle}>
+        <span style={ordinalStyle}>{ordinal}</span>
+        <strong>{indicator.name}</strong>
+        <span style={weightStyle}>weight {(indicator.weight * 100).toFixed(0)}%</span>
       </legend>
+      <div style={{ clear: 'both' }} />
       {indicator.description && <QuestionText text={indicator.description} />}
 
       <div role="radiogroup" aria-label={`Answer for ${indicator.name}`} style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>

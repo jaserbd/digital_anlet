@@ -32,6 +32,7 @@ import {
 } from '../lib/organizationReport';
 import { exportSectionsToPdf } from '../lib/exportPdf';
 import { withReviewTag } from '../lib/inReview';
+import { InlineLoading } from '../components/Loading';
 
 // Admin's per-organization deep-dive (THIRD_REVIEW.md item 8, brought to full parity with
 // ExecutivePage.tsx's own view by ADMIN.md item 2) — reached by typing/selecting an
@@ -167,7 +168,7 @@ export function OrganizationDeepDivePage() {
   if (hvsEntriesQuery.isLoading || opCosQuery.isLoading || projectsQuery.isLoading) {
     return (
       <PageShell title="Organization" maxWidth={1400}>
-        <Typography color="text.secondary">Loading…</Typography>
+        <InlineLoading />
       </PageShell>
     );
   }
@@ -268,11 +269,11 @@ export function OrganizationDeepDivePage() {
               </Typography>
             </>
           ) : (
-            <Typography color="text.secondary">Loading…</Typography>
+            <InlineLoading />
           )
         ) : (
           <>
-            {opCoBenchmarkQuery.isLoading && <Typography color="text.secondary">Loading…</Typography>}
+            {opCoBenchmarkQuery.isLoading && <InlineLoading />}
             {opCoBenchmarkQuery.data && questionnaireQuery.data && (
               <BenchmarkTable
                 rows={opCoBenchmarkQuery.data.rows}

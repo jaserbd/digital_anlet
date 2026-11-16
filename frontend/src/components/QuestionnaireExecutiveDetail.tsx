@@ -14,6 +14,7 @@ import {
   type CognitiveActivityFilters,
 } from '../lib/cognitiveActivityFilters';
 import { withReviewTag } from '../lib/inReview';
+import { PageLoading } from './Loading';
 
 // Fetches everything one member questionnaire's section of an organization overview needs.
 // Shared by ExecutivePage.tsx (own org) and OrganizationDeepDivePage.tsx (any org, ADMIN.md
@@ -96,7 +97,7 @@ export function QuestionnaireExecutiveDetail({
   );
 
   if (questionnaireQuery.isLoading || summaryQuery.isLoading) {
-    return <p>Loading…</p>;
+    return <PageLoading />;
   }
   if (!questionnaireQuery.data || !summaryQuery.data) {
     return <p>Something went wrong loading the organization summary.</p>;

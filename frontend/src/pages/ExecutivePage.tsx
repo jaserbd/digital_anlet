@@ -25,6 +25,7 @@ import {
   type OrganizationReportDetail,
 } from '../lib/organizationReport';
 import { exportSectionsToPdf } from '../lib/exportPdf';
+import { InlineLoading, PageLoading } from '../components/Loading';
 
 export function ExecutivePage() {
   const { user } = useAuth();
@@ -134,7 +135,7 @@ export function ExecutivePage() {
   }
 
   if (hvsEntriesQuery.isLoading) {
-    return <p>Loading…</p>;
+    return <PageLoading />;
   }
 
   return (
@@ -178,7 +179,7 @@ export function ExecutivePage() {
                 </Typography>
               </>
             ) : (
-              <Typography color="text.secondary">Loading…</Typography>
+              <InlineLoading />
             )}
           </SectionCard>
 
@@ -196,7 +197,7 @@ export function ExecutivePage() {
       ) : questionnaireQuery.data ? (
         <>
           <SectionCard title="OpCo benchmarking (submitted responses only)">
-            {opCoBenchmarkQuery.isLoading && <Typography color="text.secondary">Loading…</Typography>}
+            {opCoBenchmarkQuery.isLoading && <InlineLoading />}
             {opCoBenchmarkQuery.data && (
               <BenchmarkTable
                 rows={opCoBenchmarkQuery.data.rows}
@@ -217,7 +218,7 @@ export function ExecutivePage() {
           </Box>
         </>
       ) : (
-        <Typography color="text.secondary">Loading…</Typography>
+        <InlineLoading />
       )}
     </PageShell>
   );

@@ -204,6 +204,10 @@ Supersedes the "same person in several organizations" parts of "Multi-organizati
 - `ReviewStep` lists each question with uncovered gaps (and each uncovered KEI) as an item that expands **in place** into the same `QuestionCard` / `KeiCard` as the steps ("Answer here"), via `QuestionnairePage`'s `renderQuestionCard`/`renderKeiCard` — same state and saves, no second save path. Open items are tracked by id, so a just-fixed card stays open with "Covered ✓" instead of vanishing mid-typing; Submit unlocks live. "Open as step" keeps the old jump.
 - `QuestionCommentEditor` flushes a pending debounced save on unmount (like `KeiCard`) — closing a card or clicking Next right after typing used to drop the comment.
 
+### Visual polish (`ONBOARDING_SECURITY_PLAN.md` Phase 5)
+
+- Theme-level first (`theme.ts`): table headers are a soft brand tint with a magenta rule (hand-written HTML tables — `QuestionCard`, `E2EChecklistTable` — copy it), plain inputs inherit the app font. `AppHeader` has icon links and an account menu; `ChoiceCard` takes an icon (`lib/choiceIcons.tsx`); `QuestionCard`/`KeiCard` share `components/questionCardStyles.ts`; results lead with a score card; `components/Loading.tsx` for loading states. The stepper's green/amber/red stays (status, not decoration).
+
 ### Org hierarchy and profile completion (from `FIRST_REVIEW.md`)
 
 Real-world usage feedback after the MVP demo described large CSP groups with multiple NatCos/OpCos per Organization, and users self-identifying their Country/Company/Working Domain/Designation before answering. Decisions locked in for this:

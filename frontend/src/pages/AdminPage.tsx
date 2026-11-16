@@ -20,6 +20,7 @@ import { CombinedBenchmarkTable } from '../components/CombinedBenchmarkTable';
 import { buildCrossOrgCommentCollectionRows, CommentCollectionTable } from '../components/CommentCollectionTable';
 import { buildCrossOrgKeiCommentRows } from '../lib/keiDistribution';
 import { withReviewTag } from '../lib/inReview';
+import { InlineLoading, PageLoading } from '../components/Loading';
 
 export function AdminPage() {
   const navigate = useNavigate();
@@ -47,7 +48,7 @@ function OrganizationsSection() {
   return (
     <SectionCard title="Organizations">
       {orgsQuery.isLoading ? (
-        <Typography color="text.secondary">Loading…</Typography>
+        <InlineLoading />
       ) : (
         <List disablePadding>
           {orgsQuery.data?.map((org) => (
@@ -99,7 +100,7 @@ function BenchmarkingSection() {
   if (hvsEntriesQuery.isLoading) {
     return (
       <SectionCard title="Benchmarking">
-        <Typography color="text.secondary">Loading…</Typography>
+        <InlineLoading />
       </SectionCard>
     );
   }
@@ -132,7 +133,7 @@ function BenchmarkingSection() {
             </Typography>
           </>
         ) : (
-          <Typography color="text.secondary">Loading…</Typography>
+          <InlineLoading />
         )
       ) : questionnaireQuery.data && benchmarkQuery.data ? (
         <>
@@ -154,7 +155,7 @@ function BenchmarkingSection() {
           </Typography>
         </>
       ) : (
-        <Typography color="text.secondary">Loading…</Typography>
+        <InlineLoading />
       )}
 
       {effectiveEntry && (
@@ -186,7 +187,7 @@ function CrossOrgCommentCollectionSection({ questionnaireCode }: { questionnaire
   });
 
   if (questionnaireQuery.isLoading) {
-    return <Typography color="text.secondary">Loading…</Typography>;
+    return <PageLoading />;
   }
   if (!questionnaireQuery.data) {
     return null;

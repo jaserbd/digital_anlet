@@ -5,6 +5,7 @@ import { categoryRowSpans, hasSubScenarioCategories } from '../lib/subScenarioCa
 import { QuestionCommentEditor, type CommentState } from './QuestionCommentEditor';
 import { QUESTION_COLORS } from '../lib/questionText';
 import { OptionList, QuestionText } from './QuestionContent';
+import { cardStyle, legendStyle, ordinalStyle, weightStyle } from './questionCardStyles';
 
 interface QuestionCardProps {
   question: QuestionDto;
@@ -34,13 +35,14 @@ export function QuestionCard({
   const groupStarts = hasSubScenarioCategories(subScenarios) ? categoryRowSpans(subScenarios) : null;
 
   return (
-    <fieldset style={{ marginBottom: '1.5rem', padding: '1rem' }}>
-      <legend>
-        <strong>
-          {ordinal}. {formatQuestionLabel(question)}
-        </strong>{' '}
-        — weight {(question.weight * 100).toFixed(0)}%
+    <fieldset style={cardStyle}>
+      {/* A floated legend sits inside the card as its header instead of cutting into the border. */}
+      <legend style={legendStyle}>
+        <span style={ordinalStyle}>{ordinal}</span>
+        <strong>{formatQuestionLabel(question)}</strong>
+        <span style={weightStyle}>weight {(question.weight * 100).toFixed(0)}%</span>
       </legend>
+      <div style={{ clear: 'both' }} />
       <QuestionText text={question.questionText} />
       {question.answeringGuideline && (
         <details style={{ margin: '0 0 1rem', border: '1px solid #ddd', borderRadius: 4, padding: '0.4rem 0.6rem' }}>
@@ -50,12 +52,14 @@ export function QuestionCard({
       )}
       <OptionList options={question.options} />
 
+      {/* Scrolls sideways on phones: the radio cells don't wrap. */}
+      <div style={{ overflowX: 'auto' }}>
       <table style={{ borderCollapse: 'collapse', width: '100%', maxWidth: 720 }}>
         <thead>
           <tr>
-            <th style={cellStyle}>Sub-scenario</th>
-            <th style={cellStyle}>Weight</th>
-            <th style={cellStyle}>Answer</th>
+            <th style={headCellStyle}>Sub-scenario</th>
+            <th style={headCellStyle}>Weight</th>
+            <th style={headCellStyle}>Answer</th>
           </tr>
         </thead>
         <tbody>
@@ -105,6 +109,7 @@ export function QuestionCard({
           ))}
         </tbody>
       </table>
+      </div>
 
       <QuestionCommentEditor
         subScenarios={subScenarios}
@@ -117,9 +122,16 @@ export function QuestionCard({
 }
 
 const cellStyle = {
-  border: '1px solid #ccc',
-  padding: '0.4rem 0.6rem',
+  border: '1px solid #ebe4e8',
+  padding: '0.45rem 0.7rem',
   textAlign: 'left' as const,
+};
+
+const headCellStyle = {
+  ...cellStyle,
+  background: '#fbeef5',
+  color: '#5c0030',
+  borderBottom: '2px solid #e20074',
 };
 
 const radioGroupStyle = {

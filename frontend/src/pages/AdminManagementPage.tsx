@@ -35,6 +35,7 @@ import { useManageableOrganizations } from '../lib/manageableOrganizations';
 import { placementKey, placementLabel, usePlacements } from '../lib/placements';
 import { accountEmailOutcomeText, useWelcomeEmailChoice } from '../lib/accountEmails';
 import { WelcomeEmailCheckbox } from '../components/WelcomeEmailCheckbox';
+import { InlineLoading } from '../components/Loading';
 
 // Management Console (ADMIN.md item 1) — create/delete for Organization, OpCo, and User, on
 // its own route separate from /admin's Benchmarking/Organizations views. Delete is blocked
@@ -369,7 +370,7 @@ export function QuestionnaireSettingsSection() {
   if (questionnairesQuery.isLoading || places.isLoading) {
     return (
       <SectionCard title="Questionnaire settings">
-        <Typography color="text.secondary">Loading…</Typography>
+        <InlineLoading />
       </SectionCard>
     );
   }

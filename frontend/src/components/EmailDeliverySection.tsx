@@ -13,6 +13,7 @@ import { mailApi } from '../api/mailApi';
 import { ApiError } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { SectionCard } from './SectionCard';
+import { InlineLoading } from './Loading';
 
 const STATUS_KEY = ['mail-status'];
 
@@ -40,7 +41,7 @@ export function EmailDeliverySection() {
 
   return (
     <SectionCard title="Email delivery">
-      {statusQuery.isLoading && <Typography color="text.secondary">Loading…</Typography>}
+      {statusQuery.isLoading && <InlineLoading />}
       {statusQuery.isError && <Alert severity="error">Could not load the email settings.</Alert>}
       {status && (
         <Stack spacing={2}>

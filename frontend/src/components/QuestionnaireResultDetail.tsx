@@ -3,6 +3,8 @@ import type { QuestionnaireDto, ResponseDto, ScoreResultDto } from '@anlet/share
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
+import LinearProgress from '@mui/material/LinearProgress';
+import { SectionCard } from './SectionCard';
 import { ScoreSummary } from './ScoreSummary';
 import { ScoreBreakdownTable } from './ScoreBreakdownTable';
 import { E2EChecklistTable } from './E2EChecklistTable';
@@ -175,69 +177,76 @@ export function QuestionnaireResultDetail({
 
   return (
     <>
-      <PersonalCognitiveActivityRadar
-        questions={questionnaire.questions}
-        questionScores={result.questionScores}
-        finalScore={result.finalScore}
-      />
-
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 4, flexWrap: 'wrap' }}>
-          <Typography sx={{ fontSize: '2.5rem', my: 1, fontWeight: 700, color: 'primary.main' }}>
-            {result.finalScore.toFixed(2)}{' '}
-            <Typography component="span" sx={{ fontSize: '1rem' }} color="text.secondary">
-              / 4{hasKeis && ' capability score'}
+      {/* Score card (ONBOARDING_SECURITY_PLAN.md Phase 5): the headline score(s) beside the
+          Cognitive Activity spider chart, instead of the score appearing twice. */}
+      <SectionCard collapsible={false}>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', columnGap: 6, rowGap: 2 }}>
+          <Box sx={{ flex: '0 1 280px' }}>
+            <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700, letterSpacing: '0.08em' }}>
+              {hasKeis ? 'Capability score' : 'Your score'}
             </Typography>
-          </Typography>
-          {/* The Effective Indicator (KEI) score is a separate measure, never blended into
-              the capability score above (NEW_HVS_PLAN.md Phase B). */}
-          {hasKeis && (
-            <Typography sx={{ fontSize: '1.75rem', my: 1, fontWeight: 700 }}>
-              {result.keiScore != null ? result.keiScore.toFixed(2) : '—'}{' '}
-              <Typography component="span" sx={{ fontSize: '1rem' }} color="text.secondary">
-                / 4 effective indicator score
+            <Typography sx={{ fontSize: '3rem', lineHeight: 1.1, fontWeight: 800, color: 'primary.main' }}>
+              {result.finalScore.toFixed(2)}
+              <Typography component="span" sx={{ fontSize: '1.1rem', fontWeight: 600, ml: 0.75 }} color="text.secondary">
+                / 4
               </Typography>
             </Typography>
-          )}
+            <LinearProgress
+              variant="determinate"
+              value={(result.finalScore / 4) * 100}
+              sx={{ mt: 1, mb: 2, maxWidth: 260 }}
+              aria-label="Score out of 4"
+            />
+            {/* The Effective Indicator (KEI) score is a separate measure, never blended into
+                the capability score above (NEW_HVS_PLAN.md Phase B). */}
+            {hasKeis && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700, letterSpacing: '0.08em' }}>
+                  Effective indicator score
+                </Typography>
+                <Typography sx={{ fontSize: '1.75rem', lineHeight: 1.1, fontWeight: 800 }}>
+                  {result.keiScore != null ? result.keiScore.toFixed(2) : '—'}
+                  <Typography component="span" sx={{ fontSize: '1rem', fontWeight: 600, ml: 0.75 }} color="text.secondary">
+                    / 4
+                  </Typography>
+                </Typography>
+              </Box>
+            )}
+            <Button variant="outlined" onClick={handleExportPdf} disabled={isGeneratingPdf}>
+              {isGeneratingPdf ? 'Generating PDF…' : 'Export to PDF'}
+            </Button>
+          </Box>
+          <Box sx={{ flex: '1 1 340px', maxWidth: 480 }}>
+            <PersonalCognitiveActivityRadar questions={questionnaire.questions} questionScores={result.questionScores} />
+          </Box>
         </Box>
-        <Button variant="outlined" onClick={handleExportPdf} disabled={isGeneratingPdf}>
-          {isGeneratingPdf ? 'Generating PDF…' : 'Export to PDF'}
-        </Button>
-      </Box>
+      </SectionCard>
 
-      <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
-        Score breakdown
-      </Typography>
-      <ScoreBreakdownTable
-        questions={questionnaire.questions}
-        subScenarios={questionnaire.subScenarios}
-        questionScores={result.questionScores}
-      />
+      <SectionCard title="Score breakdown" collapseKey={`${questionnaire.code}:Score breakdown`}>
+        <ScoreBreakdownTable
+          questions={questionnaire.questions}
+          subScenarios={questionnaire.subScenarios}
+          questionScores={result.questionScores}
+        />
+      </SectionCard>
 
-      <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>
-        Sub-scenario summary
-      </Typography>
-      <ScoreSummary
-        finalScore={result.finalScore}
-        subScenarios={questionnaire.subScenarios}
-        subScenarioScores={result.subScenarioScores}
-        hideFinalScore
-      />
+      <SectionCard title="Sub-scenario summary" collapseKey={`${questionnaire.code}:Sub-scenario summary`}>
+        <ScoreSummary
+          finalScore={result.finalScore}
+          subScenarios={questionnaire.subScenarios}
+          subScenarioScores={result.subScenarioScores}
+          hideFinalScore
+        />
+      </SectionCard>
 
       {hasKeis && (
-        <>
-          <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>
-            Key Effectiveness Indicators
-          </Typography>
+        <SectionCard title="Key Effectiveness Indicators" collapseKey={`${questionnaire.code}:Key Effectiveness Indicators`}>
           <KeiResultsTable indicators={questionnaire.effectivenessIndicators} answers={response.keiAnswers} />
-        </>
+        </SectionCard>
       )}
 
       {questionnaire.hasE2ECheck && (
-        <>
-          <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>
-            E2E automation checklist
-          </Typography>
+        <SectionCard title="E2E automation checklist" collapseKey={`${questionnaire.code}:E2E automation checklist`}>
           <E2EChecklistTable
             questions={questionnaire.questions}
             subScenarios={questionnaire.subScenarios}
@@ -245,12 +254,11 @@ export function QuestionnaireResultDetail({
             subScenarioScores={result.subScenarioScores}
             e2eAutomationRate={result.e2eAutomationRate}
           />
-        </>
+        </SectionCard>
       )}
 
       {response.comments.length > 0 && (
-        <>
-          <h2 style={{ marginTop: '1.5rem' }}>Your comments</h2>
+        <SectionCard title="Your comments" collapseKey={`${questionnaire.code}:Your comments`}>
           <GroupedCommentsList
             questions={questionnaire.questions}
             subScenarios={questionnaire.subScenarios}
@@ -258,7 +266,7 @@ export function QuestionnaireResultDetail({
             domain={questionnaire.networkType}
             hvs={withReviewTag(questionnaire.hvsCategory, questionnaire.inReview)}
           />
-        </>
+        </SectionCard>
       )}
     </>
   );

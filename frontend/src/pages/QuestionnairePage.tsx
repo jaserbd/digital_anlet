@@ -6,6 +6,7 @@ import Button from '@mui/material/Button';
 import Alert from '@mui/material/Alert';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
+import LinearProgress from '@mui/material/LinearProgress';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
@@ -25,6 +26,7 @@ import { useAuth } from '../context/AuthContext';
 import { formatQuestionLabel } from '../lib/cognitiveActivity';
 import { emptyKeiAnswer, isKeiCovered } from '../lib/kei';
 import { KeiCard } from '../components/KeiCard';
+import { PageLoading } from '../components/Loading';
 
 function answerKey(questionId: string, subScenarioId: string) {
   return `${questionId}:${subScenarioId}`;
@@ -204,7 +206,7 @@ export function QuestionnairePage() {
   }, [questionnaireQuery.data, comments]);
 
   if (questionnaireQuery.isLoading || responseQuery.isLoading || !hydrated) {
-    return <p>Loading…</p>;
+    return <PageLoading />;
   }
   if (
     questionnaireQuery.isError ||
@@ -385,7 +387,19 @@ export function QuestionnairePage() {
           </AccordionDetails>
         </Accordion>
       )}
-      <Typography color="text.secondary" sx={{ mb: 2 }}>
+      {/* Done = answered or covered by a comment, i.e. what still blocks Submit is the rest. */}
+      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 0.75 }}>
+        <LinearProgress
+          variant="determinate"
+          value={totalRequired > 0 ? ((totalRequired - uncovered.length) / totalRequired) * 100 : 0}
+          sx={{ flexGrow: 1 }}
+          aria-label="Questionnaire progress"
+        />
+        <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 40, textAlign: 'right' }}>
+          {totalRequired > 0 ? Math.round(((totalRequired - uncovered.length) / totalRequired) * 100) : 0}%
+        </Typography>
+      </Stack>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         {answeredCount} / {totalRequired} answered
         {totalUnanswered - uncovered.length > 0 &&
           ` · ${totalUnanswered - uncovered.length} skipped (covered by a comment)`}

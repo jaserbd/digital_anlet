@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import type { Role } from '@anlet/shared';
 import { useAuth } from '../context/AuthContext';
+import { PageLoading } from './Loading';
 
 interface ProtectedRouteProps {
   allowedRoles?: Role[];
@@ -17,7 +18,7 @@ export function ProtectedRoute({ allowedRoles, requireProfile = true }: Protecte
   const location = useLocation();
 
   if (isLoading) {
-    return <p>Loading…</p>;
+    return <PageLoading />;
   }
   if (!user) {
     return <Navigate to="/login" replace />;
