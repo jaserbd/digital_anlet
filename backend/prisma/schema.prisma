@@ -542,3 +542,20 @@ model ResponseKei {
 
   @@unique([responseId, indicatorId])
 }
+
+// Email delivery settings edited in the Management Console (ONBOARDING_SECURITY_PLAN.md Phase 2b)
+// — a single row (id "default"). Without it the SMTP_* environment variables apply. The mailbox
+// password is stored encrypted (lib/secretBox.ts, key MAIL_ENCRYPTION_KEY), never in clear text.
+model MailSettings {
+  id                String   @id @default("default")
+  enabled           Boolean
+  host              String
+  port              Int
+  user              String
+  fromAddress       String
+  fromName          String
+  replyTo           String?
+  passwordEncrypted String
+  updatedAt         DateTime @updatedAt
+  updatedByEmail    String?
+}

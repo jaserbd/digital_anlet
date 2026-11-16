@@ -406,15 +406,36 @@ export interface TemporaryPasswordDto {
   temporaryPassword: string;
 }
 
-// Email delivery settings (no password), shown in the Management Console
-// (ONBOARDING_SECURITY_PLAN.md Phase 2).
+// Email delivery settings (never the password), shown and — by the super admin — edited in the
+// Management Console (ONBOARDING_SECURITY_PLAN.md Phases 2/2b).
 export interface MailStatusDto {
+  // 'database' = saved in the Management Console; 'environment' = the server's SMTP_* defaults.
+  source: 'database' | 'environment';
   enabled: boolean;
   host: string;
   port: number;
   user: string;
   from: string;
   fromName: string;
+  replyTo: string | null;
+  updatedAt: string | null;
+  updatedByEmail: string | null;
+  // False when the server has no MAIL_ENCRYPTION_KEY (settings can't be saved).
+  editable: boolean;
+  // Why saved settings aren't in use, if they aren't.
+  problem: string | null;
+}
+
+export interface UpdateMailSettingsRequestDto {
+  enabled: boolean;
+  host: string;
+  port: number;
+  user: string;
+  from: string;
+  fromName: string;
+  replyTo: string | null;
+  // Omitted/empty = keep the current password (only while host and login stay the same).
+  password?: string;
 }
 
 export type RespondentStatus = 'NOT_STARTED' | ResponseStatus;

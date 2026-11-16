@@ -32,6 +32,11 @@ Source: `admin_management.md` lines 46–50. Decisions taken with the user (2026
 - `POST /api/admin/mail/test` (super admin only) + "Send test email" button in the Management Console → verifies the SMTP config from production without creating a user.
 - `forgotPasswordHandler`: always 204 even if sending fails (log the error), so mail outages don't reveal registered emails.
 
+## Phase 2b — Email settings in the Management Console ✅ (branch `feature/mail-settings-ui`)
+
+- Requested 2026-11-16: switch to IT's shared mailbox from the UI instead of GCP commands. Interim sender stays `jaser.thesis@gmail.com`.
+- `MailSettings` row (wins over env), password encrypted with `MAIL_ENCRYPTION_KEY` (new secret `anlet-mail-key`), login verified before saving, optional Reply-To, Microsoft 365 / Gmail presets, reset to server defaults. Super admin edits; other Application Admins read.
+
 ## Phase 3 — Welcome / set-password emails
 
 - `PasswordResetToken` gains `purpose` (`RESET` | `INVITE`); invite TTL 7 days, reset stays 1 hour. Issuing a new token of the same purpose invalidates older unused ones.

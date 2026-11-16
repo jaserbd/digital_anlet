@@ -34,6 +34,12 @@ const envSchema = z.object({
   // Off unless explicitly "true": dev, CI and a production without real SMTP credentials only
   // log instead of attempting to send (lib/mailer.ts).
   MAIL_ENABLED: booleanString.default('false'),
+  // 32 random bytes, base64 — encrypts the mailbox password saved in the Management Console
+  // (lib/secretBox.ts, ONBOARDING_SECURITY_PLAN.md Phase 2b). Without it the settings are read-only.
+  MAIL_ENCRYPTION_KEY: z
+    .string()
+    .refine((v) => Buffer.from(v, 'base64').length === 32, 'must be 32 bytes, base64-encoded')
+    .optional(),
   // The frontend's own origin, used to build the emailed reset link — the backend can't
   // infer this from its own request in dev (backend :4000, frontend :5173 behind Vite's
   // proxy); in production single-host deploy this is just the app's own URL.
