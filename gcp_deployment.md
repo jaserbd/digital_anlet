@@ -140,7 +140,7 @@ policy).
 | `anlet-database-url` | `DATABASE_URL` | `postgresql://anlet:…@localhost/anlet?host=/cloudsql/anlet-504115:europe-west3:anlet-db&schema=public` — password generated at creation, never printed |
 | `anlet-jwt-secret` | `JWT_SECRET` | Random 64-char key |
 | `anlet-admin-password` | `ADMIN_PASSWORD` | Super admin password (random, generated at creation). Read it with `gcloud secrets versions access latest --secret anlet-admin-password --project anlet-504115`. ⚠️ The seed resets the super admin's password to this value every time it runs. |
-| `anlet-smtp-password` | `SMTP_PASSWORD` | ⚠️ placeholder — no real mail provider yet |
+| `anlet-smtp-password` | `SMTP_PASSWORD` | Gmail app password of the interim sender `jaser.thesis@gmail.com` (version 2) |
 
 ### Cloud Build
 
@@ -170,13 +170,13 @@ policy).
 | `NODE_ENV` | plain | `production` |
 | `ADMIN_EMAIL` | plain | `jaserbin.rahman@detecon.com` — the bootstrap account the seed creates and flags as **super admin** |
 | `APP_BASE_URL` | plain | `https://anlet-602185048647.europe-west3.run.app` — used to build links (password-reset emails) |
-| `SMTP_HOST` / `PORT` / `USER` / `FROM` | plain | `smtp.placeholder.invalid` / `587` / `placeholder` / `no-reply@placeholder.invalid` — ⚠️ placeholders |
+| `SMTP_HOST` / `PORT` / `USER` / `FROM` | plain | `smtp.gmail.com` / `587` / `jaser.thesis@gmail.com` / `jaser.thesis@gmail.com` — interim Gmail sender since 2026-11-16, until IT's shared mailbox exists |
 | `SMTP_FROM_NAME` | plain (optional) | Sender display name, default `ANLET` |
-| `MAIL_ENABLED` | plain (optional) | Only `true` actually sends; unset/`false` = emails are only logged (no links in production logs). Currently unset |
+| `MAIL_ENABLED` | plain (optional) | Only `true` actually sends; unset/`false` = emails are only logged (no links in production logs). `true` since 2026-11-16 |
 | `DATABASE_URL` | Secret Manager | see `anlet-database-url` |
 | `JWT_SECRET` | Secret Manager | Signs the httpOnly auth cookie |
 | `ADMIN_PASSWORD` | Secret Manager | Super admin password used by the seed |
-| `SMTP_PASSWORD` | Secret Manager | ⚠️ placeholder |
+| `SMTP_PASSWORD` | Secret Manager | Gmail **app password** of `jaser.thesis@gmail.com` (`anlet-smtp-password` version 2; revocable at myaccount.google.com/apppasswords) |
 
 ---
 
@@ -301,8 +301,8 @@ gcloud sql instances clone anlet-db anlet-db-restore --project anlet-504115 --po
   with only `cloudsql.client` + `secretmanager.secretAccessor` would be tighter.
 - **CI/CD** — deploys are manual (`gcloud builds submit` + `gcloud run deploy`); GitHub Actions only runs
   lint/typecheck/test.
-- **SMTP** — placeholder values and `MAIL_ENABLED` unset, so emails are only logged until a mailbox is configured
-  (see "Switch on email" above).
+- **SMTP** — interim Gmail sender (`jaser.thesis@gmail.com`, ~500 emails/day); move to IT's shared mailbox when it exists
+  (same steps as "Switch on email" above).
 - **Domain** — no custom domain; only the `*.run.app` URL.
 - **Observability** — no alert policies or log sinks beyond the defaults.
 
