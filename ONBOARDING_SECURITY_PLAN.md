@@ -60,9 +60,18 @@ Built as below, with one deliberate change: sending a welcome/reset email **neve
 - Found while testing: closing a card (or clicking Next) within the 500 ms comment debounce dropped the comment. `QuestionCommentEditor` now flushes a pending save on unmount, like `KeiCard`.
 - Verified in Chrome (IP FM, 8 sub-scenarios + 3 KEIs): answered and commented inline, counts and Submit updated live, a comment typed right before Close was saved, submitted from the Review page.
 
-## Phase 5 — Visual polish (keep brand)
+## Phase 5 — Visual polish (keep brand) ✅
 
 Screenshot every main page first, then: login page (hero panel, clearer card), `AppHeader` (compact nav with icons, user menu holding email/context/logout), Home/Domain/HVS picker cards (icons per domain, hover elevation), question stepper (progress bar per Cognitive Activity), question/option cards spacing, tables (softer magenta header, row density), section cards, empty/loading states (skeletons instead of "Loading…"). Theme-level changes in `theme.ts` first so every page benefits. Before/after screenshots → user approval → done.
+
+Built (before/after screenshots approved by the user):
+- `theme.ts`: soft brand table headers (`#fbeef5` + magenta rule) instead of solid magenta, inherited fonts for plain inputs/textareas, rounder alerts (bordered) and chips, magenta focus ring and radio/checkbox accent, white outlined inputs, `LinearProgress` styling.
+- `AppHeader`: icon nav links (icon-only on phones), email + Log out in an account menu (`UserMenu`), compact one-row header on phones. `LogoutButton` stays for `ChangePasswordPage`.
+- `ChoiceCard` takes an `icon` (`lib/choiceIcons.tsx`, per domain / HVS).
+- Answering: progress bar (answered or covered / required) in `QuestionnairePage`; `QuestionStepper` pills (coverage colours kept — a FORTH_REVIEW.md status signal); `QuestionCard`/`KeiCard` as cards with a numbered badge and weight tag (`components/questionCardStyles.ts`); the answer table scrolls sideways on phones.
+- Results: one score card (score, bar out of 4, KEI score, Export to PDF) beside the spider chart; every section a `SectionCard` keyed per questionnaire code (the Core page shows two details). `E2EChecklistTable` header matches.
+- `components/Loading.tsx` (`PageLoading`, `InlineLoading`) replaces "Loading…".
+- Login: original line-art illustration `public/branding/login-illustration.svg` (cell tower, core, network mesh, L0–L5 scale), hidden on phones.
 
 ## Phase 6 — Security review
 
