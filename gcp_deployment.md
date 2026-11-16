@@ -176,7 +176,7 @@ policy).
 | `DATABASE_URL` | Secret Manager | see `anlet-database-url` |
 | `JWT_SECRET` | Secret Manager | Signs the httpOnly auth cookie |
 | `ADMIN_PASSWORD` | Secret Manager | Super admin password used by the seed |
-| `SMTP_PASSWORD` | Secret Manager | Gmail **app password** of `jaser.thesis@gmail.com` (`anlet-smtp-password` version 2; revocable at myaccount.google.com/apppasswords) |
+| `SMTP_PASSWORD` | Secret Manager | Gmail **app password** of `jaser.thesis@gmail.com` — **pinned** to `anlet-smtp-password:2` (not `latest`: version 3, an app password of the Detecon Google account, was rejected by Gmail — that account has no Gmail mailbox). Revocable at myaccount.google.com/apppasswords. When switching mailboxes, add a version and pin the new number with `--update-secrets SMTP_PASSWORD=anlet-smtp-password:<n>` |
 
 ---
 
