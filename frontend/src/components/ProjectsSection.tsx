@@ -413,8 +413,9 @@ function ProjectImportForm({ hvsNames, onImported }: { hvsNames: string[]; onImp
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
         Download the template, fill in the project, its organization(s), questionnaires, NatCos and
-        members (Project Admin, Executive or Normal User), then upload it. New accounts get a temporary password —
-        download the results afterwards to forward them.
+        members (Project Admin, Executive or Normal User), then upload it. New people get a welcome email with a
+        link to set their password; anyone whose email isn&apos;t sent gets a temporary password in the results to
+        forward instead.
       </Typography>
       <Button
         variant="text"

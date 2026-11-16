@@ -78,8 +78,9 @@ export function MembersImportSection() {
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
         Add Executives and Normal Users to any organization of project <strong>{context?.projectName ?? '…'}</strong>{' '}
         in one go: download the template, fill in one row per person — with NatCo, Country, Working domain and
-        Designation, so they don&apos;t have to complete their profile — and upload it. New accounts get a temporary
-        password; download the results afterwards to forward them.
+        Designation, so they don&apos;t have to complete their profile — and upload it. New people get a welcome
+        email with a link to set their password; anyone whose email isn&apos;t sent gets a temporary password in the
+        results to forward instead.
       </Typography>
       <Button
         variant="text"
