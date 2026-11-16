@@ -60,7 +60,7 @@ Built as below, with one deliberate change: sending a welcome/reset email **neve
 - Found while testing: closing a card (or clicking Next) within the 500 ms comment debounce dropped the comment. `QuestionCommentEditor` now flushes a pending save on unmount, like `KeiCard`.
 - Verified in Chrome (IP FM, 8 sub-scenarios + 3 KEIs): answered and commented inline, counts and Submit updated live, a comment typed right before Close was saved, submitted from the Review page.
 
-## Phase 5 — Visual polish (keep brand) ✅
+## Phase 5 — Visual polish (keep brand) ✅ live in production (revision anlet-00026-pzs, 2026-11-16)
 
 Screenshot every main page first, then: login page (hero panel, clearer card), `AppHeader` (compact nav with icons, user menu holding email/context/logout), Home/Domain/HVS picker cards (icons per domain, hover elevation), question stepper (progress bar per Cognitive Activity), question/option cards spacing, tables (softer magenta header, row density), section cards, empty/loading states (skeletons instead of "Loading…"). Theme-level changes in `theme.ts` first so every page benefits. Before/after screenshots → user approval → done.
 
