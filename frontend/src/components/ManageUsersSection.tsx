@@ -104,7 +104,23 @@ export function ManageUsersSection() {
   const matching = new Map(groupUsersByOrganization(usersQuery.data ?? [], search).map((g) => [g.organizationId, g]));
 
   const columns: SortableTableColumn<UserRowData>[] = [
-    { key: 'email', header: 'Email', getValue: (r) => r.user.email, filterable: true },
+    {
+      key: 'email',
+      header: 'Email',
+      getValue: (r) => r.user.email,
+      filterable: true,
+      render: (r) =>
+        r.user.isActive ? (
+          r.user.email
+        ) : (
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <Box component="span" sx={{ color: 'text.disabled', textDecoration: 'line-through' }}>
+              {r.user.email}
+            </Box>
+            <Chip size="small" variant="outlined" label="Deactivated" />
+          </Stack>
+        ),
+    },
     {
       key: 'admin',
       header: 'Admin',
@@ -373,6 +389,18 @@ function UserMenu({
     },
     onError: onError('Failed to send the email'),
   });
+  const setActive = useMutation({
+    mutationFn: (isActive: boolean) => usersApi.setActive(user.id, isActive),
+    onSuccess: (updated) => {
+      onSaved();
+      onMessage(
+        updated.isActive
+          ? `${user.email} can sign in again.`
+          : `${user.email} is deactivated and signed out. Their answers are kept.`,
+      );
+    },
+    onError: onError('Failed to change the account'),
+  });
   const deleteUser = useMutation({
     mutationFn: () => usersApi.delete(user.id),
     onSuccess: onSaved,
@@ -396,6 +424,18 @@ function UserMenu({
       label: permissions.isAdminAccount ? 'Remove Application Admin' : 'Make Application Admin',
       run: () => updateAdmin.mutate(),
     },
+    // For people who leave: an account with answers can't be deleted, but its login can be closed.
+    permissions.canResetPassword &&
+      (user.isActive
+        ? {
+            label: 'Deactivate',
+            run: () => {
+              if (window.confirm(`Deactivate ${user.email}? They are signed out and cannot sign in until reactivated. Their answers are kept.`)) {
+                setActive.mutate(false);
+              }
+            },
+          }
+        : { label: 'Reactivate', run: () => setActive.mutate(true) }),
     permissions.canDelete && {
       label: 'Delete user',
       run: () => {

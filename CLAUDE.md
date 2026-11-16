@@ -208,6 +208,18 @@ Supersedes the "same person in several organizations" parts of "Multi-organizati
 
 - Theme-level first (`theme.ts`): table headers are a soft brand tint with a magenta rule (hand-written HTML tables — `QuestionCard`, `E2EChecklistTable` — copy it), plain inputs inherit the app font. `AppHeader` has icon links and an account menu; `ChoiceCard` takes an icon (`lib/choiceIcons.tsx`); `QuestionCard`/`KeiCard` share `components/questionCardStyles.ts`; results lead with a score card; `components/Loading.tsx` for loading states. The stepper's green/amber/red stays (status, not decoration).
 
+### Security hardening (`ONBOARDING_SECURITY_PLAN.md` Phase 6)
+
+- **Sign-in**: per-address rate limits on the three public auth routes (`auth.routes.ts`, per instance, off under `NODE_ENV=test`; `app.set('trust proxy', TRUST_PROXY_HOPS)`) plus a database-backed pause — `MAX_FAILED_LOGINS` (10) wrong passwords in a row set `User.lockedUntil` for 15 minutes. `login` refuses unknown / deactivated / paused / wrong-password identically and after the same bcrypt work (`verifyAgainstNothing`). New passwords ≥ 12 characters (`lib/limits.ts`; the login schema and `ADMIN_PASSWORD` are unchanged, so existing passwords work).
+- **`mustChangePassword` is enforced by the API** (`middleware/auth.ts`: 403 `PASSWORD_CHANGE_REQUIRED` except `/auth/me`, `/auth/context`, `/auth/change-password`), not only by `ProtectedRoute`. Tests that hand out a temporary password must clear the flag before using that user's session.
+- **Sessions end on a password change**: `User.passwordChangedAt` (set by change, reset and temporary password) vs. the JWT's `iat`, compared in whole seconds in `resolveRequestUser(userId, membershipId, issuedAt)`; `changePasswordHandler` re-issues the caller's cookie.
+- **Deactivation**: `PUT /users/:id/active` → `setUserActive` (temporary-password rules; withdraws unused links); `UserDto.isActive`; "Deactivate"/"Reactivate" in the users table. `resetPassword` and account emails refuse deactivated accounts.
+- **Headers**: `helmet` in `createApp()` with a same-origin CSP — anything new that loads scripts, fonts or images from another origin (or uses inline scripts) will be blocked; check a production build (`npm run build && npm start`), not the Vite dev server.
+- **`xlsx` is SheetJS 0.20.3 from cdn.sheetjs.com** (not the npm registry). Its ES module build has no `XLSX.readFile` — seed parsers use `prisma/seed/readWorkbook.ts`.
+- The backend build does not bundle `@anlet/shared` (types only) — runtime constants shared with the frontend need a backend copy (`lib/limits.ts` ↔ `shared/src/enums.ts`).
+- Container runs as `node`; production refuses a `JWT_SECRET` under 32 characters or containing "change-me".
+- Dashboards: each block of `QuestionnaireExecutiveDetail` is a `CollapsibleBlock heading`; combined-report Excel sheets are prefixed per questionnaire (`uniqueSheetName` guards duplicates).
+
 ### Org hierarchy and profile completion (from `FIRST_REVIEW.md`)
 
 Real-world usage feedback after the MVP demo described large CSP groups with multiple NatCos/OpCos per Organization, and users self-identifying their Country/Company/Working Domain/Designation before answering. Decisions locked in for this:

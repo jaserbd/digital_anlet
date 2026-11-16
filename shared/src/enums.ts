@@ -9,3 +9,11 @@ export type AnswerOption = (typeof ANSWER_OPTIONS)[number];
 // Stability's single synthetic "OVERALL"), not a fixed global set — see schema.prisma's
 // SubScenario.code comment. Plain string, not a union of literals.
 export type SubScenarioCode = string;
+
+// Input limits for the frontend (ONBOARDING_SECURITY_PLAN.md Phase 6); the backend enforces its own
+// copies in backend/src/lib/limits.ts — keep the two in step. New passwords only: signing in with
+// an existing shorter one keeps working.
+export const MIN_PASSWORD_LENGTH = 12;
+export const MAX_PASSWORD_LENGTH = 200;
+export const MAX_COMMENT_LENGTH = 5000;
+export const MAX_NAME_LENGTH = 100;

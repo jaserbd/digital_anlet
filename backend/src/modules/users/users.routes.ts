@@ -11,6 +11,7 @@ import {
   sendAccountEmailHandler,
   sendWelcomeEmailsHandler,
   setTemporaryPasswordHandler,
+  setUserActiveHandler,
   updateMembershipHandler,
   updateUserHandler,
 } from './users.controller';
@@ -29,6 +30,7 @@ usersRouter.post('/:id/memberships', asyncHandler(addMembershipHandler));
 usersRouter.patch('/:id/memberships/:membershipId', asyncHandler(updateMembershipHandler));
 usersRouter.delete('/:id/memberships/:membershipId', asyncHandler(removeMembershipHandler));
 usersRouter.post('/:id/temporary-password', asyncHandler(setTemporaryPasswordHandler));
+usersRouter.put('/:id/active', asyncHandler(setUserActiveHandler));
 // Emailed set-password links (ONBOARDING_SECURITY_PLAN.md Phase 3).
 usersRouter.post('/welcome-emails', asyncHandler(sendWelcomeEmailsHandler));
 usersRouter.post('/:id/account-email', asyncHandler(sendAccountEmailHandler));

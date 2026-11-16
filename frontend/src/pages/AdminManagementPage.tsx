@@ -1,3 +1,4 @@
+import { MIN_PASSWORD_LENGTH } from '@anlet/shared';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -558,7 +559,7 @@ export function CreateUserForm() {
               type={showPassword ? 'text' : 'password'}
               required
               fullWidth
-              slotProps={{ htmlInput: { minLength: 8, style: showPassword ? { fontFamily: 'monospace' } : undefined } }}
+              slotProps={{ htmlInput: { minLength: MIN_PASSWORD_LENGTH, style: showPassword ? { fontFamily: 'monospace' } : undefined } }}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />

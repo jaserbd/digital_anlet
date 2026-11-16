@@ -370,6 +370,8 @@ export interface UserDto {
   firstName: string | null;
   lastName: string | null;
   isSuperAdmin: boolean;
+  // False = deactivated: cannot sign in; answers and history are kept.
+  isActive: boolean;
   // When the person last redeemed an emailed welcome / reset link (their address works); null = never.
   emailVerifiedAt: string | null;
   memberships: MembershipDto[];

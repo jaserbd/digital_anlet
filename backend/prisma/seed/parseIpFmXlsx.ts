@@ -6,10 +6,10 @@
 // has no per-question answering guidance — several questions instead carry a "Note:" inside
 // the question text itself, which is kept inline as-is. The 8 sub-scenarios are grouped
 // under 3 categories (Equipment / Communication / Quality of service) by a merged header row.
-import XLSX from 'xlsx';
 import type { ParsedQuestionnaire } from './parsedQuestionnaire.types';
 import { extractNumberedSubScenarioLines, readFmSheets, readKeis } from './fmSheetParser';
 import { joinColumnText, readSheetRows, repoRootXlsxPath } from './xlsxParseUtils';
+import { readWorkbook } from './readWorkbook';
 
 const FILE_LABEL = 'IP_FM.xlsx';
 
@@ -20,7 +20,7 @@ const INTRO_ROWS: [number, number] = [1, 5];
 const INTRO_SUB_SCENARIO_ROW = 3;
 
 export function parseIpFmXlsx(xlsxPath?: string): ParsedQuestionnaire {
-  const workbook = XLSX.readFile(xlsxPath ?? repoRootXlsxPath('IP_FM.xlsx'));
+  const workbook = readWorkbook(xlsxPath ?? repoRootXlsxPath('IP_FM.xlsx'));
 
   const { subScenarios, questions } = readFmSheets(workbook, {
     fileLabel: FILE_LABEL,

@@ -73,10 +73,27 @@ Built (before/after screenshots approved by the user):
 - `components/Loading.tsx` (`PageLoading`, `InlineLoading`) replaces "Loading…".
 - Login: original line-art illustration `public/branding/login-illustration.svg` (cell tower, core, network mesh, L0–L5 scale), hidden on phones.
 
-## Phase 6 — Security review
+## Phase 6 — Security review — fixes built on `feature/security-hardening` (not deployed yet)
 
-1. Write `SECURITY_REVIEW.md`: authN/session (JWT lifetime, logout doesn't revoke tokens, password policy), authZ per route (role/org/project scoping, IDOR on `:id` routes, anonymization leaks for Executives), input validation, CSRF (SameSite=Lax + JSON), headers/CSP, rate limiting, file uploads (SheetJS client-side, 2 MB JSON import), email content injection, secrets/IAM (`gcp_deployment.md`: default SA has project `roles/editor`), dependencies (`npm audit`), logging of PII.
-2. Fix agreed items — expected: `helmet` + CSP, `express-rate-limit` on login/forgot/reset/test-mail, password-change invalidating old tokens (`passwordChangedAt` vs JWT `iat`), dependency upgrades (zod, nodemailer, exceljs/uuid; SheetJS → official CDN build 0.20.x, which fixes both advisories), dedicated Cloud Run service account.
+Review done (15 findings); the agreed set — 1–5, 7–11 and the upload ignore file from 15 — is built:
+
+1. **Sign-in guessing**: `express-rate-limit` per client address on login / forgot-password / reset-password (per instance; `trust proxy` = `TRUST_PROXY_HOPS`, default 1), plus a per-account pause in the database — 10 wrong passwords in a row pause sign-in for 15 minutes (`User.failedLoginCount` / `lockedUntil`; a reset or temporary password lifts it). New passwords: at least 12 characters (existing shorter ones keep working).
+2. **Temporary passwords**: `middleware/auth.ts` answers 403 `PASSWORD_CHANGE_REQUIRED` for everything except `/auth/me`, `/auth/context`, `/auth/change-password` while `mustChangePassword` is set.
+3. **Sessions end on a password change**: `User.passwordChangedAt` compared with the token's `iat` (whole seconds) in `resolveRequestUser`; the caller's own cookie is re-issued on change-password.
+4. **Deactivate / Reactivate**: `PUT /users/:id/active` (rules as temporary passwords; Project Admins for their own members), "User ▾" menu; a deactivated account cannot sign in, keeps no session, gets no emails and cannot redeem a link.
+5. **Security headers**: `helmet` with a same-origin CSP (inline styles for MUI, `data:`/`blob:` images for charts and PDFs), no framing, HSTS. Checked in a browser against the production build (pages, Excel and PDF downloads).
+7. **Dependencies**: express 4.22.3 (body-parser/qs), nodemailer 10, `xlsx` 0.20.3 from SheetJS's own site (the npm copy is unmaintained) — seed parsers read files through `prisma/seed/readWorkbook.ts`.
+8. **Timing**: a dummy bcrypt check for unknown addresses at sign-in; a comparable wait in forgot-password for unknown addresses.
+9. **Container** runs as `node`, not root (local prisma binary instead of `npx`). Not verified locally (Docker was not running) — watch the first deploy.
+10. **`JWT_SECRET`** must be ≥ 32 characters and not a placeholder in production (the server refuses to start otherwise).
+11. **Length limits**: comments 5000, names 100, passwords 200 (`backend/src/lib/limits.ts`, frontend copies in `shared/src/enums.ts`).
+15. `.gcloudignore`.
+
+Also fixed on the way: "Download all (Excel)" failed for the combined Core view (two sheets named alike — now prefixed per questionnaire, and `uniqueSheetName` as a safety net); every block of the Executive / Deep-Dive detail collapses from its heading.
+
+Trade-off to know: the account pause lets someone who knows an address keep that person out for 15 minutes at a time; a password reset link lifts it.
+
+Open: 6 (dedicated Cloud Run service account — with the user), 12–14 and the seed guard from 15.
 
 ## Order
 

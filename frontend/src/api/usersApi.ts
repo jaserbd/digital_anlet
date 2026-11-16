@@ -42,6 +42,8 @@ export const usersApi = {
     apiClient.delete<UserDto>(`/users/${userId}/memberships/${membershipId}`),
   temporaryPassword: (userId: string) =>
     apiClient.post<TemporaryPasswordDto>(`/users/${userId}/temporary-password`),
+  // Deactivated accounts cannot sign in; their answers stay (ONBOARDING_SECURITY_PLAN.md Phase 6).
+  setActive: (userId: string, isActive: boolean) => apiClient.put<UserDto>(`/users/${userId}/active`, { isActive }),
   // Emailed set-password links (ONBOARDING_SECURITY_PLAN.md Phase 3).
   sendAccountEmail: (userId: string, kind: AccountEmailKind) =>
     apiClient.post<AccountEmailResultDto>(`/users/${userId}/account-email`, { kind }),

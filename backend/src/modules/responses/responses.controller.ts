@@ -1,3 +1,4 @@
+import { MAX_COMMENT_LENGTH } from '../../lib/limits';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { requireParam } from '../../lib/params';
@@ -36,7 +37,7 @@ const upsertAnswerSchema = z.object({
 
 const upsertCommentSchema = z.object({
   questionId: z.string().min(1),
-  commentText: z.string().min(1),
+  commentText: z.string().min(1).max(MAX_COMMENT_LENGTH),
   subScenarioIds: z.array(z.string().min(1)),
   appliesToNone: z.boolean(),
 });
@@ -45,7 +46,7 @@ const upsertKeiSchema = z.object({
   indicatorId: z.string().min(1),
   selectedOption: z.enum(['A', 'B', 'C', 'D']).nullable(),
   indicatorValue: z.string().max(200).nullable(),
-  comment: z.string().max(5000).nullable(),
+  comment: z.string().max(MAX_COMMENT_LENGTH).nullable(),
 });
 
 function handleKnownErrors(err: unknown, res: Response): boolean {

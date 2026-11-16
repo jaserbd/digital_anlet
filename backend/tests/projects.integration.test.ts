@@ -2,6 +2,8 @@ import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma';
+import jwt from 'jsonwebtoken';
+import { env } from '../src/config/env';
 import { signToken } from '../src/lib/jwt';
 import { createApp } from '../src/app';
 import { AUTH_COOKIE_NAME } from '../src/middleware/auth';
@@ -334,7 +336,7 @@ describe('Project Admin scoping over HTTP (real DB)', () => {
 
   it('adds Executives and Normal Users to the own organization + project only', async () => {
     const add = (projectId: string, role = 'EXECUTIVE', label = 'pa-created') =>
-      api('POST', '/users', asProjectAdmin, { email: email(label), password: 'password123', role, organizationId: orgAId, projectId });
+      api('POST', '/users', asProjectAdmin, { email: email(label), password: 'password-12345', role, organizationId: orgAId, projectId });
     expect((await add(projectAId)).status).toBe(201);
     expect((await add(projectBId, 'EXECUTIVE', 'pa-created-b')).status).toBe(403);
     expect((await add(projectAId, 'ADMIN', 'pa-created-admin')).status).toBe(403);
@@ -350,6 +352,22 @@ describe('Project Admin scoping over HTTP (real DB)', () => {
     // Member A also takes part in project B (and the import project) — outside this Project Admin's scope.
     expect((await api('POST', `/users/${memberAId}/temporary-password`, asProjectAdmin)).status).toBe(403);
     expect((await api('POST', `/users/${executiveId}/temporary-password`, asProjectAdmin)).status).toBe(200);
+    // A temporary password alone opens nothing but the change-password routes (Phase 6), and
+    // sessions from before it are signed out.
+    const blocked = await api('GET', '/questionnaires', asExecutive);
+    expect(blocked.status).toBe(403);
+    expect(blocked.json.code).toBe('PASSWORD_CHANGE_REQUIRED');
+    expect((await api('GET', '/auth/me', asExecutive)).status).toBe(200);
+    const changedAt = (await prisma.user.findUniqueOrThrow({ where: { id: executiveId } })).passwordChangedAt!;
+    const oldSession = `${AUTH_COOKIE_NAME}=${jwt.sign({ sub: executiveId, email: 'x', membershipId: null, iat: Math.floor(changedAt.getTime() / 1000) - 60 }, env.JWT_SECRET)}`;
+    expect((await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: oldSession } })).status).toBe(401);
+    await prisma.user.update({ where: { id: executiveId }, data: { mustChangePassword: false } });
+    // Deactivating closes the login at once; reactivating restores it.
+    expect((await api('PUT', `/users/${executiveId}/active`, asProjectAdmin, { isActive: false })).json.isActive).toBe(false);
+    expect((await api('GET', '/auth/me', asExecutive)).status).toBe(401);
+    expect((await api('PUT', `/users/${memberAId}/active`, asProjectAdmin, { isActive: false })).status).toBe(403);
+    expect((await api('PUT', `/users/${executiveId}/active`, asProjectAdmin, { isActive: true })).status).toBe(200);
+    expect((await api('GET', '/auth/me', asExecutive)).status).toBe(200);
     // Project Admin memberships are managed on the project, not in the users table.
     const consultantInA = await membershipOf(consultantId, orgAId, projectAId);
     expect((await api('DELETE', `/users/${consultantId}/memberships/${consultantInA.id}`, asAdmin())).status).toBe(400);

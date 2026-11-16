@@ -1,3 +1,4 @@
+import { MAX_NAME_LENGTH, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '../../lib/limits';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { generatePassword } from '../../lib/generatePassword';
@@ -30,6 +31,7 @@ import {
   listUsers,
   removeMembership,
   setTemporaryPassword,
+  setUserActive,
   updateMembership,
   updateUser,
 } from './users.service';
@@ -48,13 +50,13 @@ function projectAdminScope(req: Request) {
 // the person sets their own through the emailed link (ONBOARDING_SECURITY_PLAN.md Phase 3).
 const createUserSchema = z.object({
   email: z.string().trim().email(),
-  password: z.string().min(8).optional(),
+  password: z.string().min(MIN_PASSWORD_LENGTH).max(MAX_PASSWORD_LENGTH).optional(),
   sendWelcomeEmail: z.boolean().optional(),
   role: z.enum(['NORMAL_USER', 'EXECUTIVE', 'ADMIN']),
   organizationId: z.string().min(1),
   projectId: z.string().min(1).nullable().optional(),
-  firstName: z.string().trim().min(1).optional(),
-  lastName: z.string().trim().min(1).optional(),
+  firstName: z.string().trim().min(1).max(MAX_NAME_LENGTH).optional(),
+  lastName: z.string().trim().min(1).max(MAX_NAME_LENGTH).optional(),
 });
 
 export async function createUserHandler(req: Request, res: Response) {
@@ -333,6 +335,26 @@ export async function setTemporaryPasswordHandler(req: Request, res: Response) {
     if (scope) await assertProjectAdminMayManageUser(scope, userId);
     const temporaryPassword = await setTemporaryPassword(req.user!.sub, userId);
     res.json({ temporaryPassword });
+  } catch (err) {
+    if (!handleUserAdminErrors(err, res)) throw err;
+  }
+}
+
+const setActiveSchema = z.object({ isActive: z.boolean() });
+
+// "Deactivate" / "Reactivate" in the users table.
+export async function setUserActiveHandler(req: Request, res: Response) {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+  const parsed = setActiveSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request body' });
+    return;
+  }
+  try {
+    const scope = projectAdminScope(req);
+    if (scope) await assertProjectAdminMayManageUser(scope, userId);
+    res.json(await setUserActive(req.user!.sub, userId, parsed.data.isActive));
   } catch (err) {
     if (!handleUserAdminErrors(err, res)) throw err;
   }

@@ -18,6 +18,7 @@ import XLSX from 'xlsx';
 import type { ParsedQuestionnaire } from './parsedQuestionnaire.types';
 import { readFmSheets, readKeis } from './fmSheetParser';
 import { cellText, joinColumnText, readSheetRows, repoRootXlsxPath } from './xlsxParseUtils';
+import { readWorkbook } from './readWorkbook';
 
 const FILE_LABEL = 'Transport.xlsx';
 
@@ -32,7 +33,7 @@ const GUIDELINE_QUESTION_COLUMN = 2; // D
 const GUIDELINE_ANSWER_COLUMN = 3; // E
 
 function workbookFor(xlsxPath?: string): XLSX.WorkBook {
-  return XLSX.readFile(xlsxPath ?? repoRootXlsxPath('Transport.xlsx'));
+  return readWorkbook(xlsxPath ?? repoRootXlsxPath('Transport.xlsx'));
 }
 
 function guidelineText(

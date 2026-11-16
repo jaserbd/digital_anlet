@@ -9,6 +9,7 @@ import XLSX from 'xlsx';
 import type { SubScenarioCode } from '@anlet/shared';
 import type { ParsedQuestion, ParsedQuestionnaire, ParsedSubScenario } from './parsedQuestionnaire.types';
 import { optionMap } from './xlsxParseUtils';
+import { readWorkbook } from './readWorkbook';
 
 const SUB_SCENARIO_CODE_BY_PREFIX: Array<{ prefix: string; code: SubScenarioCode }> = [
   { prefix: 'Equipment', code: 'EQUIPMENT' },
@@ -77,7 +78,7 @@ export function parseRanFmXlsx(xlsxPath?: string): ParsedQuestionnaire {
     xlsxPath ??
     path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../RAN_FM.xlsx');
 
-  const workbook = XLSX.readFile(resolvedPath);
+  const workbook = readWorkbook(resolvedPath);
   const questionSheet = workbook.Sheets['RAN - Fault Management'];
   const scoringSheet = workbook.Sheets['Scoring'];
   const guidelineSheet = workbook.Sheets['Guideline'];

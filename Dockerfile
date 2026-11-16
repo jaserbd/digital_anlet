@@ -32,4 +32,7 @@ COPY --from=backend-build /app/backend/prisma ./backend/prisma
 COPY --from=backend-build /app/backend/package.json ./backend/package.json
 COPY --from=frontend-build /app/backend/public ./backend/public
 EXPOSE 8080
-CMD ["sh", "-c", "npx prisma migrate deploy --schema=backend/prisma/schema.prisma && node backend/dist/server.js"]
+# Not root (ONBOARDING_SECURITY_PLAN.md Phase 6): the app only reads its files. The local prisma
+# binary rather than npx, which wants a writable cache.
+USER node
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy --schema=backend/prisma/schema.prisma && node backend/dist/server.js"]

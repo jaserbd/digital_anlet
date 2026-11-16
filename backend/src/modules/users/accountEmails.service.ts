@@ -31,6 +31,7 @@ async function assertMaySendAccountEmail(callerId: string, userId: string, scope
       email: true,
       role: true,
       isSuperAdmin: true,
+      isActive: true,
       firstName: true,
       organization: { select: { name: true } },
       memberships: { select: { projectId: true, role: true } },
@@ -63,6 +64,9 @@ export async function sendAccountEmail(
   scope?: ProjectAdminScope,
 ): Promise<AccountEmailResultDto> {
   const user = await assertMaySendAccountEmail(callerId, userId, scope);
+  if (!user.isActive) {
+    return { userId, email: user.email, outcome: 'failed', error: 'This account is deactivated — reactivate it first' };
+  }
   try {
     if (kind === 'welcome') {
       const url = await issueAccountLink(user.id, 'INVITE', LINK_TTL_MS.INVITE);

@@ -2,6 +2,8 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { env } from '../../config/env';
 import { parseDurationMs } from '../../lib/duration';
+import { signToken } from '../../lib/jwt';
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '../../lib/limits';
 import { AUTH_COOKIE_NAME } from '../../middleware/auth';
 import {
   DesignationNotInCatalogError,
@@ -31,7 +33,7 @@ const loginSchema = z.object({
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
-  newPassword: z.string().min(8),
+  newPassword: z.string().min(MIN_PASSWORD_LENGTH).max(MAX_PASSWORD_LENGTH),
 });
 
 const forgotPasswordSchema = z.object({
@@ -40,7 +42,7 @@ const forgotPasswordSchema = z.object({
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1),
-  newPassword: z.string().min(8),
+  newPassword: z.string().min(MIN_PASSWORD_LENGTH).max(MAX_PASSWORD_LENGTH),
 });
 
 const updateProfileSchema = z.object({
@@ -71,7 +73,10 @@ export async function loginHandler(req: Request, res: Response) {
     res.status(204).end();
   } catch (err) {
     if (err instanceof InvalidCredentialsError) {
-      res.status(401).json({ error: 'Invalid email or password' });
+      // One message for every refusal (see login): it also has to cover a paused account.
+      res.status(401).json({
+        error: 'Invalid email or password. After several failed attempts, sign-in is paused for 15 minutes',
+      });
       return;
     }
     throw err;
@@ -126,6 +131,10 @@ export async function changePasswordHandler(req: Request, res: Response) {
 
   try {
     await changeOwnPassword(req.user!.sub, parsed.data.currentPassword, parsed.data.newPassword);
+    // The change signed out every session issued before it — including this one, so it gets
+    // a fresh cookie.
+    const { sub, email, membershipId } = req.user!;
+    res.cookie(AUTH_COOKIE_NAME, signToken({ sub, email, membershipId }), cookieOptions);
     res.status(204).end();
   } catch (err) {
     if (err instanceof InvalidCredentialsError) {

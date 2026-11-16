@@ -1,3 +1,4 @@
+import { MAX_COMMENT_LENGTH } from '@anlet/shared';
 import { useEffect, useRef, useState } from 'react';
 import type { SubScenarioDto } from '@anlet/shared';
 
@@ -111,6 +112,7 @@ export function QuestionCommentEditor({
           value={local.commentText}
           onChange={(e) => handleTextChange(e.target.value)}
           rows={2}
+          maxLength={MAX_COMMENT_LENGTH}
           placeholder="Optional — required if you leave any sub-scenario unanswered above"
           style={{ display: 'block', width: '100%', marginTop: 4, fontWeight: 400 }}
         />

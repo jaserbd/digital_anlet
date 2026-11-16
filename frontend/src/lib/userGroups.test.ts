@@ -31,6 +31,7 @@ function user(email: string, organizationId: string, memberships: MembershipDto[
     firstName: null,
     lastName: null,
     isSuperAdmin: false,
+    isActive: true,
     emailVerifiedAt: null,
     memberships,
   };
