@@ -32,7 +32,7 @@ Source: `admin_management.md` lines 46–50. Decisions taken with the user (2026
 - `POST /api/admin/mail/test` (super admin only) + "Send test email" button in the Management Console → verifies the SMTP config from production without creating a user.
 - `forgotPasswordHandler`: always 204 even if sending fails (log the error), so mail outages don't reveal registered emails.
 
-## Phase 2b — Email settings in the Management Console ✅ (branch `feature/mail-settings-ui`)
+## Phase 2b — Email settings in the Management Console ✅ live in production (revision anlet-00023-kcw, 2026-11-16; `anlet-mail-key:1` attached)
 
 - Requested 2026-11-16: switch to IT's shared mailbox from the UI instead of GCP commands. Interim sender stays `jaser.thesis@gmail.com`.
 - `MailSettings` row (wins over env), password encrypted with `MAIL_ENCRYPTION_KEY` (new secret `anlet-mail-key`), login verified before saving, optional Reply-To, Microsoft 365 / Gmail presets, reset to server defaults. Super admin edits; other Application Admins read.
