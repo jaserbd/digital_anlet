@@ -63,6 +63,16 @@ describe('requestPasswordReset (real DB)', () => {
     expect(tokenCount).toBe(1);
   });
 
+  it('finds the account whatever the case of the typed address', async () => {
+    const user = await createUser('case');
+    sendPasswordResetEmail.mockClear();
+
+    await requestPasswordReset(` ${user.email.toUpperCase()} `);
+
+    expect(sendPasswordResetEmail).toHaveBeenCalledTimes(1);
+    expect(sendPasswordResetEmail.mock.calls[0]![0]).toBe(user.email);
+  });
+
   it('resolves without emailing for a non-existent email (no user-enumeration signal)', async () => {
     sendPasswordResetEmail.mockClear();
 

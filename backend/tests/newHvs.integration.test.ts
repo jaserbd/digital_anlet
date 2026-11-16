@@ -32,7 +32,7 @@ let orgId: string;
 async function createTestUser(label: string) {
   const user = await prisma.user.create({
     data: {
-      email: `__integration-test-new-hvs-${label}__@example.com`,
+      email: `__integration-test-new-hvs-${label}__@example.com`.toLowerCase(),
       passwordHash: 'not-a-real-hash',
       role: 'NORMAL_USER',
       organizationId: orgId,

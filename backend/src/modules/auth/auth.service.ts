@@ -5,6 +5,7 @@ import { signToken, type JwtPayload } from '../../lib/jwt';
 import { generateResetToken, hashResetToken } from '../../lib/token';
 import { sendPasswordResetEmail } from '../../lib/mailer';
 import { env } from '../../config/env';
+import { normalizeEmail } from '../../lib/email';
 import { UserNotFoundError } from '../users/users.service';
 import { listUserContexts, type RequestUser } from '../../lib/userContext';
 
@@ -17,7 +18,7 @@ export class InvalidContextError extends Error {}
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 export async function login(email: string, password: string): Promise<string> {
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({ where: { email: normalizeEmail(email) } });
   if (!user || !user.isActive) {
     throw new InvalidCredentialsError();
   }
@@ -104,7 +105,7 @@ export async function changeOwnPassword(userId: string, currentPassword: string,
 // discloses which emails are registered. Only emits/persists a token when there's actually
 // someone to email.
 export async function requestPasswordReset(email: string): Promise<void> {
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({ where: { email: normalizeEmail(email) } });
   if (!user || !user.isActive) {
     return;
   }

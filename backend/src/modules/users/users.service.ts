@@ -7,6 +7,7 @@ import type {
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { hashPassword } from '../../lib/password';
+import { normalizeEmail } from '../../lib/email';
 import { generatePassword } from '../../lib/generatePassword';
 import type { RequestUser } from '../../lib/userContext';
 import { referenceListEntryExists } from '../referenceLists/referenceLists.service';
@@ -273,7 +274,8 @@ export async function createUser(
   if (input.role === 'ADMIN' && !(callerId && (await isCallerSuperAdmin(callerId)))) {
     throw new SuperAdminRequiredError();
   }
-  const existingUser = await prisma.user.findUnique({ where: { email: input.email } });
+  const email = normalizeEmail(input.email);
+  const existingUser = await prisma.user.findUnique({ where: { email } });
   if (input.role === 'ADMIN') {
     if (!(await prisma.organization.findUnique({ where: { id: input.organizationId } }))) {
       throw new OrganizationNotFoundError();
@@ -292,7 +294,7 @@ export async function createUser(
   const passwordHash = await hashPassword(input.password);
   const user = await prisma.user.create({
     data: {
-      email: input.email,
+      email,
       passwordHash,
       role: input.role === 'ADMIN' ? 'ADMIN' : 'NORMAL_USER',
       organizationId: input.organizationId,
