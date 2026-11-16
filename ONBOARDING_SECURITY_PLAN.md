@@ -99,7 +99,9 @@ Trade-off to know: the account pause lets someone who knows an address keep that
 14. **Mail errors** (`lib/mailErrors.ts`): people see a plain reason by error kind; the super admin's settings / test screens add the mail server's own one-line answer; the raw error is only logged.
 15. **Seed guard**: the full seed no longer resets an existing super admin's password; `npm run db:seed -- --reset-admin-password` does it on purpose. The `JWT_SECRET` check moved to server start, so the documented seed commands (dummy secret) keep working.
 
-Open: 13 (small-NatCo re-identification in the Executive view) — needs a product decision.
+13. **Small NatCos in the Executive view** — accepted as is (product decision, 2026-11-16): Executives may see the responses with NatCo / Country / Working Domain; no change.
+
+All 15 findings are closed.
 
 ## Order
 
