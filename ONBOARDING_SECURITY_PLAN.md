@@ -37,7 +37,10 @@ Source: `admin_management.md` lines 46–50. Decisions taken with the user (2026
 - Requested 2026-11-16: switch to IT's shared mailbox from the UI instead of GCP commands. Interim sender stays `jaser.thesis@gmail.com`.
 - `MailSettings` row (wins over env), password encrypted with `MAIL_ENCRYPTION_KEY` (new secret `anlet-mail-key`), login verified before saving, optional Reply-To, Microsoft 365 / Gmail presets, reset to server defaults. Super admin edits; other Application Admins read.
 
-## Phase 3 — Welcome / set-password emails
+## Phase 3 — Welcome / set-password emails ✅ (branch `feature/welcome-emails`)
+
+Built as below, with one deliberate change: sending a welcome/reset email **never resets the password** (a "Resend" to someone already active must not lock them out) — the link just lets them set one. New accounts created with the checkbox get an unknown random password.
+
 
 - `PasswordResetToken` gains `purpose` (`RESET` | `INVITE`); invite TTL 7 days, reset stays 1 hour. Issuing a new token of the same purpose invalidates older unused ones.
 - `User.emailVerifiedAt DateTime?` — set when an invite or reset link is redeemed (or the user logs in and changes password). Shown as "Verified ✓ / Not yet" in the users table.

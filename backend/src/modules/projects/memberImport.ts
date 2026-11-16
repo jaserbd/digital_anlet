@@ -142,6 +142,7 @@ export async function importMembers(
     const password = generatePassword();
     let status: ProjectImportResultRowDto['status'];
     let tempPassword: string | undefined;
+    let userId: string | undefined;
     try {
       const result = await createUser(
         {
@@ -157,7 +158,10 @@ export async function importMembers(
         options.asProjectAdmin ? { organizationId: organization.id, projectId: options.projectId } : undefined,
       );
       status = result.status;
-      if (result.status === 'created') tempPassword = password;
+      if (result.status === 'created') {
+        tempPassword = password;
+        userId = result.user.id;
+      }
     } catch (err) {
       if (!(err instanceof AlreadyMemberError)) {
         const error =
@@ -188,7 +192,12 @@ export async function importMembers(
     const warning = membership
       ? await fillProfile(membership, organization.id, member, { natCos, workingDomains, designations })
       : undefined;
-    rows.push({ ...withOrganization, status, ...(tempPassword ? { tempPassword } : {}), ...(warning ? { warning } : {}) });
+    rows.push({
+      ...withOrganization,
+      status,
+      ...(tempPassword ? { tempPassword, userId } : {}),
+      ...(warning ? { warning } : {}),
+    });
   }
   return rows;
 }

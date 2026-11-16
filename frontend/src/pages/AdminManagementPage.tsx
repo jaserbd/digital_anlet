@@ -33,6 +33,8 @@ import { useAuth } from '../context/AuthContext';
 import { ROLE_LABELS, assignableRoles } from '../lib/roles';
 import { useManageableOrganizations } from '../lib/manageableOrganizations';
 import { placementKey, placementLabel, usePlacements } from '../lib/placements';
+import { accountEmailOutcomeText, useWelcomeEmailChoice } from '../lib/accountEmails';
+import { WelcomeEmailCheckbox } from '../components/WelcomeEmailCheckbox';
 
 // Management Console (ADMIN.md item 1) — create/delete for Organization, OpCo, and User, on
 // its own route separate from /admin's Benchmarking/Organizations views. Delete is blocked
@@ -448,6 +450,9 @@ export function CreateUserForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  // Welcome email with a set-password link (ONBOARDING_SECURITY_PLAN.md Phase 3) — on by default
+  // whenever the server sends emails; without it, a password to forward as before.
+  const { sendWelcome, setSendWelcome, mailEnabled } = useWelcomeEmailChoice();
   const { user: currentUser } = useAuth();
   const isApplicationAdmin = currentUser?.role === 'ADMIN';
   const [role, setRole] = useState<Role>('NORMAL_USER');
@@ -466,7 +471,7 @@ export function CreateUserForm() {
     mutationFn: async () => {
       const result = await usersApi.create({
         email,
-        password,
+        ...(sendWelcome ? { sendWelcomeEmail: true } : { password }),
         role,
         organizationId: placement!.organizationId,
         projectId: role === 'ADMIN' ? null : placement!.projectId,
@@ -482,7 +487,7 @@ export function CreateUserForm() {
           failed.push(`${name}${err instanceof ApiError ? ` (${err.message})` : ''}`);
         }
       }
-      return { result, added, failed, generatedPassword: showPassword ? password : null };
+      return { result, added, failed, generatedPassword: !sendWelcome && showPassword ? password : null };
     },
     onSuccess: ({ result, added, failed, generatedPassword }) => {
       const created =
@@ -490,9 +495,15 @@ export function CreateUserForm() {
           ? `"${result.user.email}" already existed — added to ${placementLabel(placement!)} (password unchanged)`
           : `Created user "${result.user.email}"${generatedPassword ? ` with password ${generatedPassword} (to be changed at first login)` : ''}`;
       const admin = added.length > 0 ? `. Project Admin of ${added.join(', ')}` : '';
+      const welcome = result.welcomeEmail;
+      const welcomeText = welcome
+        ? welcome.outcome === 'sent'
+          ? '. Welcome email sent with a link to set their password (valid 7 days)'
+          : `. ${accountEmailOutcomeText(welcome)} — use "Temporary password" in Existing users instead`
+        : '';
       setMessage({
-        kind: failed.length > 0 ? 'warning' : 'success',
-        text: `${created}${admin}${failed.length > 0 ? `. Not added as Project Admin of ${failed.join(', ')}` : ''}.`,
+        kind: failed.length > 0 || (welcome && welcome.outcome !== 'sent') ? 'warning' : 'success',
+        text: `${created}${admin}${welcomeText}${failed.length > 0 ? `. Not added as Project Admin of ${failed.join(', ')}` : ''}.`,
       });
       setEmail('');
       setPassword('');
@@ -525,8 +536,9 @@ export function CreateUserForm() {
     <SectionCard title="Create user">
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Adds one person to a project and organization (or an organization outside projects, e.g.
-        Detecon). An existing email is simply added there. Generate creates a one-time password
-        to forward; the person sets their own at first login.
+        Detecon). An existing email is simply added there. A new person gets a welcome email with a
+        link to set their own password — or, without it, a one-time password (Generate) to forward;
+        they set their own at first login.
         {isApplicationAdmin && ' A new Detecon consultant can be made Project Admin of projects right away.'}
       </Typography>
       <Stack component="form" onSubmit={handleSubmit} spacing={2} sx={{ maxWidth: 420 }}>
@@ -537,28 +549,31 @@ export function CreateUserForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-        <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
-          <TextField
-            label="Password"
-            type={showPassword ? 'text' : 'password'}
-            required
-            fullWidth
-            slotProps={{ htmlInput: { minLength: 8, style: showPassword ? { fontFamily: 'monospace' } : undefined } }}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <Button variant="outlined" onClick={handleGenerate} sx={{ height: 56, flexShrink: 0 }}>
-            Generate
-          </Button>
-          {showPassword && password && (
-            <Button
-              onClick={() => void navigator.clipboard?.writeText(password).catch(() => undefined)}
-              sx={{ height: 56, flexShrink: 0 }}
-            >
-              Copy
+        <WelcomeEmailCheckbox checked={sendWelcome} onChange={setSendWelcome} mailEnabled={mailEnabled} />
+        {!sendWelcome && (
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
+            <TextField
+              label="Password"
+              type={showPassword ? 'text' : 'password'}
+              required
+              fullWidth
+              slotProps={{ htmlInput: { minLength: 8, style: showPassword ? { fontFamily: 'monospace' } : undefined } }}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <Button variant="outlined" onClick={handleGenerate} sx={{ height: 56, flexShrink: 0 }}>
+              Generate
             </Button>
-          )}
-        </Stack>
+            {showPassword && password && (
+              <Button
+                onClick={() => void navigator.clipboard?.writeText(password).catch(() => undefined)}
+                sx={{ height: 56, flexShrink: 0 }}
+              >
+                Copy
+              </Button>
+            )}
+          </Stack>
+        )}
         <TextField
           select
           label="Role"

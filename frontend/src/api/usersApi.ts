@@ -1,4 +1,6 @@
 import type {
+  AccountEmailKind,
+  AccountEmailResultDto,
   AddMembershipRequestDto,
   CreateUserResultDto,
   Role,
@@ -11,7 +13,9 @@ import { apiClient } from './client';
 
 export interface CreateUserInput {
   email: string;
-  password: string;
+  // May be left out with sendWelcomeEmail: the person sets their own through the emailed link.
+  password?: string;
+  sendWelcomeEmail?: boolean;
   // ADMIN is accepted only from the super admin (enforced server-side).
   role: Role;
   organizationId: string;
@@ -38,4 +42,9 @@ export const usersApi = {
     apiClient.delete<UserDto>(`/users/${userId}/memberships/${membershipId}`),
   temporaryPassword: (userId: string) =>
     apiClient.post<TemporaryPasswordDto>(`/users/${userId}/temporary-password`),
+  // Emailed set-password links (ONBOARDING_SECURITY_PLAN.md Phase 3).
+  sendAccountEmail: (userId: string, kind: AccountEmailKind) =>
+    apiClient.post<AccountEmailResultDto>(`/users/${userId}/account-email`, { kind }),
+  // At most WELCOME_EMAIL_BATCH_SIZE ids per call.
+  sendWelcomeEmails: (userIds: string[]) => apiClient.post<AccountEmailResultDto[]>('/users/welcome-emails', { userIds }),
 };

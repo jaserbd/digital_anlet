@@ -142,6 +142,7 @@ function MailSettingsForm({ status, onDone }: { status: MailStatusDto; onDone: (
 
   const onSaved = (next: MailStatusDto) => {
     queryClient.setQueryData(STATUS_KEY, next);
+    void queryClient.invalidateQueries({ queryKey: ['mail-enabled'] });
     onDone();
   };
   const saveMutation = useMutation({

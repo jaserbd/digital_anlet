@@ -18,5 +18,6 @@ export const authApi = {
     apiClient.put<void>('/auth/profile', input),
   changePassword: (input: ChangePasswordRequestDto) => apiClient.put<void>('/auth/change-password', input),
   forgotPassword: (input: ForgotPasswordRequestDto) => apiClient.post<void>('/auth/forgot-password', input),
-  resetPassword: (input: ResetPasswordRequestDto) => apiClient.post<void>('/auth/reset-password', input),
+  // Returns the account's address, so the person knows which login they just set a password for.
+  resetPassword: (input: ResetPasswordRequestDto) => apiClient.post<{ email: string }>('/auth/reset-password', input),
 };

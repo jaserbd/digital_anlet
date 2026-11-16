@@ -16,6 +16,8 @@ import {
 } from '../lib/projectTemplate';
 import { useTemplateLists } from '../lib/templateLists';
 import { ImportResults } from './ImportResults';
+import { WelcomeEmailCheckbox } from './WelcomeEmailCheckbox';
+import { useWelcomeEmailChoice } from '../lib/accountEmails';
 import { SectionCard } from './SectionCard';
 
 // A Project Admin's Excel member import (PROJECT_ADMIN_IMPORT_PLAN.md): Executives and Normal
@@ -30,6 +32,9 @@ export function MembersImportSection() {
   const [parsed, setParsed] = useState<ParsedMembersWorkbook | null>(null);
   const [result, setResult] = useState<ProjectMembersImportResultDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { sendWelcome, setSendWelcome, mailEnabled } = useWelcomeEmailChoice();
+  // Fixed at import time, so unticking afterwards doesn't stop the sending.
+  const [welcomeOnImport, setWelcomeOnImport] = useState(false);
 
   const importMembers = useMutation({
     mutationFn: () => projectMembersApi.import(parsed!.members!),
@@ -125,7 +130,11 @@ export function MembersImportSection() {
                   .join(', ')}
                 ) in {[...new Set(members.map((m) => m.organization))].join(', ')}.
               </Typography>
-              <Button variant="contained" disabled={importMembers.isPending} onClick={() => importMembers.mutate()} sx={{ mr: 1 }}>
+              <WelcomeEmailCheckbox checked={sendWelcome} onChange={setSendWelcome} mailEnabled={mailEnabled} plural />
+              <Button variant="contained" disabled={importMembers.isPending} onClick={() => {
+                  setWelcomeOnImport(sendWelcome);
+                  importMembers.mutate();
+                }} sx={{ mr: 1 }}>
                 {importMembers.isPending ? 'Importing…' : 'Import members'}
               </Button>
             </>
@@ -142,7 +151,7 @@ export function MembersImportSection() {
         </Alert>
       )}
 
-      {result && <ImportResults rows={result.rows} fileName={`member-import-${result.projectName}`} onReset={handleReset} />}
+      {result && <ImportResults rows={result.rows} fileName={`member-import-${result.projectName}`} onReset={handleReset} sendWelcomeEmails={welcomeOnImport} />}
     </SectionCard>
   );
 }

@@ -35,6 +35,8 @@ import {
 } from '../lib/projectTemplate';
 import { useTemplateLists } from '../lib/templateLists';
 import { ImportResults } from './ImportResults';
+import { WelcomeEmailCheckbox } from './WelcomeEmailCheckbox';
+import { useWelcomeEmailChoice } from '../lib/accountEmails';
 import { QuestionnaireSelection } from './QuestionnaireSelection';
 import { SectionCard } from './SectionCard';
 import { CollapsibleTable } from './CollapsibleTable';
@@ -367,6 +369,9 @@ function ProjectImportForm({ hvsNames, onImported }: { hvsNames: string[]; onImp
   const [parsed, setParsed] = useState<ParsedProjectWorkbook | null>(null);
   const [result, setResult] = useState<ProjectImportResultDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { sendWelcome, setSendWelcome, mailEnabled } = useWelcomeEmailChoice();
+  // Fixed at import time, so unticking afterwards doesn't stop the sending.
+  const [welcomeOnImport, setWelcomeOnImport] = useState(false);
 
   const importProject = useMutation({
     mutationFn: () => projectsApi.import(parsed!.request!),
@@ -466,7 +471,11 @@ function ProjectImportForm({ hvsNames, onImported }: { hvsNames: string[]; onImp
                   .join(', ')}
                 ).
               </Typography>
-              <Button variant="contained" disabled={importProject.isPending} onClick={() => importProject.mutate()} sx={{ mr: 1 }}>
+              <WelcomeEmailCheckbox checked={sendWelcome} onChange={setSendWelcome} mailEnabled={mailEnabled} plural />
+              <Button variant="contained" disabled={importProject.isPending} onClick={() => {
+                  setWelcomeOnImport(sendWelcome);
+                  importProject.mutate();
+                }} sx={{ mr: 1 }}>
                 {importProject.isPending ? 'Importing…' : 'Import project'}
               </Button>
             </>
@@ -484,7 +493,7 @@ function ProjectImportForm({ hvsNames, onImported }: { hvsNames: string[]; onImp
       )}
 
       {result && (
-        <ImportResults rows={result.rows} fileName={`project-import-${result.project.name}`} onReset={handleReset} />
+        <ImportResults rows={result.rows} fileName={`project-import-${result.project.name}`} onReset={handleReset} sendWelcomeEmails={welcomeOnImport} />
       )}
     </Box>
   );

@@ -195,13 +195,34 @@ async function sendEmail(to: string, content: EmailContent): Promise<void> {
   });
 }
 
-export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
+// `validFor` reads naturally after "within", e.g. "the next hour" / "24 hours".
+export async function sendPasswordResetEmail(to: string, resetUrl: string, validFor: string): Promise<void> {
   await sendEmail(to, {
     subject: 'Reset your ANLET password',
     heading: 'Reset your password',
-    paragraphs: ['We received a request to reset your ANLET password. Use the button below within the next hour to choose a new one.'],
+    paragraphs: [`We received a request to reset the password of your ANLET account ${to}. Use the button below within ${validFor} to choose a new one.`],
     button: { label: 'Choose a new password', url: resetUrl },
     footnote: "If you didn't request this, you can safely ignore this email — your password stays the same.",
+  });
+}
+
+// Welcome email for a new account (ONBOARDING_SECURITY_PLAN.md Phase 3): a set-password link
+// instead of a password in the email.
+export async function sendWelcomeEmail(
+  to: string,
+  setPasswordUrl: string,
+  details: { firstName: string | null; organizationName: string; validFor: string },
+): Promise<void> {
+  await sendEmail(to, {
+    subject: 'Your ANLET account',
+    heading: details.firstName ? `Welcome to ANLET, ${details.firstName}` : 'Welcome to ANLET',
+    paragraphs: [
+      `An account has been created for you in ANLET, the TM Forum Autonomous Network maturity assessment tool, for ${details.organizationName}.`,
+      `Your login is ${to}. Choose your password with the button below — the link works for ${details.validFor}.`,
+      `Afterwards, sign in at ${env.APP_BASE_URL}.`,
+    ],
+    button: { label: 'Set your password', url: setPasswordUrl },
+    footnote: "If you weren't expecting this email, you can ignore it.",
   });
 }
 

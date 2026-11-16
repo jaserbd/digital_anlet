@@ -1,6 +1,8 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
+import { generatePassword } from '../../lib/generatePassword';
 import { projectAdminScopeOf } from '../../lib/projectAccess';
+import { MAX_ACCOUNT_EMAILS_PER_REQUEST, sendAccountEmail, sendWelcomeEmails } from './accountEmails.service';
 import {
   AlreadyMemberError,
   CannotChangeOwnRoleError,
@@ -42,9 +44,12 @@ function projectAdminScope(req: Request) {
 // ADMIN (enforced by createUser — ADMIN_MANAGEMENT_PLAN.md). Project Admins are added per project
 // (projects module), not here. `projectId` places the membership in one of the organization's
 // projects (PROJECTS_V2_PLAN.md).
+// With sendWelcomeEmail the password may be left out: the account gets an unknown random one and
+// the person sets their own through the emailed link (ONBOARDING_SECURITY_PLAN.md Phase 3).
 const createUserSchema = z.object({
   email: z.string().trim().email(),
-  password: z.string().min(8),
+  password: z.string().min(8).optional(),
+  sendWelcomeEmail: z.boolean().optional(),
   role: z.enum(['NORMAL_USER', 'EXECUTIVE', 'ADMIN']),
   organizationId: z.string().min(1),
   projectId: z.string().min(1).nullable().optional(),
@@ -54,13 +59,19 @@ const createUserSchema = z.object({
 
 export async function createUserHandler(req: Request, res: Response) {
   const parsed = createUserSchema.safeParse(req.body);
-  if (!parsed.success) {
+  if (!parsed.success || (!parsed.data.password && !parsed.data.sendWelcomeEmail)) {
     res.status(400).json({ error: 'Invalid request body' });
     return;
   }
 
   try {
-    const result = await createUser(parsed.data, req.user!.sub, projectAdminScope(req));
+    const { sendWelcomeEmail, ...input } = parsed.data;
+    const scope = projectAdminScope(req);
+    const result = await createUser({ ...input, password: input.password ?? generatePassword() }, req.user!.sub, scope);
+    // Only a brand-new account gets a welcome email; an existing one keeps its password.
+    if (sendWelcomeEmail && result.status === 'created') {
+      result.welcomeEmail = await sendAccountEmail(req.user!.sub, result.user.id, 'welcome', scope);
+    }
     res.status(result.status === 'created' ? 201 : 200).json(result);
   } catch (err) {
     if (err instanceof OutsideProjectError) {
@@ -325,4 +336,36 @@ export async function setTemporaryPasswordHandler(req: Request, res: Response) {
   } catch (err) {
     if (!handleUserAdminErrors(err, res)) throw err;
   }
+}
+
+const accountEmailSchema = z.object({ kind: z.enum(['welcome', 'reset']) });
+
+// "Send welcome email" / "Send password reset email" in the users table.
+export async function sendAccountEmailHandler(req: Request, res: Response) {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+  const parsed = accountEmailSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request body' });
+    return;
+  }
+  try {
+    res.json(await sendAccountEmail(req.user!.sub, userId, parsed.data.kind, projectAdminScope(req)));
+  } catch (err) {
+    if (!handleUserAdminErrors(err, res)) throw err;
+  }
+}
+
+const welcomeEmailsSchema = z.object({
+  userIds: z.array(z.string().min(1)).min(1).max(MAX_ACCOUNT_EMAILS_PER_REQUEST),
+});
+
+// Welcome emails for an import's new accounts, sent by the frontend in batches.
+export async function sendWelcomeEmailsHandler(req: Request, res: Response) {
+  const parsed = welcomeEmailsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: `Send 1–${MAX_ACCOUNT_EMAILS_PER_REQUEST} user ids per request` });
+    return;
+  }
+  res.json(await sendWelcomeEmails(req.user!.sub, parsed.data.userIds, projectAdminScope(req)));
 }
