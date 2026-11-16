@@ -95,7 +95,11 @@ Trade-off to know: the account pause lets someone who knows an address keep that
 
 6. **Dedicated service account** `anlet-run` (Cloud SQL client + its five secrets only); `roles/editor` removed from the default Compute SA, which now only builds (`roles/cloudbuild.builds.builder`) — see `gcp_deployment.md`.
 
-Open: 12–14 and the seed guard from 15.
+12. **Mail server setting** (`lib/mailHost.ts`, production only): mail ports only (25, 465, 587, 2525) and never an internal, loopback, link-local or metadata address — typed or behind a name.
+14. **Mail errors** (`lib/mailErrors.ts`): people see a plain reason by error kind; the super admin's settings / test screens add the mail server's own one-line answer; the raw error is only logged.
+15. **Seed guard**: the full seed no longer resets an existing super admin's password; `npm run db:seed -- --reset-admin-password` does it on purpose. The `JWT_SECRET` check moved to server start, so the documented seed commands (dummy secret) keep working.
+
+Open: 13 (small-NatCo re-identification in the Executive view) — needs a product decision.
 
 ## Order
 

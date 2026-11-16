@@ -111,6 +111,7 @@ const BRAND_COLOR = '#e20074';
 // Thrown when sending is switched off (settings or MAIL_ENABLED) — the email is only logged.
 export class MailDisabledError extends Error {}
 
+
 export interface EmailContent {
   subject: string;
   heading: string;

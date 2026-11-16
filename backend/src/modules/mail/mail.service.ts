@@ -1,6 +1,9 @@
 import type { MailStatusDto, UpdateMailSettingsRequestDto } from '@anlet/shared';
 import { prisma } from '../../lib/prisma';
+import { env } from '../../config/env';
 import { createMailTransport, mailEncryptionKey, resolveMailConfig } from '../../lib/mailer';
+import { describeMailError } from '../../lib/mailErrors';
+import { assertPublicMailHost } from '../../lib/mailHost';
 import { encryptSecret } from '../../lib/secretBox';
 
 // Email delivery settings in the Management Console (ONBOARDING_SECURITY_PLAN.md Phase 2b).
@@ -42,12 +45,17 @@ export async function saveMailSettings(input: UpdateMailSettingsRequestDto, call
   const password = input.password || (sameLogin ? current.password : undefined);
   if (!password) throw new MailPasswordRequiredError();
 
+  // Only public mail servers on mail ports (lib/mailHost.ts). Production only: local
+  // development uses a mail catcher on localhost.
+  if (env.NODE_ENV === 'production') await assertPublicMailHost(input.host, input.port);
+
   if (input.enabled) {
     const transport = createMailTransport({ host: input.host, port: input.port, user: input.user, password });
     try {
       await transport.verify();
     } catch (err) {
-      throw new MailLoginFailedError(err instanceof Error ? err.message : String(err));
+      console.error('Mail settings check failed', err);
+      throw new MailLoginFailedError(describeMailError(err, { serverReply: true }));
     } finally {
       transport.close();
     }

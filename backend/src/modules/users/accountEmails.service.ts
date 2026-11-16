@@ -1,6 +1,7 @@
 import type { AccountEmailKind, AccountEmailResultDto } from '@anlet/shared';
 import { prisma } from '../../lib/prisma';
 import { MailDisabledError, sendPasswordResetEmail, sendWelcomeEmail } from '../../lib/mailer';
+import { describeMailError } from '../../lib/mailErrors';
 import type { ProjectAdminScope } from '../../lib/projectAccess';
 import { LINK_TTL_MS, issueAccountLink } from '../auth/auth.service';
 import {
@@ -50,9 +51,10 @@ async function assertMaySendAccountEmail(callerId: string, userId: string, scope
   return user;
 }
 
+// Admins and Project Admins get a plain reason; the full error is in the server log.
 function describeFailure(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
+  const reason = describeMailError(err);
+  return reason.charAt(0).toUpperCase() + reason.slice(1);
 }
 
 /** Sends one welcome or reset email. Permission problems throw; delivery problems are reported

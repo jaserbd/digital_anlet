@@ -1,6 +1,8 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { MailDisabledError, sendTestEmail } from '../../lib/mailer';
+import { describeMailError } from '../../lib/mailErrors';
+import { MailHostNotAllowedError } from '../../lib/mailHost';
 import { isCallerSuperAdmin } from '../users/users.service';
 import {
   MailLoginFailedError,
@@ -68,8 +70,12 @@ export async function updateMailSettingsHandler(req: Request, res: Response) {
       res.status(400).json({ error: 'Enter the password for this mail server and login' });
       return;
     }
+    if (err instanceof MailHostNotAllowedError) {
+      res.status(422).json({ error: `Not saved — ${err.message}` });
+      return;
+    }
     if (err instanceof MailLoginFailedError) {
-      res.status(422).json({ error: `Not saved — the mail server refused: ${err.message}` });
+      res.status(422).json({ error: `Not saved — ${err.message}` });
       return;
     }
     throw err;
@@ -82,8 +88,8 @@ export async function resetMailSettingsHandler(req: Request, res: Response) {
 }
 
 // Sends to the caller's own address only, so the endpoint can't be used to mail anyone else.
-// The SMTP error is returned verbatim (super admin only): it's what tells "wrong password"
-// apart from "SMTP AUTH disabled for this mailbox".
+// The super admin gets a plain reason plus the mail server's own one-line answer — what tells
+// "wrong password" apart from "SMTP AUTH disabled for this mailbox"; the raw error is logged.
 export async function sendTestEmailHandler(req: Request, res: Response) {
   if (!(await requireSuperAdmin(req, res, 'send a test email'))) return;
   try {
@@ -94,6 +100,8 @@ export async function sendTestEmailHandler(req: Request, res: Response) {
       res.status(409).json({ error: 'Email sending is switched off' });
       return;
     }
-    res.status(502).json({ error: `The mail server refused: ${err instanceof Error ? err.message : String(err)}` });
+    console.error('Test email failed', err);
+    const reason = describeMailError(err, { serverReply: true });
+    res.status(502).json({ error: `Not sent — ${reason}` });
   }
 }

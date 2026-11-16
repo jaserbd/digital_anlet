@@ -1,3 +1,4 @@
+import Typography from '@mui/material/Typography';
 import { CollapsibleBlock } from './CollapsibleBlock';
 import { useQuery } from '@tanstack/react-query';
 import { questionnaireApi } from '../api/questionnaireApi';
@@ -108,23 +109,25 @@ export function QuestionnaireExecutiveDetail({
   // Executives get anonymized data from the server (ANONYMOUS_EXECUTIVE_PLAN.md); Admins don't.
   const anonymized = summary.anonymized || !!drilldownQuery.data?.anonymized;
 
-  // Every block collapses from its heading (remembered per page + questionnaire), like the
+  // Every table block collapses from its heading (remembered per page + questionnaire), like the
   // Comment Collection below; collapsed content stays mounted.
   const blockId = (name: string) => `${questionnaireCode}:${name}`;
   const exportPrefix = `org-${organizationId}-${questionnaireCode}`;
 
   return (
     <>
-      <CollapsibleBlock heading title={`${questionnaire.name} — Cognitive Activity diagram`} id={blockId('diagram')}>
-        <AggregateCognitiveActivityRadar
-          organizationId={organizationId}
-          questionnaireCode={questionnaireCode}
-          projectId={projectId}
-          organizationSwitcher={organizationSwitcher}
-          filters={cognitiveFilters}
-          onFiltersChange={onCognitiveFiltersChange}
-        />
-      </CollapsibleBlock>
+      {/* The spider diagram always stays visible; every table below collapses. */}
+      <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+        {questionnaire.name} — Cognitive Activity diagram
+      </Typography>
+      <AggregateCognitiveActivityRadar
+        organizationId={organizationId}
+        questionnaireCode={questionnaireCode}
+        projectId={projectId}
+        organizationSwitcher={organizationSwitcher}
+        filters={cognitiveFilters}
+        onFiltersChange={onCognitiveFiltersChange}
+      />
 
       {summary.anonymized ? (
         <CollapsibleBlock heading title={`${questionnaire.name} — Participation`} id={blockId('participation')}>

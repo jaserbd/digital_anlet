@@ -221,8 +221,9 @@ Schema migrations apply automatically when the new revision starts.
 That full command (`--set-env-vars`) **replaces** every variable — it's for creating the service. For a code update
 use `scripts/redeploy.sh` (image only), which keeps the live settings, including the email ones below.
 
-**Seed (needed when questionnaires/xlsx files change, or on a fresh database)** — idempotent; resets the super admin's
-password to `anlet-admin-password`:
+**Seed (needed when questionnaires/xlsx files change, or on a fresh database)** — idempotent. An existing super admin
+keeps their own password; add `-- --reset-admin-password` to `npm run db:seed` to set it back to `anlet-admin-password`
+on purpose (lost password — this also signs their sessions out):
 
 ```bash
 # terminal 1 — needs `brew install cloud-sql-proxy`
@@ -239,7 +240,7 @@ npm run db:seed
 ```
 
 **Questionnaire text only** (e.g. rolling out `textCorrections.ts` changes) — same proxy, but no admin secret needed and
-accounts are untouched (no super-admin password reset); answers stay attached:
+accounts are untouched; answers stay attached:
 
 ```bash
 # terminal 2 — from backend/
