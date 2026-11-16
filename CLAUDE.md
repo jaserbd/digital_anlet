@@ -217,8 +217,11 @@ Supersedes the "same person in several organizations" parts of "Multi-organizati
 - **Headers**: `helmet` in `createApp()` with a same-origin CSP — anything new that loads scripts, fonts or images from another origin (or uses inline scripts) will be blocked; check a production build (`npm run build && npm start`), not the Vite dev server.
 - **`xlsx` is SheetJS 0.20.3 from cdn.sheetjs.com** (not the npm registry). Its ES module build has no `XLSX.readFile` — seed parsers use `prisma/seed/readWorkbook.ts`.
 - The backend build does not bundle `@anlet/shared` (types only) — runtime constants shared with the frontend need a backend copy (`lib/limits.ts` ↔ `shared/src/enums.ts`).
-- Container runs as `node`; production refuses a `JWT_SECRET` under 32 characters or containing "change-me".
-- Dashboards: each block of `QuestionnaireExecutiveDetail` is a `CollapsibleBlock heading`; combined-report Excel sheets are prefixed per questionnaire (`uniqueSheetName` guards duplicates).
+- Container runs as `node`; the production **server** refuses to start with a `JWT_SECRET` under 32 characters or containing "change-me" (`assertProductionSecrets` in `server.ts` — not in `env.ts`, which the seed loads with a dummy secret).
+- **Mail settings**: in production `saveMailSettings` accepts only public hosts on mail ports (`lib/mailHost.ts`'s `assertPublicMailHost`). Mail failures reach people through `lib/mailErrors.ts`'s `describeMailError` (plain reason; `serverReply` adds the server's first line for the super admin) — never `err.message`.
+- **Seed**: an existing super admin's password is left alone; `npm run db:seed -- --reset-admin-password` resets it to `ADMIN_PASSWORD`.
+- Runtime identity: Cloud Run runs as `anlet-run` (Cloud SQL client + per-secret access); a new secret needs its own binding (`gcp_deployment.md`).
+- Dashboards: each table block of `QuestionnaireExecutiveDetail` is a `CollapsibleBlock heading` (the spider diagram deliberately always stays visible); combined-report Excel sheets are prefixed per questionnaire (`uniqueSheetName` guards duplicates).
 
 ### Org hierarchy and profile completion (from `FIRST_REVIEW.md`)
 

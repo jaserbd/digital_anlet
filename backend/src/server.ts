@@ -1,5 +1,7 @@
-import { env } from './config/env';
+import { assertProductionSecrets, env } from './config/env';
 import { createApp } from './app';
+
+assertProductionSecrets();
 
 const app = createApp();
 

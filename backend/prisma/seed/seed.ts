@@ -39,6 +39,9 @@ const STARTER_DESIGNATIONS = [
   'CTO',
 ];
 
+// `--reset-admin-password`: the full seed also sets the super admin's password back to ADMIN_PASSWORD.
+const RESET_ADMIN_PASSWORD = process.argv.includes('--reset-admin-password');
+
 // The super admin belongs to Detecon (USERS_PER_ORGANIZATION_PLAN.md — "Anlet (Internal)" is
 // gone). An existing super admin keeps whatever organization they have; only a new one is placed.
 async function seedSuperAdmin() {
@@ -50,11 +53,17 @@ async function seedSuperAdmin() {
 
   const passwordHash = await hashPassword(env.ADMIN_PASSWORD);
   const email = normalizeEmail(env.ADMIN_EMAIL);
+  // An existing super admin keeps their own password: a routine re-seed must not put the
+  // bootstrap ADMIN_PASSWORD back (ONBOARDING_SECURITY_PLAN.md Phase 6). `--reset-admin-password`
+  // does it on purpose (lost password), and signs their sessions out.
+  const resetPassword = RESET_ADMIN_PASSWORD
+    ? { passwordHash, passwordChangedAt: new Date(), failedLoginCount: 0, lockedUntil: null }
+    : {};
   await prisma.user.upsert({
     where: { email },
     // The bootstrap admin is the super admin (ADMIN_MANAGEMENT_PLAN.md) — in production
     // ADMIN_EMAIL is jaserbin.rahman@detecon.com.
-    update: { passwordHash, role: 'ADMIN', isSuperAdmin: true },
+    update: { ...resetPassword, role: 'ADMIN', isSuperAdmin: true },
     create: {
       email,
       passwordHash,
@@ -64,7 +73,10 @@ async function seedSuperAdmin() {
     },
   });
 
-  console.log(`Seeded super admin "${email}" (${CONSULTANCY_ORGANIZATION_NAME})`);
+  console.log(
+    `Seeded super admin "${email}" (${CONSULTANCY_ORGANIZATION_NAME})` +
+      (RESET_ADMIN_PASSWORD ? ' — password reset to ADMIN_PASSWORD' : ' — an existing password is unchanged'),
+  );
 }
 
 async function seedQuestionnaire(source: ParsedQuestionnaire) {
@@ -286,8 +298,7 @@ async function seedReferenceLists() {
 }
 
 // `--questionnaires-only` (npm run db:seed:questionnaires) reloads just the questionnaire text and
-// structure — e.g. to roll out text corrections to production — without touching accounts: the
-// full seed resets the super admin's password to ADMIN_PASSWORD (SPELLING_PLAN.md).
+// structure — e.g. to roll out text corrections to production — without touching accounts.
 const QUESTIONNAIRES_ONLY = process.argv.includes('--questionnaires-only');
 
 async function main() {

@@ -67,10 +67,18 @@ describe('mail settings (real DB)', () => {
   });
 
   it('saves nothing when the mail server refuses the login', async () => {
-    verify.mockRejectedValueOnce(new Error('535-5.7.8 Username and Password not accepted'));
-    await expect(saveMailSettings({ ...settings, password: 'wrong' }, 'super@example.com')).rejects.toBeInstanceOf(
-      MailLoginFailedError,
+    verify.mockRejectedValueOnce(
+      Object.assign(new Error('Invalid login: 535-5.7.8 Username and Password not accepted'), {
+        code: 'EAUTH',
+        response: '535-5.7.8 Username and Password not accepted\n535 5.7.8 more',
+      }),
     );
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const refusal = await saveMailSettings({ ...settings, password: 'wrong' }, 'super@example.com').catch((e) => e);
+    consoleError.mockRestore();
+    expect(refusal).toBeInstanceOf(MailLoginFailedError);
+    // The super admin sees the reason plus the server's own first line.
+    expect(refusal.message).toMatch(/did not accept the login.*server answer: 535-5\.7\.8 Username and Password not accepted$/);
     expect(await prisma.mailSettings.count()).toBe(0);
   });
 

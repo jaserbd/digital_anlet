@@ -134,9 +134,14 @@ describe('welcome emails (real DB)', () => {
     sendWelcomeEmail.mockRejectedValueOnce(new MailDisabledError());
     expect((await sendAccountEmail(adminId, memberAId, 'welcome')).outcome).toBe('disabled');
 
-    sendWelcomeEmail.mockRejectedValueOnce(new Error('550 mailbox unavailable'));
+    // A plain reason, never the raw error (it can name hosts and internals) — that is only logged.
+    sendWelcomeEmail.mockRejectedValueOnce(
+      Object.assign(new Error('connect ECONNREFUSED 10.1.2.3:587'), { code: 'ESOCKET', response: '421 internal-relay.corp busy' }),
+    );
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(await sendAccountEmail(adminId, memberAId, 'welcome')).toMatchObject({ outcome: 'failed', error: '550 mailbox unavailable' });
+    expect(await sendAccountEmail(adminId, memberAId, 'welcome')).toEqual(
+      expect.objectContaining({ outcome: 'failed', error: 'The connection to the mail server failed' }),
+    );
     consoleError.mockRestore();
   });
 

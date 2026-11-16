@@ -49,11 +49,12 @@ const envSchema = z.object({
   APP_BASE_URL: z.string().url(),
 });
 
-const parsed = envSchema.parse(process.env);
+export const env = envSchema.parse(process.env);
 
-// A production server must never sign sessions with a short or placeholder secret.
-if (parsed.NODE_ENV === 'production' && (parsed.JWT_SECRET.length < 32 || /change-me/i.test(parsed.JWT_SECRET))) {
-  throw new Error('JWT_SECRET must be at least 32 characters and not a placeholder in production');
+/** A production server must never sign sessions with a short or placeholder secret. Called at
+ * server start only — the seed scripts load this file with a dummy JWT_SECRET they never use. */
+export function assertProductionSecrets(): void {
+  if (env.NODE_ENV === 'production' && (env.JWT_SECRET.length < 32 || /change-me/i.test(env.JWT_SECRET))) {
+    throw new Error('JWT_SECRET must be at least 32 characters and not a placeholder in production');
+  }
 }
-
-export const env = parsed;
