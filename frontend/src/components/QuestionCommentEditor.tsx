@@ -43,25 +43,31 @@ export function QuestionCommentEditor({
 }: QuestionCommentEditorProps) {
   const [local, setLocal] = useState<CommentState>(comment);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The latest unsaved state; flushed rather than dropped when the editor goes away mid-debounce
+  // (Next clicked right after typing, or a Review-step card collapsed — like KeiCard).
+  const pendingRef = useRef<CommentState | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   // Tracks whether the user has ever touched a tag checkbox for this question's comment, so
   // the empty->non-empty pre-suggestion (below) only ever fires once and never overwrites a
   // deliberate later choice (e.g. unchecking a pre-suggested tag).
   const tagsTouchedRef = useRef(comment.subScenarioIds.length > 0 || comment.appliesToNone);
 
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, []);
+  function flush() {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = null;
+    const next = pendingRef.current;
+    pendingRef.current = null;
+    if (next && next.commentText.trim().length > 0) onChangeRef.current(next);
+  }
+
+  useEffect(() => flush, []);
 
   function scheduleSave(next: CommentState) {
     setLocal(next);
+    pendingRef.current = next;
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      if (next.commentText.trim().length > 0) {
-        onChange(next);
-      }
-    }, SAVE_DEBOUNCE_MS);
+    debounceRef.current = setTimeout(flush, SAVE_DEBOUNCE_MS);
   }
 
   function handleTextChange(commentText: string) {

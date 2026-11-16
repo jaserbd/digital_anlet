@@ -23,7 +23,8 @@ import { PageShell } from '../components/PageShell';
 import { ResetAnswersButton } from '../components/ResetAnswersButton';
 import { useAuth } from '../context/AuthContext';
 import { formatQuestionLabel } from '../lib/cognitiveActivity';
-import { isKeiCovered } from '../lib/kei';
+import { emptyKeiAnswer, isKeiCovered } from '../lib/kei';
+import { KeiCard } from '../components/KeiCard';
 
 function answerKey(questionId: string, subScenarioId: string) {
   return `${questionId}:${subScenarioId}`;
@@ -277,12 +278,48 @@ export function QuestionnairePage() {
     }
   }
 
-  const answersForCurrentQuestion = new Map<string, AnswerOption>();
-  if (currentQuestion) {
+  function answersForQuestion(questionId: string): Map<string, AnswerOption> {
+    const map = new Map<string, AnswerOption>();
     for (const s of questionnaire.subScenarios) {
-      const v = answers.get(answerKey(currentQuestion.id, s.id));
-      if (v) answersForCurrentQuestion.set(s.id, v);
+      const v = answers.get(answerKey(questionId, s.id));
+      if (v) map.set(s.id, v);
     }
+    return map;
+  }
+
+  // The answering card for one question — the step view and the Review step's inline editing
+  // share it, so both use the same state and saves.
+  function renderQuestionCard(questionId: string) {
+    const index = questionnaire.questions.findIndex((q) => q.id === questionId);
+    const question = questionnaire.questions[index];
+    if (!question) return null;
+    return (
+      <QuestionCard
+        key={question.id}
+        question={question}
+        ordinal={index + 1}
+        subScenarios={questionnaire.subScenarios}
+        answers={answersForQuestion(question.id)}
+        comment={comments.get(question.id) ?? EMPTY_COMMENT}
+        onSelect={(subScenarioId, option) => handleSelect(question.id, subScenarioId, option)}
+        onCommentChange={(comment) => handleCommentChange(question.id, comment)}
+      />
+    );
+  }
+
+  function renderKeiCard(indicatorId: string) {
+    const index = indicators.findIndex((k) => k.id === indicatorId);
+    const indicator = indicators[index];
+    if (!indicator) return null;
+    return (
+      <KeiCard
+        key={indicator.id}
+        indicator={indicator}
+        ordinal={index + 1}
+        answer={keis.get(indicator.id) ?? emptyKeiAnswer(indicator.id)}
+        onChange={handleKeiChange}
+      />
+    );
   }
 
   function handleKeiChange(kei: KeiAnswerDto) {
@@ -377,18 +414,7 @@ export function QuestionnairePage() {
         <KeiStep indicators={indicators} note={questionnaire.keiNote} answers={keis} onChange={handleKeiChange} />
       )}
 
-      {!isReviewStep && currentQuestion && (
-        <QuestionCard
-          key={currentQuestion.id}
-          question={currentQuestion}
-          ordinal={stepIndex + 1}
-          subScenarios={questionnaire.subScenarios}
-          answers={answersForCurrentQuestion}
-          comment={comments.get(currentQuestion.id) ?? EMPTY_COMMENT}
-          onSelect={(subScenarioId, option) => handleSelect(currentQuestion.id, subScenarioId, option)}
-          onCommentChange={(comment) => handleCommentChange(currentQuestion.id, comment)}
-        />
-      )}
+      {!isReviewStep && currentQuestion && renderQuestionCard(currentQuestion.id)}
 
       {isReviewStep && (
         <ReviewStep
@@ -404,6 +430,9 @@ export function QuestionnairePage() {
             return comment ? [{ indicatorId: k.id, name: k.name, comment }] : [];
           })}
           onJumpToKeis={() => keiStepIndex != null && setStepIndex(keiStepIndex)}
+          renderQuestion={renderQuestionCard}
+          renderKei={renderKeiCard}
+          indicatorNames={new Map(indicators.map((k) => [k.id, k.name]))}
         />
       )}
 

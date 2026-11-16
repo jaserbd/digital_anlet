@@ -49,13 +49,16 @@ Built as below, with one deliberate change: sending a welcome/reset email **neve
 - Users table actions (same permission rules as temporary passwords, `assertProjectAdminMay*`): **Resend welcome email** (new invite token), **Send password reset email**.
 - Production: `SMTP_HOST=smtp.office365.com`, `SMTP_PORT=587`, `SMTP_USER=SMTP_FROM=jaserbin.rahman@detecon.com`; the user adds the password as a new version of the `anlet-smtp-password` secret themselves (never pasted into chat). Update `gcp_deployment.md`.
 
-## Phase 4 — Inline answering on the Review step
+## Phase 4 — Inline answering on the Review step ✅ (branch `feature/inline-review`)
 
 - Clicking a gap in `ReviewStep` expands that question **in place** (the same `QuestionCard` with answers + comment editor), not a stepper jump. Several can be open; each has a "Collapse" button.
 - Expanded state is kept by question id in `ReviewStep`, independent of the gap list — so the card does not vanish mid-typing when the question becomes covered; it shows a green "Covered ✓" badge instead.
 - The gap list, counts and the Submit button below update live (the same `answers`/`comments` state and mutations as the stepper — `QuestionnairePage` passes `handleSelect`/`handleCommentChange` down; no second save path, preserving the `QuestionCommentEditor` single-save fix).
 - Same for KEIs: uncovered KEIs expand their `KeiCard` inline.
 - "Go to question" stays available as a secondary link for anyone who prefers the full step.
+- Built as planned ("Answer here" / "Close", "Open as step"; more than 3 missing sub-scenarios show as one count chip with names on hover). `QuestionnairePage`'s `renderQuestionCard`/`renderKeiCard` are shared by the steps and the Review step.
+- Found while testing: closing a card (or clicking Next) within the 500 ms comment debounce dropped the comment. `QuestionCommentEditor` now flushes a pending save on unmount, like `KeiCard`.
+- Verified in Chrome (IP FM, 8 sub-scenarios + 3 KEIs): answered and commented inline, counts and Submit updated live, a comment typed right before Close was saved, submitted from the Review page.
 
 ## Phase 5 — Visual polish (keep brand)
 

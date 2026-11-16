@@ -199,6 +199,11 @@ Supersedes the "same person in several organizations" parts of "Multi-organizati
 - Routes: `POST /users/:id/account-email {kind: 'welcome'|'reset'}` (users table "User ▾" menu), `POST /users/welcome-emails {userIds ≤ 10}`, `GET /mail/enabled` (Admins + Project Admins, for the checkbox default). `POST /users` takes `sendWelcomeEmail` (password then optional; only a newly created account is emailed → `CreateUserResultDto.welcomeEmail`).
 - Imports: rows of new accounts carry `userId`; `ImportResults` (with `sendWelcomeEmails`) sends their welcome emails in batches of 10 with a progress bar and "Retry failed", and lists temporary passwords only for people whose email wasn't sent. `WelcomeEmailCheckbox` + `useWelcomeEmailChoice` (default = sending on) in Create user and both imports.
 
+### Inline answering on the Review step (`ONBOARDING_SECURITY_PLAN.md` Phase 4)
+
+- `ReviewStep` lists each question with uncovered gaps (and each uncovered KEI) as an item that expands **in place** into the same `QuestionCard` / `KeiCard` as the steps ("Answer here"), via `QuestionnairePage`'s `renderQuestionCard`/`renderKeiCard` — same state and saves, no second save path. Open items are tracked by id, so a just-fixed card stays open with "Covered ✓" instead of vanishing mid-typing; Submit unlocks live. "Open as step" keeps the old jump.
+- `QuestionCommentEditor` flushes a pending debounced save on unmount (like `KeiCard`) — closing a card or clicking Next right after typing used to drop the comment.
+
 ### Org hierarchy and profile completion (from `FIRST_REVIEW.md`)
 
 Real-world usage feedback after the MVP demo described large CSP groups with multiple NatCos/OpCos per Organization, and users self-identifying their Country/Company/Working Domain/Designation before answering. Decisions locked in for this:
