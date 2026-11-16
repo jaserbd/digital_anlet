@@ -49,7 +49,7 @@ Built as below, with one deliberate change: sending a welcome/reset email **neve
 - Users table actions (same permission rules as temporary passwords, `assertProjectAdminMay*`): **Resend welcome email** (new invite token), **Send password reset email**.
 - Production: `SMTP_HOST=smtp.office365.com`, `SMTP_PORT=587`, `SMTP_USER=SMTP_FROM=jaserbin.rahman@detecon.com`; the user adds the password as a new version of the `anlet-smtp-password` secret themselves (never pasted into chat). Update `gcp_deployment.md`.
 
-## Phase 4 — Inline answering on the Review step ✅ (branch `feature/inline-review`)
+## Phase 4 — Inline answering on the Review step ✅ live in production (revision anlet-00025-mw9, 2026-11-16)
 
 - Clicking a gap in `ReviewStep` expands that question **in place** (the same `QuestionCard` with answers + comment editor), not a stepper jump. Several can be open; each has a "Collapse" button.
 - Expanded state is kept by question id in `ReviewStep`, independent of the gap list — so the card does not vanish mid-typing when the question becomes covered; it shows a green "Covered ✓" badge instead.
