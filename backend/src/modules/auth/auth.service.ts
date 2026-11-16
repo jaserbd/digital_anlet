@@ -3,7 +3,7 @@ import { prisma } from '../../lib/prisma';
 import { hashPassword, verifyPassword } from '../../lib/password';
 import { signToken, type JwtPayload } from '../../lib/jwt';
 import { generateResetToken, hashResetToken } from '../../lib/token';
-import { sendPasswordResetEmail } from '../../lib/mailer';
+import { MailDisabledError, sendPasswordResetEmail } from '../../lib/mailer';
 import { env } from '../../config/env';
 import { normalizeEmail } from '../../lib/email';
 import { UserNotFoundError } from '../users/users.service';
@@ -120,7 +120,13 @@ export async function requestPasswordReset(email: string): Promise<void> {
   });
 
   const resetUrl = `${env.APP_BASE_URL}/reset-password?token=${token}`;
-  await sendPasswordResetEmail(user.email, resetUrl);
+  // A mail outage must not change the response either (a 500 only for registered addresses
+  // would reveal them) — log it; admins can still hand out a temporary password.
+  try {
+    await sendPasswordResetEmail(user.email, resetUrl);
+  } catch (err) {
+    if (!(err instanceof MailDisabledError)) console.error('Password reset email failed', err);
+  }
 }
 
 // Forgot-password flow, step 2 — redeems a single-use token (rejecting an unknown, expired,

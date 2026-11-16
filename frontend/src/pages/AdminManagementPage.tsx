@@ -28,6 +28,7 @@ import { ReferenceListSelect } from '../components/ReferenceListSelect';
 import { ManageReferenceListSection } from '../components/ManageReferenceListSection';
 import { CollapsibleTable } from '../components/CollapsibleTable';
 import { ProjectsSection } from '../components/ProjectsSection';
+import { EmailDeliverySection } from '../components/EmailDeliverySection';
 import { useAuth } from '../context/AuthContext';
 import { ROLE_LABELS, assignableRoles } from '../lib/roles';
 import { useManageableOrganizations } from '../lib/manageableOrganizations';
@@ -55,6 +56,7 @@ export function AdminManagementPage() {
       <QuestionnaireSettingsSection />
       <CreateUserForm />
       <ManageUsersSection />
+      <EmailDeliverySection />
     </PageShell>
   );
 }

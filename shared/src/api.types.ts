@@ -406,6 +406,17 @@ export interface TemporaryPasswordDto {
   temporaryPassword: string;
 }
 
+// Email delivery settings (no password), shown in the Management Console
+// (ONBOARDING_SECURITY_PLAN.md Phase 2).
+export interface MailStatusDto {
+  enabled: boolean;
+  host: string;
+  port: number;
+  user: string;
+  from: string;
+  fromName: string;
+}
+
 export type RespondentStatus = 'NOT_STARTED' | ResponseStatus;
 
 // MANAGEMENT_VIEW.md item 2b: NatCo/country/workingDomain/designation added so the

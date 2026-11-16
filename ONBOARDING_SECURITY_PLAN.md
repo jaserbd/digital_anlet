@@ -26,7 +26,7 @@ Source: `admin_management.md` lines 46–50. Decisions taken with the user (2026
 - Migration: `UPDATE "User" SET email = lower(trim(email))`, **aborting** if two accounts collide case-insensitively (then merged by hand — check production first via Cloud SQL proxy), plus a unique index on `lower(email)` as a safety net.
 - Tests: login with `Jaserbin.Rahman@Detecon.com`, create duplicate differing only in case → membership-added / EmailTaken, import matching.
 
-## Phase 2 — Mail infrastructure
+## Phase 2 — Mail infrastructure ✅ (branch `feature/mail-infrastructure`)
 
 - `lib/mailer.ts`: keep nodemailer SMTP; add `SMTP_SECURE`/STARTTLS handling, `MAIL_ENABLED` flag (false in dev/CI → log the link to console instead of sending), a shared branded HTML template (logo, magenta button, plain-text alternative), HTML-escaping of every interpolated value.
 - `POST /api/admin/mail/test` (super admin only) + "Send test email" button in the Management Console → verifies the SMTP config from production without creating a user.

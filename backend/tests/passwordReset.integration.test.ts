@@ -5,7 +5,10 @@ import { prisma } from '../src/lib/prisma';
 // sendPasswordResetEmail before auth.service.ts (which imports it) is loaded, so no real SMTP
 // connection is attempted from the test suite.
 const sendPasswordResetEmail = vi.fn().mockResolvedValue(undefined);
-vi.mock('../src/lib/mailer', () => ({ sendPasswordResetEmail: (...args: unknown[]) => sendPasswordResetEmail(...args) }));
+vi.mock('../src/lib/mailer', () => ({
+  MailDisabledError: class MailDisabledError extends Error {},
+  sendPasswordResetEmail: (...args: unknown[]) => sendPasswordResetEmail(...args),
+}));
 
 const { InvalidResetTokenError, requestPasswordReset, resetPassword } = await import('../src/modules/auth/auth.service');
 const { verifyPassword } = await import('../src/lib/password');
@@ -71,6 +74,17 @@ describe('requestPasswordReset (real DB)', () => {
 
     expect(sendPasswordResetEmail).toHaveBeenCalledTimes(1);
     expect(sendPasswordResetEmail.mock.calls[0]![0]).toBe(user.email);
+  });
+
+  it('still resolves when the mail server fails (no error only for registered addresses)', async () => {
+    const user = await createUser('mail-failure');
+    sendPasswordResetEmail.mockRejectedValueOnce(new Error('535 5.7.139 Authentication unsuccessful'));
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(requestPasswordReset(user.email)).resolves.toBeUndefined();
+
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    consoleError.mockRestore();
   });
 
   it('resolves without emailing for a non-existent email (no user-enumeration signal)', async () => {

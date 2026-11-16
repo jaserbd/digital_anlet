@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authRouter } from '../modules/auth/auth.routes';
+import { mailRouter } from '../modules/mail/mail.routes';
 import { opCosRouter } from '../modules/opcos/opcos.routes';
 import { organizationsRouter } from '../modules/organizations/organizations.routes';
 import { projectMembersRouter } from '../modules/projects/projectMembers.routes';
@@ -20,3 +21,4 @@ apiRouter.use('/users', usersRouter);
 apiRouter.use('/questionnaires', questionnaireRouter);
 apiRouter.use('/responses', responsesRouter);
 apiRouter.use('/reference-lists', referenceListsRouter);
+apiRouter.use('/mail', mailRouter);

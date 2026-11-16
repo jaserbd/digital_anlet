@@ -171,6 +171,8 @@ policy).
 | `ADMIN_EMAIL` | plain | `jaserbin.rahman@detecon.com` — the bootstrap account the seed creates and flags as **super admin** |
 | `APP_BASE_URL` | plain | `https://anlet-602185048647.europe-west3.run.app` — used to build links (password-reset emails) |
 | `SMTP_HOST` / `PORT` / `USER` / `FROM` | plain | `smtp.placeholder.invalid` / `587` / `placeholder` / `no-reply@placeholder.invalid` — ⚠️ placeholders |
+| `SMTP_FROM_NAME` | plain (optional) | Sender display name, default `ANLET` |
+| `MAIL_ENABLED` | plain (optional) | Only `true` actually sends; unset/`false` = emails are only logged (no links in production logs). Currently unset |
 | `DATABASE_URL` | Secret Manager | see `anlet-database-url` |
 | `JWT_SECRET` | Secret Manager | Signs the httpOnly auth cookie |
 | `ADMIN_PASSWORD` | Secret Manager | Super admin password used by the seed |
@@ -214,6 +216,9 @@ gcloud run deploy anlet --project anlet-504115 --region europe-west3 \
 
 Schema migrations apply automatically when the new revision starts.
 
+That full command (`--set-env-vars`) **replaces** every variable — it's for creating the service. For a code update
+use `scripts/redeploy.sh` (image only), which keeps the live settings, including the email ones below.
+
 **Seed (needed when questionnaires/xlsx files change, or on a fresh database)** — idempotent; resets the super admin's
 password to `anlet-admin-password`:
 
@@ -243,6 +248,25 @@ SMTP_HOST=smtp.placeholder.invalid SMTP_PORT=587 SMTP_USER=placeholder SMTP_PASS
 SMTP_FROM=no-reply@placeholder.invalid APP_BASE_URL=https://anlet-602185048647.europe-west3.run.app \
 npm run db:seed:questionnaires
 ```
+
+**Switch on email** (`ONBOARDING_SECURITY_PLAN.md` Phase 2) — e.g. the interim Microsoft 365 mailbox. 1. Store the
+mailbox password yourself (prompted, never echoed or kept in shell history):
+
+```bash
+read -s "SMTP_PW?Mailbox password: " && printf %s "$SMTP_PW" | \
+  gcloud secrets versions add anlet-smtp-password --project anlet-504115 --data-file=- && unset SMTP_PW
+```
+
+2. Point the service at it (`--update-env-vars` keeps every other variable):
+
+```bash
+gcloud run services update anlet --project anlet-504115 --region europe-west3 \
+  --update-env-vars MAIL_ENABLED=true,SMTP_HOST=smtp.office365.com,SMTP_PORT=587,SMTP_USER=jaserbin.rahman@detecon.com,SMTP_FROM=jaserbin.rahman@detecon.com
+```
+
+3. Management Console → **Email delivery** → "Send test email to me" (super admin). The mail server's own error is
+shown on failure — `535 5.7.139` means SMTP AUTH is disabled for the mailbox/tenant (ask IT, or switch to another
+provider by changing the same variables). Switch off again with `--update-env-vars MAIL_ENABLED=false`.
 
 **Add a secret version** (e.g. rotate the JWT key, or set real SMTP credentials later), then redeploy so Cloud Run
 picks it up:
@@ -277,8 +301,8 @@ gcloud sql instances clone anlet-db anlet-db-restore --project anlet-504115 --po
   with only `cloudsql.client` + `secretmanager.secretAccessor` would be tighter.
 - **CI/CD** — deploys are manual (`gcloud builds submit` + `gcloud run deploy`); GitHub Actions only runs
   lint/typecheck/test.
-- **SMTP** — placeholder values; password-reset emails have nowhere to go until a provider is configured
-  (`ADMIN_MANAGEMENT_PLAN.md` Phase 3).
+- **SMTP** — placeholder values and `MAIL_ENABLED` unset, so emails are only logged until a mailbox is configured
+  (see "Switch on email" above).
 - **Domain** — no custom domain; only the `*.run.app` URL.
 - **Observability** — no alert policies or log sinks beyond the defaults.
 
