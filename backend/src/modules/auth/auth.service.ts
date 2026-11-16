@@ -1,4 +1,5 @@
 import type { AuthenticatedUserDto } from '@anlet/shared';
+import type { TokenPurpose } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { hashPassword, verifyPassword } from '../../lib/password';
 import { signToken, type JwtPayload } from '../../lib/jwt';
@@ -15,7 +16,29 @@ export class InvalidResetTokenError extends Error {}
 // non-admin.
 export class InvalidContextError extends Error {}
 
-const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+// How long each kind of emailed link works (ONBOARDING_SECURITY_PLAN.md Phase 3).
+const HOUR_MS = 60 * 60 * 1000;
+export const LINK_TTL_MS = {
+  // Self-service "Forgot password".
+  RESET: HOUR_MS,
+  // Sent by an admin from the users table — the person may not read it within the hour.
+  ADMIN_RESET: 24 * HOUR_MS,
+  // Welcome email for a new account.
+  INVITE: 7 * 24 * HOUR_MS,
+} as const;
+
+/** Issues a single-use emailed link (only its hash is stored) and returns its URL. An older
+ * unused link of the same kind stops working, so only the latest email counts. */
+export async function issueAccountLink(userId: string, purpose: TokenPurpose, ttlMs: number): Promise<string> {
+  const token = generateResetToken();
+  await prisma.$transaction([
+    prisma.passwordResetToken.deleteMany({ where: { userId, purpose, usedAt: null } }),
+    prisma.passwordResetToken.create({
+      data: { userId, purpose, tokenHash: hashResetToken(token), expiresAt: new Date(Date.now() + ttlMs) },
+    }),
+  ]);
+  return `${env.APP_BASE_URL}/reset-password?token=${token}${purpose === 'INVITE' ? '&welcome=1' : ''}`;
+}
 
 export async function login(email: string, password: string): Promise<string> {
   const user = await prisma.user.findUnique({ where: { email: normalizeEmail(email) } });
@@ -110,20 +133,11 @@ export async function requestPasswordReset(email: string): Promise<void> {
     return;
   }
 
-  const token = generateResetToken();
-  await prisma.passwordResetToken.create({
-    data: {
-      userId: user.id,
-      tokenHash: hashResetToken(token),
-      expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
-    },
-  });
-
-  const resetUrl = `${env.APP_BASE_URL}/reset-password?token=${token}`;
+  const resetUrl = await issueAccountLink(user.id, 'RESET', LINK_TTL_MS.RESET);
   // A mail outage must not change the response either (a 500 only for registered addresses
   // would reveal them) — log it; admins can still hand out a temporary password.
   try {
-    await sendPasswordResetEmail(user.email, resetUrl);
+    await sendPasswordResetEmail(user.email, resetUrl, 'the next hour');
   } catch (err) {
     if (!(err instanceof MailDisabledError)) console.error('Password reset email failed', err);
   }
@@ -132,7 +146,9 @@ export async function requestPasswordReset(email: string): Promise<void> {
 // Forgot-password flow, step 2 — redeems a single-use token (rejecting an unknown, expired,
 // or already-used one) and sets the new password. A successful reset also clears
 // mustChangePassword: it supersedes the one-time-admin-password flow (OVERVIEW.md item 4).
-export async function resetPassword(token: string, newPassword: string): Promise<void> {
+// Welcome links (INVITE) are redeemed the same way. Either proves the address reaches the person
+// (emailVerifiedAt), and every other outstanding link of theirs stops working.
+export async function resetPassword(token: string, newPassword: string): Promise<{ email: string }> {
   const tokenHash = hashResetToken(token);
   const record = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
   if (!record || record.usedAt || record.expiresAt < new Date()) {
@@ -140,14 +156,18 @@ export async function resetPassword(token: string, newPassword: string): Promise
   }
 
   const passwordHash = await hashPassword(newPassword);
-  await prisma.$transaction([
+  const now = new Date();
+  const [user] = await prisma.$transaction([
     prisma.user.update({
       where: { id: record.userId },
-      data: { passwordHash, mustChangePassword: false },
+      data: { passwordHash, mustChangePassword: false, emailVerifiedAt: now },
+      select: { email: true },
     }),
     prisma.passwordResetToken.update({
       where: { id: record.id },
-      data: { usedAt: new Date() },
+      data: { usedAt: now },
     }),
+    prisma.passwordResetToken.deleteMany({ where: { userId: record.userId, usedAt: null, id: { not: record.id } } }),
   ]);
+  return { email: user.email };
 }

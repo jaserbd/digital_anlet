@@ -186,6 +186,7 @@ const USER_SELECT = {
   firstName: true,
   lastName: true,
   isSuperAdmin: true,
+  emailVerifiedAt: true,
   memberships: {
     select: {
       id: true,
@@ -220,6 +221,7 @@ function toUserDto(user: UserRow): UserDto {
     firstName: user.firstName,
     lastName: user.lastName,
     isSuperAdmin: user.isSuperAdmin,
+    emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
     memberships: user.memberships.map((m): MembershipDto => ({
       id: m.id,
       organizationId: m.organizationId,

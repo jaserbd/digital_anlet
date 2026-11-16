@@ -14,11 +14,13 @@ import { SupportContact } from '../components/SupportContact';
 
 // Forgot-password, step 2 (OVERVIEW.md item 12) — reached via the link emailed from
 // ForgotPasswordPage, token carried as a URL query param. Public page (no auth) since the
-// token itself, not a session, is what authorizes the change.
+// token itself, not a session, is what authorizes the change. Welcome emails for new accounts
+// (ONBOARDING_SECURITY_PLAN.md Phase 3) link here too, with `welcome=1` for their wording.
 export function ResetPasswordPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') ?? '';
+  const isWelcome = searchParams.get('welcome') === '1';
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -26,7 +28,7 @@ export function ResetPasswordPage() {
 
   const resetPassword = useMutation({
     mutationFn: () => authApi.resetPassword({ token, newPassword }),
-    onSuccess: () => navigate('/login', { replace: true }),
+    onSuccess: ({ email }) => navigate('/login', { replace: true, state: { passwordSetFor: email } }),
     onError: (err) => {
       setError(err instanceof ApiError ? err.message : 'Failed to reset password');
     },
@@ -55,17 +57,19 @@ export function ResetPasswordPage() {
     >
       <Paper elevation={2} sx={{ p: 4, width: '100%', maxWidth: 420 }}>
         <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
-          Set a new password
+          {isWelcome ? 'Welcome to ANLET' : 'Set a new password'}
         </Typography>
         {!token ? (
           <Alert severity="error" sx={{ mt: 2 }}>
-            This reset link is missing its token. Please use the link from your email, or
-            request a new one.
+            This link is missing its token. Please use the link from your email, or request a new
+            one.
           </Alert>
         ) : (
           <>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Choose a new password for your account.
+              {isWelcome
+                ? 'Choose a password for your new account. You will then sign in with your email address and this password.'
+                : 'Choose a new password for your account.'}
             </Typography>
             <Box component="form" onSubmit={handleSubmit}>
               <Stack spacing={2}>

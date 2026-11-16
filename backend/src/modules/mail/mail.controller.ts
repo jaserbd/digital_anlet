@@ -42,6 +42,10 @@ async function requireSuperAdmin(req: Request, res: Response, action: string): P
   return false;
 }
 
+export async function mailEnabledHandler(_req: Request, res: Response) {
+  res.json({ enabled: (await getMailStatus()).enabled });
+}
+
 export async function mailStatusHandler(_req: Request, res: Response) {
   res.json(await getMailStatus());
 }

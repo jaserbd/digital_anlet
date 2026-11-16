@@ -86,8 +86,8 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projects                 ProjectOrganization[]
-  projectSettings          QuestionnaireProjectSetting[]
+  projects        ProjectOrganization[]
+  projectSettings QuestionnaireProjectSetting[]
 
   users                    User[]
   memberships              Membership[]
@@ -165,6 +165,10 @@ model User {
   // the bootstrap ADMIN_EMAIL account — never through the API.
   isSuperAdmin Boolean @default(false)
 
+  // Set when the person redeems an emailed welcome or password reset link — proof the address
+  // reaches them (ONBOARDING_SECURITY_PLAN.md Phase 3). Null = never confirmed.
+  emailVerifiedAt DateTime?
+
   // Home organization: the internal org for admins, the first membership's org for everyone
   // else. Organization/role/profile for answering and viewing live on Membership
   // (MULTI_ORG_PLAN.md) — `role` here is only the *global* role: ADMIN, or NORMAL_USER for
@@ -215,12 +219,20 @@ model Membership {
 // Forgot-password flow (OVERVIEW.md item 12) — a single-use, expiring token emailed as a
 // reset link. Only the token's hash is stored (mirrors why User.passwordHash is hashed, not
 // plaintext) so a DB leak alone can't be used to redeem outstanding reset links.
+// Both kinds of emailed link (ONBOARDING_SECURITY_PLAN.md Phase 3): RESET (forgot password /
+// admin-sent reset) and INVITE (welcome email for a new account, longer-lived).
+enum TokenPurpose {
+  RESET
+  INVITE
+}
+
 model PasswordResetToken {
-  id        String    @id @default(cuid())
-  tokenHash String    @unique
+  id        String       @id @default(cuid())
+  tokenHash String       @unique
+  purpose   TokenPurpose @default(RESET)
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime  @default(now())
+  createdAt DateTime     @default(now())
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

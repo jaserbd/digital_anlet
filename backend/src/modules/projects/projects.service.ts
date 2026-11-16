@@ -456,7 +456,7 @@ async function importProjectAdmin(
   email: string,
   consultancyId: string | undefined,
   callerId: string,
-): Promise<Pick<ProjectImportResultRowDto, 'status' | 'tempPassword' | 'error'>> {
+): Promise<Pick<ProjectImportResultRowDto, 'status' | 'tempPassword' | 'userId' | 'error'>> {
   let user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
   let tempPassword: string | undefined;
   if (!user) {
@@ -482,8 +482,8 @@ async function importProjectAdmin(
           : err instanceof ProjectHasNoOrganizationsError
             ? 'The project has no organization yet'
             : 'Failed to add the Project Admin';
-    return { status: 'error', error, tempPassword };
+    return { status: 'error', error, ...(tempPassword ? { tempPassword, userId: user.id } : {}) };
   }
-  if (tempPassword) return { status: 'created', tempPassword };
+  if (tempPassword) return { status: 'created', tempPassword, userId: user.id };
   return { status: alreadyAdmin > 0 ? 'existing' : 'membership-added' };
 }

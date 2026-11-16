@@ -18,7 +18,9 @@ import { SupportContact } from '../components/SupportContact';
 export function LoginPage() {
   const { user, login } = useAuth();
   const location = useLocation();
-  const [email, setEmail] = useState('');
+  // After setting a password through an emailed link (ResetPasswordPage), the address is prefilled.
+  const passwordSetFor = (location.state as { passwordSetFor?: string } | null)?.passwordSetFor;
+  const [email, setEmail] = useState(passwordSetFor ?? '');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -118,6 +120,9 @@ export function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
+              {passwordSetFor && !error && (
+                <Alert severity="success">Password set — sign in with your new password.</Alert>
+              )}
               {error && (
                 <Alert severity="error">
                   {/\.\s*$/.test(error) ? error : `${error}.`} If you keep having problems, use &quot;Forgot password?&quot; below or contact

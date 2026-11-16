@@ -16,6 +16,8 @@ import {
 } from '../lib/projectTemplate';
 import { useTemplateLists } from '../lib/templateLists';
 import { ImportResults } from './ImportResults';
+import { WelcomeEmailCheckbox } from './WelcomeEmailCheckbox';
+import { useWelcomeEmailChoice } from '../lib/accountEmails';
 import { SectionCard } from './SectionCard';
 
 // A Project Admin's Excel member import (PROJECT_ADMIN_IMPORT_PLAN.md): Executives and Normal
@@ -30,6 +32,9 @@ export function MembersImportSection() {
   const [parsed, setParsed] = useState<ParsedMembersWorkbook | null>(null);
   const [result, setResult] = useState<ProjectMembersImportResultDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { sendWelcome, setSendWelcome, mailEnabled } = useWelcomeEmailChoice();
+  // Fixed at import time, so unticking afterwards doesn't stop the sending.
+  const [welcomeOnImport, setWelcomeOnImport] = useState(false);
 
   const importMembers = useMutation({
     mutationFn: () => projectMembersApi.import(parsed!.members!),
@@ -73,8 +78,9 @@ export function MembersImportSection() {
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
         Add Executives and Normal Users to any organization of project <strong>{context?.projectName ?? '…'}</strong>{' '}
         in one go: download the template, fill in one row per person — with NatCo, Country, Working domain and
-        Designation, so they don&apos;t have to complete their profile — and upload it. New accounts get a temporary
-        password; download the results afterwards to forward them.
+        Designation, so they don&apos;t have to complete their profile — and upload it. New people get a welcome
+        email with a link to set their password; anyone whose email isn&apos;t sent gets a temporary password in the
+        results to forward instead.
       </Typography>
       <Button
         variant="text"
@@ -125,7 +131,11 @@ export function MembersImportSection() {
                   .join(', ')}
                 ) in {[...new Set(members.map((m) => m.organization))].join(', ')}.
               </Typography>
-              <Button variant="contained" disabled={importMembers.isPending} onClick={() => importMembers.mutate()} sx={{ mr: 1 }}>
+              <WelcomeEmailCheckbox checked={sendWelcome} onChange={setSendWelcome} mailEnabled={mailEnabled} plural />
+              <Button variant="contained" disabled={importMembers.isPending} onClick={() => {
+                  setWelcomeOnImport(sendWelcome);
+                  importMembers.mutate();
+                }} sx={{ mr: 1 }}>
                 {importMembers.isPending ? 'Importing…' : 'Import members'}
               </Button>
             </>
@@ -142,7 +152,7 @@ export function MembersImportSection() {
         </Alert>
       )}
 
-      {result && <ImportResults rows={result.rows} fileName={`member-import-${result.projectName}`} onReset={handleReset} />}
+      {result && <ImportResults rows={result.rows} fileName={`member-import-${result.projectName}`} onReset={handleReset} sendWelcomeEmails={welcomeOnImport} />}
     </SectionCard>
   );
 }

@@ -161,11 +161,11 @@ export async function resetPasswordHandler(req: Request, res: Response) {
   }
 
   try {
-    await resetPassword(parsed.data.token, parsed.data.newPassword);
-    res.status(204).end();
+    // The address tells the person which account they just set a password for.
+    res.json(await resetPassword(parsed.data.token, parsed.data.newPassword));
   } catch (err) {
     if (err instanceof InvalidResetTokenError) {
-      res.status(400).json({ error: 'This reset link is invalid or has expired' });
+      res.status(400).json({ error: 'This link is invalid, already used or expired — use "Forgot password" on the login page for a new one' });
       return;
     }
     throw err;

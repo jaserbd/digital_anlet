@@ -1,7 +1,9 @@
-import type { MailStatusDto, UpdateMailSettingsRequestDto } from '@anlet/shared';
+import type { MailEnabledDto, MailStatusDto, UpdateMailSettingsRequestDto } from '@anlet/shared';
 import { apiClient } from './client';
 
 export const mailApi = {
+  // Application Admins and Project Admins: whether emails are actually sent.
+  enabled: () => apiClient.get<MailEnabledDto>('/mail/enabled'),
   status: () => apiClient.get<MailStatusDto>('/mail/status'),
   // Super admin only: verified against the mail server before saving.
   update: (input: UpdateMailSettingsRequestDto) => apiClient.put<MailStatusDto>('/mail/settings', input),

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { MembershipDto, Role, UserDto } from '@anlet/shared';
+import type { AccountEmailKind, MembershipDto, Role, UserDto } from '@anlet/shared';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -27,6 +27,7 @@ import {
   projectAdminOf,
 } from '../lib/userGroups';
 import { SectionCard } from './SectionCard';
+import { accountEmailOutcomeText } from '../lib/accountEmails';
 import { CollapsibleTable } from './CollapsibleTable';
 import { SortableTable, type SortableTableColumn } from './SortableTable';
 
@@ -72,7 +73,8 @@ function usePermissions(user: UserDto) {
 // collapsible table per organization — every user belongs to exactly one — with one row per user +
 // project and sortable/filterable columns; an email search above narrows all tables. Per row:
 // change the role, move to another project or (for someone's only membership) another
-// organization, answers moving with it; remove. Per user ("User ▾"): temporary password, add to a
+// organization, answers moving with it; remove. Per user ("User ▾"): welcome / password reset
+// email (set-password links), temporary password, add to a
 // project of their organization, Admin role, delete. Consultants' Project Admin projects show in a
 // column of their own organization's table (managed on the Projects list). A Project Admin sees
 // only their organization + project's members.
@@ -80,7 +82,7 @@ export function ManageUsersSection() {
   const queryClient = useQueryClient();
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: () => usersApi.list() });
   const places = usePlacements();
-  const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [message, setMessage] = useState<{ kind: 'success' | 'warning' | 'error'; text: string } | null>(null);
   const [temporaryPassword, setTemporaryPassword] = useState<{ email: string; password: string } | null>(null);
   const [search, setSearch] = useState('');
 
@@ -90,6 +92,7 @@ export function ManageUsersSection() {
     onSaved,
     onError,
     onMessage: (text: string) => setMessage({ kind: 'success', text }),
+    onWarning: (text: string) => setMessage({ kind: 'warning', text }),
     onTemporaryPassword: (email: string, password: string) => setTemporaryPassword({ email, password }),
     placements: places.placements ?? [],
   };
@@ -127,6 +130,21 @@ export function ManageUsersSection() {
       render: (r) => (r.membership ? <RoleCell user={r.user} membership={r.membership} {...actions} /> : '—'),
     },
     { key: 'natco', header: 'NatCo', getValue: (r) => r.membership?.opCoName ?? '—', filterType: 'multiselect' },
+    {
+      // Redeemed an emailed welcome / reset link (ONBOARDING_SECURITY_PLAN.md Phase 3).
+      key: 'emailConfirmed',
+      header: 'Email confirmed',
+      getValue: (r) => (r.user.emailVerifiedAt ? 'Yes' : 'Not yet'),
+      filterType: 'multiselect',
+      render: (r) =>
+        r.user.emailVerifiedAt ? (
+          <Chip size="small" color="success" variant="outlined" label={new Date(r.user.emailVerifiedAt).toLocaleDateString()} />
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            Not yet
+          </Typography>
+        ),
+    },
     {
       key: 'projectAdminOf',
       header: 'Project Admin of',
@@ -210,6 +228,7 @@ interface ActionProps {
   onSaved: () => void;
   onError: (fallback: string) => (err: unknown) => void;
   onMessage: (text: string) => void;
+  onWarning: (text: string) => void;
   onTemporaryPassword: (email: string, password: string) => void;
   placements: Placement[];
 }
@@ -320,7 +339,15 @@ function RowActions({ row, ...props }: { row: UserRowData } & ActionProps) {
   );
 }
 
-function UserMenu({ user, onSaved, onError, onTemporaryPassword, placements }: { user: UserDto } & ActionProps) {
+function UserMenu({
+  user,
+  onSaved,
+  onError,
+  onMessage,
+  onWarning,
+  onTemporaryPassword,
+  placements,
+}: { user: UserDto } & ActionProps) {
   const permissions = usePermissions(user);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -335,6 +362,16 @@ function UserMenu({ user, onSaved, onError, onTemporaryPassword, placements }: {
     onSuccess: (data) => onTemporaryPassword(user.email, data.temporaryPassword),
     onError: onError('Failed to generate a temporary password'),
   });
+  // Emailed set-password links; the account itself is unchanged until the link is used.
+  const sendEmail = useMutation({
+    mutationFn: (kind: AccountEmailKind) => usersApi.sendAccountEmail(user.id, kind),
+    onSuccess: (result, kind) => {
+      const what = kind === 'welcome' ? 'Welcome email (link valid 7 days)' : 'Password reset email (link valid 24 hours)';
+      if (result.outcome === 'sent') onMessage(`${what} sent to ${user.email}.`);
+      else onWarning(`${accountEmailOutcomeText(result)} — ${user.email}. Use "Temporary password" instead.`);
+    },
+    onError: onError('Failed to send the email'),
+  });
   const deleteUser = useMutation({
     mutationFn: () => usersApi.delete(user.id),
     onSuccess: onSaved,
@@ -343,6 +380,8 @@ function UserMenu({ user, onSaved, onError, onTemporaryPassword, placements }: {
 
   const addable = addablePlacements(user, placements);
   const items = [
+    permissions.canResetPassword && { label: 'Send welcome email', run: () => sendEmail.mutate('welcome') },
+    permissions.canResetPassword && { label: 'Send password reset email', run: () => sendEmail.mutate('reset') },
     permissions.canResetPassword && {
       label: 'Temporary password',
       run: () => {

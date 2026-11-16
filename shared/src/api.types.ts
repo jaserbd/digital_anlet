@@ -296,6 +296,7 @@ export interface ProjectImportResultRowDto {
   role?: ProjectMemberRole;
   organization?: string;
   tempPassword?: string; // only for a newly created account
+  userId?: string; // newly created accounts, for sending their welcome emails afterwards
   error?: string;
   // The row was imported, but part of it wasn't (e.g. an unknown NatCo without a country).
   warning?: string;
@@ -369,6 +370,8 @@ export interface UserDto {
   firstName: string | null;
   lastName: string | null;
   isSuperAdmin: boolean;
+  // When the person last redeemed an emailed welcome / reset link (their address works); null = never.
+  emailVerifiedAt: string | null;
   memberships: MembershipDto[];
 }
 
@@ -398,6 +401,24 @@ export interface UpdateMembershipRequestDto {
 export interface CreateUserResultDto {
   status: 'created' | 'membership-added';
   user: UserDto;
+  // Only when a new account was created with sendWelcomeEmail.
+  welcomeEmail?: AccountEmailResultDto;
+}
+
+// Emails with a single-use set-password link (ONBOARDING_SECURITY_PLAN.md Phase 3): 'welcome' for
+// a new account (7 days), 'reset' sent by an admin (24 hours).
+export type AccountEmailKind = 'welcome' | 'reset';
+
+export interface AccountEmailResultDto {
+  userId: string;
+  email: string;
+  // 'disabled' = email sending is switched off (nothing sent); 'failed' = the mail server refused.
+  outcome: 'sent' | 'disabled' | 'failed';
+  error?: string;
+}
+
+export interface MailEnabledDto {
+  enabled: boolean;
 }
 
 // Admin-generated one-time password (admin_management.md line 12), shown once to forward to
