@@ -20,7 +20,7 @@ Source: `admin_management.md` lines 46–50. Decisions taken with the user (2026
 - `ReviewStep` gaps call `jumpToQuestion` → `setStepIndex`; the user then has to click Next through every later question to get back to Review.
 - Quick security scan: no rate limiting (login, forgot-password), no security headers (helmet), `forgotPasswordHandler` returns 500 if SMTP fails (user-enumeration + noisy), `npm audit`: 15 vulns (2 critical, 10 high) incl. SheetJS `xlsx` (prototype pollution / ReDoS, no npm fix), `zod`, `exceljs → uuid`.
 
-## Phase 1 — Case-insensitive email ✅ (branch `feature/case-insensitive-email`)
+## Phase 1 — Case-insensitive email ✅ live in production (revision anlet-00018-xzg, 2026-11-16)
 
 - Normalize `email.trim().toLowerCase()` at every input boundary: login, forgot-password, create user, add membership, both Excel imports, project-admin candidate lookup, seed `ADMIN_EMAIL`. One helper `normalizeEmail` in `lib/` + zod schemas use it.
 - Migration: `UPDATE "User" SET email = lower(trim(email))`, **aborting** if two accounts collide case-insensitively (then merged by hand — check production first via Cloud SQL proxy), plus a unique index on `lower(email)` as a safety net.
