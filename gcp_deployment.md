@@ -172,6 +172,7 @@ policy).
 | `APP_BASE_URL` | plain | `https://anlet-602185048647.europe-west3.run.app` — used to build links (password-reset emails) |
 | `SMTP_HOST` / `PORT` / `USER` / `FROM` | plain | `smtp.gmail.com` / `587` / `jaser.thesis@gmail.com` / `jaser.thesis@gmail.com` — interim Gmail sender since 2026-11-16, until IT's shared mailbox exists |
 | `SMTP_FROM_NAME` | plain (optional) | Sender display name, default `ANLET` |
+| `MAIL_ENCRYPTION_KEY` | Secret Manager (`anlet-mail-key`) | 32 random bytes, base64 — encrypts the mailbox password saved in the Management Console. Rotating it makes saved settings unreadable (the app falls back to the `SMTP_*` defaults and says so) — then save them again |
 | `MAIL_ENABLED` | plain (optional) | Only `true` actually sends; unset/`false` = emails are only logged (no links in production logs). `true` since 2026-11-16 |
 | `DATABASE_URL` | Secret Manager | see `anlet-database-url` |
 | `JWT_SECRET` | Secret Manager | Signs the httpOnly auth cookie |
@@ -249,7 +250,11 @@ SMTP_FROM=no-reply@placeholder.invalid APP_BASE_URL=https://anlet-602185048647.e
 npm run db:seed:questionnaires
 ```
 
-**Switch on email** (`ONBOARDING_SECURITY_PLAN.md` Phase 2) — e.g. the interim Microsoft 365 mailbox. 1. Store the
+**Change the mailbox — preferred way:** Management Console → **Email delivery** → *Change settings* (super admin). The
+app logs in to the new server before saving and keeps the password encrypted in the database; those settings win over
+the environment variables below, which remain the fallback (*Reset to server defaults*).
+
+**Switch on email via environment variables** (`ONBOARDING_SECURITY_PLAN.md` Phase 2) — e.g. the interim Microsoft 365 mailbox. 1. Store the
 mailbox password yourself (prompted, never echoed or kept in shell history):
 
 ```bash
