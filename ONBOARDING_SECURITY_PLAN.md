@@ -73,7 +73,7 @@ Built (before/after screenshots approved by the user):
 - `components/Loading.tsx` (`PageLoading`, `InlineLoading`) replaces "Loading…".
 - Login: original line-art illustration `public/branding/login-illustration.svg` (cell tower, core, network mesh, L0–L5 scale), hidden on phones.
 
-## Phase 6 — Security review — fixes built on `feature/security-hardening` (not deployed yet)
+## Phase 6 — Security review ✅ fixes live in production (revision anlet-00027-hx8, 2026-11-16); dedicated runtime account (revision anlet-00028-5xf)
 
 Review done (15 findings); the agreed set — 1–5, 7–11 and the upload ignore file from 15 — is built:
 
@@ -84,7 +84,7 @@ Review done (15 findings); the agreed set — 1–5, 7–11 and the upload ignor
 5. **Security headers**: `helmet` with a same-origin CSP (inline styles for MUI, `data:`/`blob:` images for charts and PDFs), no framing, HSTS. Checked in a browser against the production build (pages, Excel and PDF downloads).
 7. **Dependencies**: express 4.22.3 (body-parser/qs), nodemailer 10, `xlsx` 0.20.3 from SheetJS's own site (the npm copy is unmaintained) — seed parsers read files through `prisma/seed/readWorkbook.ts`.
 8. **Timing**: a dummy bcrypt check for unknown addresses at sign-in; a comparable wait in forgot-password for unknown addresses.
-9. **Container** runs as `node`, not root (local prisma binary instead of `npx`). Not verified locally (Docker was not running) — watch the first deploy.
+9. **Container** runs as `node`, not root (local prisma binary instead of `npx`) — started and migrated cleanly in production.
 10. **`JWT_SECRET`** must be ≥ 32 characters and not a placeholder in production (the server refuses to start otherwise).
 11. **Length limits**: comments 5000, names 100, passwords 200 (`backend/src/lib/limits.ts`, frontend copies in `shared/src/enums.ts`).
 15. `.gcloudignore`.
@@ -93,7 +93,9 @@ Also fixed on the way: "Download all (Excel)" failed for the combined Core view 
 
 Trade-off to know: the account pause lets someone who knows an address keep that person out for 15 minutes at a time; a password reset link lifts it.
 
-Open: 6 (dedicated Cloud Run service account — with the user), 12–14 and the seed guard from 15.
+6. **Dedicated service account** `anlet-run` (Cloud SQL client + its five secrets only); `roles/editor` removed from the default Compute SA, which now only builds (`roles/cloudbuild.builds.builder`) — see `gcp_deployment.md`.
+
+Open: 12–14, the seed guard from 15, and the default Compute SA's leftover project-wide database / secret roles.
 
 ## Order
 
