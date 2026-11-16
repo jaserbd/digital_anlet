@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import XLSX from 'xlsx';
 import type { ParsedQuestion, ParsedQuestionnaire, ParsedSubScenario } from './parsedQuestionnaire.types';
 import { optionMap } from './xlsxParseUtils';
+import { readWorkbook } from './readWorkbook';
 
 function defaultXlsxPath(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../CORE_FM.xlsx');
@@ -58,7 +59,7 @@ const FM_SCORING_ROW_OFFSET = -1; // Scoring-Fault Management's rows are this sh
 const FM_SUB_SCENARIO_COLUMN_START = 14; // column O
 
 export function parseCoreFaultManagementXlsx(xlsxPath?: string): ParsedQuestionnaire {
-  const workbook = XLSX.readFile(xlsxPath ?? defaultXlsxPath());
+  const workbook = readWorkbook(xlsxPath ?? defaultXlsxPath());
   const questionRows = readSheetRows(workbook, 'Core Network Fault Management');
   const scoringRows = readSheetRows(workbook, 'Scoring-Fault Management');
 
@@ -143,7 +144,7 @@ const STABILITY_QUESTION_ROWS_END = 7; // row8 (1-based) = "Service degradation 
 const STABILITY_SCORING_ROW_OFFSET = 2; // Scoring-Stability's rows are this sheet's rows + 2
 
 export function parseCoreStabilityXlsx(xlsxPath?: string): ParsedQuestionnaire {
-  const workbook = XLSX.readFile(xlsxPath ?? defaultXlsxPath());
+  const workbook = readWorkbook(xlsxPath ?? defaultXlsxPath());
   const questionRows = readSheetRows(workbook, 'Core Network Stability');
   const scoringRows = readSheetRows(workbook, 'Scoring-Stability');
 

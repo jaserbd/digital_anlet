@@ -1,3 +1,4 @@
+import { MIN_PASSWORD_LENGTH } from '@anlet/shared';
 import { useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -78,8 +79,8 @@ export function ResetPasswordPage() {
                   type="password"
                   required
                   fullWidth
-                  slotProps={{ htmlInput: { minLength: 8 } }}
-                  helperText="At least 8 characters"
+                  slotProps={{ htmlInput: { minLength: MIN_PASSWORD_LENGTH } }}
+                  helperText={`At least ${MIN_PASSWORD_LENGTH} characters`}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                 />

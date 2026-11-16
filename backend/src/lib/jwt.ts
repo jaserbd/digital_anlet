@@ -9,6 +9,8 @@ export interface JwtPayload {
   email: string;
   // Active membership; null = admin context (or the user's default context).
   membershipId: string | null;
+  // Issued-at (seconds), set by jsonwebtoken — compared with the last password change.
+  iat?: number;
 }
 
 export function signToken(payload: JwtPayload): string {

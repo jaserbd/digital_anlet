@@ -168,6 +168,12 @@ model User {
   // Set when the person redeems an emailed welcome or password reset link — proof the address
   // reaches them (ONBOARDING_SECURITY_PLAN.md Phase 3). Null = never confirmed.
   emailVerifiedAt DateTime?
+  // Security hardening (ONBOARDING_SECURITY_PLAN.md Phase 6). Sessions issued before the last
+  // password change are refused (lib/userContext.ts); repeated failed sign-ins pause the account
+  // (auth.service.ts login).
+  passwordChangedAt DateTime?
+  failedLoginCount  Int       @default(0)
+  lockedUntil       DateTime?
 
   // Home organization: the internal org for admins, the first membership's org for everyone
   // else. Organization/role/profile for answering and viewing live on Membership

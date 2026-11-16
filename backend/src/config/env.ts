@@ -18,6 +18,9 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(1),
   JWT_EXPIRES_IN: z.string().default('7d'),
+  // Reverse proxies in front of the app (Cloud Run's front end, Vite's dev proxy): how many
+  // X-Forwarded-For hops to trust, so rate limiting sees the real client address.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(1),
   COOKIE_SECURE: booleanString.default('true'),
   // Seed-time bootstrap admin account (idempotent upsert, see prisma/seed/seed.ts).
   ADMIN_EMAIL: z.string().email(),
@@ -46,4 +49,11 @@ const envSchema = z.object({
   APP_BASE_URL: z.string().url(),
 });
 
-export const env = envSchema.parse(process.env);
+const parsed = envSchema.parse(process.env);
+
+// A production server must never sign sessions with a short or placeholder secret.
+if (parsed.NODE_ENV === 'production' && (parsed.JWT_SECRET.length < 32 || /change-me/i.test(parsed.JWT_SECRET))) {
+  throw new Error('JWT_SECRET must be at least 32 characters and not a placeholder in production');
+}
+
+export const env = parsed;

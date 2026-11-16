@@ -22,7 +22,6 @@
 //   A-D = 4/3/2/1 like every other in-review KEI).
 // - GB1524A / GB1526A / GB1525A label a blended "High Value Scenario score" (GB1526A even
 //   carries 0.75 / 0.25 weights) but compute none — the KEI score stays separate, as for IP.
-import XLSX from 'xlsx';
 import type { ParsedQuestionnaire } from './parsedQuestionnaire.types';
 import {
   extractNumberedSubScenarioLines,
@@ -33,6 +32,7 @@ import {
 } from './fmSheetParser';
 import { readStandardGuideline } from './standardGuideline';
 import { joinColumnText, readSheetRows, repoRootXlsxPath } from './xlsxParseUtils';
+import { readWorkbook } from './readWorkbook';
 
 export const REVIEW_QUESTIONNAIRE_DIR = 'review_questionnaires';
 
@@ -512,7 +512,7 @@ export function reviewQuestionnairePath(fileName: string): string {
 
 export function parseReviewQuestionnaire(config: ReviewQuestionnaireConfig): ParsedQuestionnaire {
   const fileLabel = config.fileName;
-  const workbook = XLSX.readFile(reviewQuestionnairePath(config.fileName));
+  const workbook = readWorkbook(reviewQuestionnairePath(config.fileName));
   const { subScenarios, questions } = readFmSheets(workbook, { fileLabel, ...config.layout });
 
   let guidelineText: string | null = null;

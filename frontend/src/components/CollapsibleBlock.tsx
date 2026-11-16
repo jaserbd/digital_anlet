@@ -8,10 +8,21 @@ import { useRememberedOpen } from '../lib/rememberedOpen';
 
 // A collapsible sub-block inside a SectionCard (ADMIN_DASHBOARD_PLAN.md) — e.g. the benchmark
 // table and each comment collection of a crowded section. Open by default, remembered per page.
-export function CollapsibleBlock({ title, id, children }: { title: string; id?: string; children: ReactNode }) {
+// `heading` renders the title at section size (the per-questionnaire blocks of the dashboards).
+export function CollapsibleBlock({
+  title,
+  id,
+  heading = false,
+  children,
+}: {
+  title: string;
+  id?: string;
+  heading?: boolean;
+  children: ReactNode;
+}) {
   const [open, toggle] = useRememberedOpen(id ?? title);
   return (
-    <Box sx={{ mb: 2 }}>
+    <Box sx={{ mb: heading ? 3 : 2 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', mb: open ? 1 : 0 }} onClick={toggle}>
         <IconButton
           size="small"
@@ -21,7 +32,7 @@ export function CollapsibleBlock({ title, id, children }: { title: string; id?: 
         >
           <ExpandMoreIcon fontSize="small" />
         </IconButton>
-        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+        <Typography variant={heading ? 'h6' : 'subtitle1'} sx={{ fontWeight: 700 }}>
           {title}
         </Typography>
       </Box>

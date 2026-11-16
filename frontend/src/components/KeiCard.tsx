@@ -1,3 +1,4 @@
+import { MAX_COMMENT_LENGTH } from '@anlet/shared';
 import { useEffect, useRef, useState } from 'react';
 import type { AnswerOption, EffectivenessIndicatorDto, KeiAnswerDto } from '@anlet/shared';
 import { isKeiCovered } from '../lib/kei';
@@ -115,7 +116,7 @@ export function KeiCard({ indicator, ordinal, answer, onChange }: KeiCardProps) 
           <textarea
             value={local.comment ?? ''}
             rows={2}
-            maxLength={5000}
+            maxLength={MAX_COMMENT_LENGTH}
             placeholder="Optional — required if you leave this indicator unanswered"
             onChange={(e) => update({ ...local, comment: e.target.value }, false)}
             style={{ display: 'block', width: '100%' }}

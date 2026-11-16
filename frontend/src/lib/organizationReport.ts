@@ -10,6 +10,7 @@ import type {
 import { buildCommentCollectionRows, buildCommentCollectionSheet } from '../components/CommentCollectionTable';
 import { buildKeiCommentRows, buildKeiDistributionPdfSections, buildKeiResponsesSheet } from './keiDistribution';
 import { buildAnswerMatrix } from './answerMatrix';
+import { questionnaireInitials } from './questionnaireInitials';
 import { buildBenchmarkSheet, buildCombinedBenchmarkSheet, buildNatCoStatusSheet, buildRespondentsSheet } from './sheetBuilders';
 import type { XlsxSheet } from './exportXlsx';
 import {
@@ -78,12 +79,18 @@ export function buildOrganizationReportSheets(
   for (const { questionnaire, summary, drilldown } of details) {
     // Executives get anonymized data (ANONYMOUS_EXECUTIVE_PLAN.md): participation per NatCo, pseudonyms.
     const anonymized = summary.anonymized;
-    sheets.push(anonymized ? buildNatCoStatusSheet(summary.natCoStatus) : buildRespondentsSheet(summary.respondents));
-    sheets.push(buildCommentCollectionSheet(reportCommentRows(questionnaire, drilldown), false, anonymized));
-    sheets.push(...buildAnswerMatrix(questionnaire.questions, questionnaire.subScenarios, drilldown?.entries ?? [], anonymized));
+    const own: XlsxSheet[] = [
+      anonymized ? buildNatCoStatusSheet(summary.natCoStatus) : buildRespondentsSheet(summary.respondents),
+      buildCommentCollectionSheet(reportCommentRows(questionnaire, drilldown), false, anonymized),
+      ...buildAnswerMatrix(questionnaire.questions, questionnaire.subScenarios, drilldown?.entries ?? [], anonymized),
+    ];
     if (questionnaire.effectivenessIndicators.length > 0) {
-      sheets.push(buildKeiResponsesSheet(questionnaire.effectivenessIndicators, drilldown?.keiResponses ?? [], anonymized));
+      own.push(buildKeiResponsesSheet(questionnaire.effectivenessIndicators, drilldown?.keiResponses ?? [], anonymized));
     }
+    // A combined view (Core FM + Stability) has the same sheets once per questionnaire — Excel
+    // refuses duplicate names, so each is prefixed with its questionnaire ("Core-FM Respondents").
+    const prefix = details.length > 1 ? `${questionnaireInitials(questionnaire)} ` : '';
+    sheets.push(...own.map((sheet) => ({ ...sheet, name: `${prefix}${sheet.name}` })));
   }
   return sheets;
 }

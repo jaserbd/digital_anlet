@@ -186,6 +186,7 @@ const USER_SELECT = {
   firstName: true,
   lastName: true,
   isSuperAdmin: true,
+  isActive: true,
   emailVerifiedAt: true,
   memberships: {
     select: {
@@ -221,6 +222,7 @@ function toUserDto(user: UserRow): UserDto {
     firstName: user.firstName,
     lastName: user.lastName,
     isSuperAdmin: user.isSuperAdmin,
+    isActive: user.isActive,
     emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
     memberships: user.memberships.map((m): MembershipDto => ({
       id: m.id,
@@ -535,9 +537,38 @@ export async function setTemporaryPassword(callerId: string, userId: string): Pr
   const temporaryPassword = generatePassword();
   await prisma.user.update({
     where: { id: userId },
-    data: { passwordHash: await hashPassword(temporaryPassword), mustChangePassword: true },
+    // passwordChangedAt signs out the user's existing sessions; a sign-in pause is lifted.
+    data: {
+      passwordHash: await hashPassword(temporaryPassword),
+      mustChangePassword: true,
+      passwordChangedAt: new Date(),
+      failedLoginCount: 0,
+      lockedUntil: null,
+    },
   });
   return temporaryPassword;
+}
+
+/**
+ * Deactivate / reactivate an account (ONBOARDING_SECURITY_PLAN.md Phase 6) — for people who
+ * leave: an account with answers can be neither deleted nor removed from its project, so this
+ * is how its login is closed. Takes effect on the next request (resolveRequestUser); answers,
+ * memberships and history stay. Same rules as temporary passwords: any admin for a non-admin,
+ * only the super admin for another admin, never the super admin account or yourself.
+ */
+export async function setUserActive(callerId: string, userId: string, isActive: boolean): Promise<UserDto> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new UserNotFoundError();
+  if (user.isSuperAdmin || userId === callerId) throw new CannotModifyAdminError();
+  if (user.role === 'ADMIN' && !(await isCallerSuperAdmin(callerId)))
+    throw new SuperAdminRequiredError();
+
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: userId }, data: { isActive } }),
+    // Outstanding welcome / reset links of a deactivated account are withdrawn.
+    ...(isActive ? [] : [prisma.passwordResetToken.deleteMany({ where: { userId, usedAt: null } })]),
+  ]);
+  return loadUserDto(userId);
 }
 
 /**

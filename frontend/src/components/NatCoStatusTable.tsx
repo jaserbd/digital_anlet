@@ -19,7 +19,8 @@ export function NatCoStatusTable({
   exportFileNamePrefix,
 }: {
   rows: NatCoStatusDto[];
-  title: string;
+  // Omitted when a collapsible heading around the table already names it.
+  title?: string;
   exportFileNamePrefix?: string;
 }) {
   const totals = rows.reduce(
@@ -44,8 +45,8 @@ export function NatCoStatusTable({
 
   return (
     <div>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="h6">{title}</Typography>
+      <Box sx={{ display: 'flex', justifyContent: title ? 'space-between' : 'flex-end', alignItems: 'baseline', flexWrap: 'wrap', gap: 1 }}>
+        {title && <Typography variant="h6">{title}</Typography>}
         {exportFileNamePrefix && (
           <Button
             variant="outlined"

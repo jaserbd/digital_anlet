@@ -15,17 +15,22 @@ export interface RequestUser {
   projectId: string | null;
   membershipId: string | null;
   isAdmin: boolean;
+  // Signed in with a one-time password: only the change-password routes are open (middleware/auth.ts).
+  mustChangePassword: boolean;
 }
 
 /**
  * Resolves the active context fresh from the database on every request, so removing a
  * membership or changing a role takes effect immediately rather than when the login token
  * expires. A requested membership that no longer belongs to the user falls back to the
- * default context. Returns null for an unknown or deactivated user.
+ * default context. Returns null for an unknown or deactivated user, and for a session issued
+ * before the user's last password change (`issuedAt`, the token's iat in seconds) — so a reset
+ * or temporary password signs every older session out.
  */
 export async function resolveRequestUser(
   userId: string,
   requestedMembershipId: string | null,
+  issuedAt?: number,
 ): Promise<RequestUser | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -34,6 +39,8 @@ export async function resolveRequestUser(
       email: true,
       role: true,
       isActive: true,
+      mustChangePassword: true,
+      passwordChangedAt: true,
       organizationId: true,
       memberships: {
         select: { id: true, role: true, organizationId: true, projectId: true },
@@ -42,6 +49,11 @@ export async function resolveRequestUser(
     },
   });
   if (!user || !user.isActive) return null;
+  // Whole seconds on both sides (iat has no milliseconds): the session issued right after a
+  // password change, in the same second, stays valid.
+  if (issuedAt != null && user.passwordChangedAt && issuedAt < Math.floor(user.passwordChangedAt.getTime() / 1000)) {
+    return null;
+  }
 
   const isAdmin = user.role === 'ADMIN';
   const requested = requestedMembershipId
@@ -58,6 +70,7 @@ export async function resolveRequestUser(
       projectId: membership.projectId,
       membershipId: membership.id,
       isAdmin,
+      mustChangePassword: user.mustChangePassword,
     };
   }
   // Admin context — or a non-admin with no memberships left, who can sign in but not answer
@@ -70,6 +83,7 @@ export async function resolveRequestUser(
     projectId: null,
     membershipId: null,
     isAdmin,
+    mustChangePassword: user.mustChangePassword,
   };
 }
 

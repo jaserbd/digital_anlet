@@ -1,7 +1,7 @@
 import type { AuthenticatedUserDto } from '@anlet/shared';
 import type { TokenPurpose } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
-import { hashPassword, verifyPassword } from '../../lib/password';
+import { hashPassword, verifyAgainstNothing, verifyPassword } from '../../lib/password';
 import { signToken, type JwtPayload } from '../../lib/jwt';
 import { generateResetToken, hashResetToken } from '../../lib/token';
 import { MailDisabledError, sendPasswordResetEmail } from '../../lib/mailer';
@@ -40,15 +40,42 @@ export async function issueAccountLink(userId: string, purpose: TokenPurpose, tt
   return `${env.APP_BASE_URL}/reset-password?token=${token}${purpose === 'INVITE' ? '&welcome=1' : ''}`;
 }
 
+// Password guessing (ONBOARDING_SECURITY_PLAN.md Phase 6): after this many wrong passwords in a
+// row, sign-in to the account is paused. Kept in the database, so it holds across Cloud Run
+// instances (the per-address limiter in auth.routes.ts is per instance).
+export const MAX_FAILED_LOGINS = 10;
+export const LOGIN_LOCK_MS = 15 * 60 * 1000;
+
+/** Every refusal is the same error after the same amount of work — unknown address, wrong
+ * password, deactivated or paused account — so neither the answer nor its timing says which. */
 export async function login(email: string, password: string): Promise<string> {
   const user = await prisma.user.findUnique({ where: { email: normalizeEmail(email) } });
   if (!user || !user.isActive) {
+    await verifyAgainstNothing(password);
     throw new InvalidCredentialsError();
   }
 
+  const locked = user.lockedUntil != null && user.lockedUntil > new Date();
   const valid = await verifyPassword(password, user.passwordHash);
-  if (!valid) {
+  if (locked) {
     throw new InvalidCredentialsError();
+  }
+  if (!valid) {
+    const { failedLoginCount } = await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginCount: { increment: 1 } },
+      select: { failedLoginCount: true },
+    });
+    if (failedLoginCount >= MAX_FAILED_LOGINS) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginCount: 0, lockedUntil: new Date(Date.now() + LOGIN_LOCK_MS) },
+      });
+    }
+    throw new InvalidCredentialsError();
+  }
+  if (user.failedLoginCount > 0 || user.lockedUntil) {
+    await prisma.user.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
   }
 
   // Default context (MULTI_ORG_PLAN.md): admins start in the admin context, everyone else in
@@ -117,9 +144,11 @@ export async function changeOwnPassword(userId: string, currentPassword: string,
   }
 
   const passwordHash = await hashPassword(newPassword);
+  // passwordChangedAt signs out every other session; the caller's own cookie is re-issued by
+  // the controller.
   await prisma.user.update({
     where: { id: userId },
-    data: { passwordHash, mustChangePassword: false },
+    data: { passwordHash, mustChangePassword: false, passwordChangedAt: new Date() },
   });
 }
 
@@ -130,6 +159,10 @@ export async function changeOwnPassword(userId: string, currentPassword: string,
 export async function requestPasswordReset(email: string): Promise<void> {
   const user = await prisma.user.findUnique({ where: { email: normalizeEmail(email) } });
   if (!user || !user.isActive) {
+    // Sending takes a second or two; without a comparable wait here, response time would show
+    // which addresses are registered. (Not sent after responding instead: Cloud Run may pause
+    // the instance once the response is out.)
+    if (env.NODE_ENV !== 'test') await new Promise((resolve) => setTimeout(resolve, 800 + Math.random() * 1700));
     return;
   }
 
@@ -150,8 +183,12 @@ export async function requestPasswordReset(email: string): Promise<void> {
 // (emailVerifiedAt), and every other outstanding link of theirs stops working.
 export async function resetPassword(token: string, newPassword: string): Promise<{ email: string }> {
   const tokenHash = hashResetToken(token);
-  const record = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
-  if (!record || record.usedAt || record.expiresAt < new Date()) {
+  const record = await prisma.passwordResetToken.findUnique({
+    where: { tokenHash },
+    include: { user: { select: { isActive: true } } },
+  });
+  // A deactivated account's outstanding link must not bring it back.
+  if (!record || record.usedAt || record.expiresAt < new Date() || !record.user.isActive) {
     throw new InvalidResetTokenError();
   }
 
@@ -160,7 +197,15 @@ export async function resetPassword(token: string, newPassword: string): Promise
   const [user] = await prisma.$transaction([
     prisma.user.update({
       where: { id: record.userId },
-      data: { passwordHash, mustChangePassword: false, emailVerifiedAt: now },
+      // Signs out every older session and lifts a sign-in pause.
+      data: {
+        passwordHash,
+        mustChangePassword: false,
+        emailVerifiedAt: now,
+        passwordChangedAt: now,
+        failedLoginCount: 0,
+        lockedUntil: null,
+      },
       select: { email: true },
     }),
     prisma.passwordResetToken.update({

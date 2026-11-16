@@ -10,10 +10,10 @@
 // identification & risk). Rows are therefore matched to questions by their question text,
 // not by row order — see GUIDELINE_ROW_FOR_QUESTION. Fault Prediction (question 3) has no
 // guideline row in the source, so it gets none.
-import XLSX from 'xlsx';
 import type { ParsedQuestionnaire } from './parsedQuestionnaire.types';
 import { extractNumberedSubScenarioLines, readFmSheets } from './fmSheetParser';
 import { cellText, joinColumnText, readSheetRows, repoRootXlsxPath } from './xlsxParseUtils';
+import { readWorkbook } from './readWorkbook';
 
 const FILE_LABEL = 'Fixed_Access.xlsx';
 
@@ -52,7 +52,7 @@ function answeringGuidelineFor(guidelineRows: unknown[][], sortOrder: number): s
 }
 
 export function parseFixedAccessXlsx(xlsxPath?: string): ParsedQuestionnaire {
-  const workbook = XLSX.readFile(xlsxPath ?? repoRootXlsxPath('Fixed_Access.xlsx'));
+  const workbook = readWorkbook(xlsxPath ?? repoRootXlsxPath('Fixed_Access.xlsx'));
 
   const { subScenarios, questions } = readFmSheets(workbook, {
     fileLabel: FILE_LABEL,

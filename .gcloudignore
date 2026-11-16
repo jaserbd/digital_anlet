@@ -1,0 +1,11 @@
+# What `gcloud run deploy --source .` uploads to Cloud Build. Without this file gcloud falls back
+# to .gitignore; stated explicitly so local secrets can never be uploaded by a changed .gitignore.
+.git
+.gitignore
+#!include:.gitignore
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example

@@ -1,3 +1,4 @@
+import { CollapsibleBlock } from './CollapsibleBlock';
 import { useQuery } from '@tanstack/react-query';
 import { questionnaireApi } from '../api/questionnaireApi';
 import { insightsApi } from '../api/insightsApi';
@@ -107,56 +108,59 @@ export function QuestionnaireExecutiveDetail({
   // Executives get anonymized data from the server (ANONYMOUS_EXECUTIVE_PLAN.md); Admins don't.
   const anonymized = summary.anonymized || !!drilldownQuery.data?.anonymized;
 
+  // Every block collapses from its heading (remembered per page + questionnaire), like the
+  // Comment Collection below; collapsed content stays mounted.
+  const blockId = (name: string) => `${questionnaireCode}:${name}`;
+  const exportPrefix = `org-${organizationId}-${questionnaireCode}`;
+
   return (
     <>
-      <AggregateCognitiveActivityRadar
-        organizationId={organizationId}
-        questionnaireCode={questionnaireCode}
-        projectId={projectId}
-        organizationSwitcher={organizationSwitcher}
-        filters={cognitiveFilters}
-        onFiltersChange={onCognitiveFiltersChange}
-      />
+      <CollapsibleBlock heading title={`${questionnaire.name} — Cognitive Activity diagram`} id={blockId('diagram')}>
+        <AggregateCognitiveActivityRadar
+          organizationId={organizationId}
+          questionnaireCode={questionnaireCode}
+          projectId={projectId}
+          organizationSwitcher={organizationSwitcher}
+          filters={cognitiveFilters}
+          onFiltersChange={onCognitiveFiltersChange}
+        />
+      </CollapsibleBlock>
 
       {summary.anonymized ? (
-        <NatCoStatusTable
-          rows={summary.natCoStatus}
-          title={`${questionnaire.name} — Participation`}
-          exportFileNamePrefix={`org-${organizationId}-${questionnaireCode}`}
-        />
+        <CollapsibleBlock heading title={`${questionnaire.name} — Participation`} id={blockId('participation')}>
+          <NatCoStatusTable rows={summary.natCoStatus} exportFileNamePrefix={exportPrefix} />
+        </CollapsibleBlock>
       ) : (
-        <RespondentsTable
-          respondents={summary.respondents}
-          title={`${questionnaire.name} — Respondents`}
-          exportFileNamePrefix={`org-${organizationId}-${questionnaireCode}`}
-        />
+        <CollapsibleBlock heading title={`${questionnaire.name} — Respondents`} id={blockId('respondents')}>
+          <RespondentsTable respondents={summary.respondents} exportFileNamePrefix={exportPrefix} />
+        </CollapsibleBlock>
       )}
 
-      <h3 style={{ marginTop: '1.5rem' }}>{questionnaire.name} — Answer distribution</h3>
-      <AnswerDistributionDrilldown
-        questions={questionnaire.questions}
-        subScenarios={questionnaire.subScenarios}
-        entries={drilldownQuery.data?.entries ?? []}
-        comments={drilldownQuery.data?.comments ?? []}
-        opCoScopeId={opCoScopeId}
-        exportFileNamePrefix={`org-${organizationId}-${questionnaireCode}`}
-        anonymized={anonymized}
-      />
+      <CollapsibleBlock heading title={`${questionnaire.name} — Answer distribution`} id={blockId('answers')}>
+        <AnswerDistributionDrilldown
+          questions={questionnaire.questions}
+          subScenarios={questionnaire.subScenarios}
+          entries={drilldownQuery.data?.entries ?? []}
+          comments={drilldownQuery.data?.comments ?? []}
+          opCoScopeId={opCoScopeId}
+          exportFileNamePrefix={exportPrefix}
+          anonymized={anonymized}
+        />
+      </CollapsibleBlock>
 
       {questionnaire.effectivenessIndicators.length > 0 && (
-        <>
-          <h3 style={{ marginTop: '1.5rem' }}>{questionnaire.name} — Key Effectiveness Indicators</h3>
+        <CollapsibleBlock heading title={`${questionnaire.name} — Key Effectiveness Indicators`} id={blockId('kei')}>
           <KeiDistribution
             indicators={questionnaire.effectivenessIndicators}
             responses={drilldownQuery.data?.keiResponses ?? []}
             opCoScopeId={opCoScopeId}
-            exportFileNamePrefix={`org-${organizationId}-${questionnaireCode}`}
+            exportFileNamePrefix={exportPrefix}
             anonymized={anonymized}
           />
-        </>
+        </CollapsibleBlock>
       )}
 
-      <div style={{ marginTop: '1.5rem' }}>
+      <div>
         <CommentCollectionTable
           rows={[
             ...buildCommentCollectionRows(drilldownQuery.data?.comments ?? [], questionnaire.questions, questionnaire.subScenarios),
