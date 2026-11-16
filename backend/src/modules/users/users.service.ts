@@ -169,7 +169,7 @@ const RESPONSE_WITH_DATA = {
 
 // Re-read from the DB on every privileged call rather than trusting the JWT payload, so a
 // token issued before a role change can't be used to claim super admin rights.
-async function isCallerSuperAdmin(callerId: string): Promise<boolean> {
+export async function isCallerSuperAdmin(callerId: string): Promise<boolean> {
   const caller = await prisma.user.findUnique({
     where: { id: callerId },
     select: { role: true, isSuperAdmin: true },

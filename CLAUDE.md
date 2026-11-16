@@ -185,6 +185,12 @@ Supersedes the "same person in several organizations" parts of "Multi-organizati
 - Every address is stored and looked up through `lib/email.ts`'s `normalizeEmail` (trim + lowercase): `login`, `requestPasswordReset`, `createUser` (so both Excel imports and the single Create user form), the import's own membership/Project Admin lookups, and the seed's `ADMIN_EMAIL`.
 - Migration `20261116090000_case_insensitive_email` lowercases existing addresses (aborting, untouched, if two accounts differ only in case) and adds the check constraint `User_email_normalized` — a write that skips `normalizeEmail` fails loudly instead of creating a look-alike account. Prisma doesn't model check constraints (no drift); raw `prisma.user.create` in tests must use lowercase addresses.
 
+### Email delivery (`ONBOARDING_SECURITY_PLAN.md` Phase 2)
+
+- `lib/mailer.ts`: nodemailer SMTP (STARTTLS required except on port 465, 10–20 s timeouts), sender `SMTP_FROM_NAME <SMTP_FROM>`, and `renderEmail` — one branded HTML template (escaped values, only http(s) buttons) plus a plain-text alternative. **Nothing is sent unless `MAIL_ENABLED=true`**: otherwise `sendEmail` logs the subject/recipient (plus the link outside production — links carry one-time tokens) and throws `MailDisabledError`.
+- `requestPasswordReset` swallows mail errors (logged, still 204), so a mail outage can't reveal which addresses are registered.
+- `/api/mail` (Application Admins): `GET /status` (settings without the password) and `POST /test` (super admin only, to their own address; returns the SMTP server's error verbatim). UI: `EmailDeliverySection` at the bottom of the Management Console. How to switch it on in production: `gcp_deployment.md` "Switch on email".
+
 ### Org hierarchy and profile completion (from `FIRST_REVIEW.md`)
 
 Real-world usage feedback after the MVP demo described large CSP groups with multiple NatCos/OpCos per Organization, and users self-identifying their Country/Company/Working Domain/Designation before answering. Decisions locked in for this:

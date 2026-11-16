@@ -29,6 +29,11 @@ const envSchema = z.object({
   SMTP_USER: z.string().min(1),
   SMTP_PASSWORD: z.string().min(1),
   SMTP_FROM: z.string().email(),
+  // Display name of the sender (ONBOARDING_SECURITY_PLAN.md Phase 2).
+  SMTP_FROM_NAME: z.string().min(1).default('ANLET'),
+  // Off unless explicitly "true": dev, CI and a production without real SMTP credentials only
+  // log instead of attempting to send (lib/mailer.ts).
+  MAIL_ENABLED: booleanString.default('false'),
   // The frontend's own origin, used to build the emailed reset link — the backend can't
   // infer this from its own request in dev (backend :4000, frontend :5173 behind Vite's
   // proxy); in production single-host deploy this is just the app's own URL.
