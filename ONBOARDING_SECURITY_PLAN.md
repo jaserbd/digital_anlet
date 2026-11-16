@@ -37,7 +37,7 @@ Source: `admin_management.md` lines 46–50. Decisions taken with the user (2026
 - Requested 2026-11-16: switch to IT's shared mailbox from the UI instead of GCP commands. Interim sender stays `jaser.thesis@gmail.com`.
 - `MailSettings` row (wins over env), password encrypted with `MAIL_ENCRYPTION_KEY` (new secret `anlet-mail-key`), login verified before saving, optional Reply-To, Microsoft 365 / Gmail presets, reset to server defaults. Super admin edits; other Application Admins read.
 
-## Phase 3 — Welcome / set-password emails ✅ (branch `feature/welcome-emails`)
+## Phase 3 — Welcome / set-password emails ✅ live in production (revision anlet-00024-bsp, 2026-11-16)
 
 Built as below, with one deliberate change: sending a welcome/reset email **never resets the password** (a "Resend" to someone already active must not lock them out) — the link just lets them set one. New accounts created with the checkbox get an unknown random password.
 
