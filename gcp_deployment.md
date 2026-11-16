@@ -159,7 +159,7 @@ policy).
 |---|---|---|
 | `jaserbin.rahman@detecon.com` | `roles/owner` | Human account, full project control; also the app's super admin |
 | `anlet-run@anlet-504115.iam.gserviceaccount.com` | `roles/cloudsql.client` (project); `roles/secretmanager.secretAccessor` on each of the five `anlet-*` secrets only | Cloud Run runs as it. A new secret the app should read needs its own binding: `gcloud secrets add-iam-policy-binding <secret> --member serviceAccount:anlet-run@anlet-504115.iam.gserviceaccount.com --role roles/secretmanager.secretAccessor` |
-| `602185048647-compute@developer.gserviceaccount.com` | `roles/cloudbuild.builds.builder`, `roles/cloudsql.client`, `roles/secretmanager.secretAccessor` | Default Compute SA — only Cloud Build uses it now. `roles/editor` was removed on 2026-11-16 (test build passed). The last two roles are left over from when the app ran as it and can be removed |
+| `602185048647-compute@developer.gserviceaccount.com` | `roles/cloudbuild.builds.builder` | Default Compute SA — only Cloud Build uses it now. `roles/editor` and its project-wide database / secret access were removed on 2026-11-16 (test builds passed) |
 | Google-managed service agents | various | Created automatically per enabled API |
 
 ---
@@ -303,8 +303,8 @@ gcloud sql instances clone anlet-db anlet-db-restore --project anlet-504115 --po
 ## Known gaps
 
 - **High availability** — Cloud SQL is zonal (`europe-west3-a`); a zone outage takes the database down.
-- **IAM scope** — done 2026-11-16: Cloud Run runs as the dedicated `anlet-run` account. Left: the default Compute SA
-  (Cloud Build) still holds project-wide `cloudsql.client` + `secretmanager.secretAccessor`, which builds don't need.
+- **IAM scope** — done 2026-11-16: Cloud Run runs as the dedicated `anlet-run` account, and the default Compute SA
+  (Cloud Build) holds only the Cloud Build role.
 - **CI/CD** — deploys are manual (`gcloud builds submit` + `gcloud run deploy`); GitHub Actions only runs
   lint/typecheck/test.
 - **SMTP** — interim Gmail sender (`jaser.thesis@gmail.com`, ~500 emails/day); move to IT's shared mailbox when it exists

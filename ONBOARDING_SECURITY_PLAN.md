@@ -95,7 +95,7 @@ Trade-off to know: the account pause lets someone who knows an address keep that
 
 6. **Dedicated service account** `anlet-run` (Cloud SQL client + its five secrets only); `roles/editor` removed from the default Compute SA, which now only builds (`roles/cloudbuild.builds.builder`) — see `gcp_deployment.md`.
 
-Open: 12–14, the seed guard from 15, and the default Compute SA's leftover project-wide database / secret roles.
+Open: 12–14 and the seed guard from 15.
 
 ## Order
 
