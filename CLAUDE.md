@@ -180,6 +180,11 @@ Supersedes the "same person in several organizations" parts of "Multi-organizati
 - **UI** (`ManageUsersSection`, `lib/userGroups.ts`): one `CollapsibleTable` per organization (alphabetical, user count), one row per user + project; columns Email · Admin · Project · Role · NatCo · Project Admin of · actions; an email search narrows all tables (they stay mounted and keep their open state — `CollapsibleTable.forceOpen`). "Move to…" offers another organization only for someone's only membership; "Add to project…" only projects of their organization.
 - **Migration** `20261021090000_one_organization_per_user` (data only, one transaction): removes Anlet (Internal) memberships (with their responses) of people also in another organization, moves remaining ones to Detecon, sets everyone's organization to their memberships' (never re-homing an Application Admin into a client), moves Anlet (Internal) admins to Detecon, deletes Anlet (Internal), and **aborts** if anyone is still in two organizations. The seed now places a new super admin in Detecon and never changes an existing one's organization.
 
+### Case-insensitive email (`ONBOARDING_SECURITY_PLAN.md` Phase 1)
+
+- Every address is stored and looked up through `lib/email.ts`'s `normalizeEmail` (trim + lowercase): `login`, `requestPasswordReset`, `createUser` (so both Excel imports and the single Create user form), the import's own membership/Project Admin lookups, and the seed's `ADMIN_EMAIL`.
+- Migration `20261116090000_case_insensitive_email` lowercases existing addresses (aborting, untouched, if two accounts differ only in case) and adds the check constraint `User_email_normalized` — a write that skips `normalizeEmail` fails loudly instead of creating a look-alike account. Prisma doesn't model check constraints (no drift); raw `prisma.user.create` in tests must use lowercase addresses.
+
 ### Org hierarchy and profile completion (from `FIRST_REVIEW.md`)
 
 Real-world usage feedback after the MVP demo described large CSP groups with multiple NatCos/OpCos per Organization, and users self-identifying their Country/Company/Working Domain/Designation before answering. Decisions locked in for this:

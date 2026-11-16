@@ -7,6 +7,7 @@ import type {
 } from '@anlet/shared';
 import { prisma } from '../../lib/prisma';
 import { generatePassword } from '../../lib/generatePassword';
+import { normalizeEmail } from '../../lib/email';
 import { createOrganization } from '../organizations/organizations.service';
 import { HVS_GROUPS } from '../questionnaire/hvsGroups';
 import { createUser } from '../users/users.service';
@@ -426,7 +427,7 @@ export async function importProject(
   const memberRows: ProjectImportResultRowDto[] = [];
   for (const [index, member] of input.members.entries()) {
     if (member.role !== 'PROJECT_ADMIN') continue;
-    const email = member.email.trim();
+    const email = normalizeEmail(member.email);
     memberRows.push({
       sheet: 'Members',
       row: index + 1,

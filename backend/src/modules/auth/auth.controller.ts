@@ -25,7 +25,7 @@ import {
 } from './auth.service';
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().email(),
   password: z.string().min(1),
 });
 
@@ -35,7 +35,7 @@ const changePasswordSchema = z.object({
 });
 
 const forgotPasswordSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().email(),
 });
 
 const resetPasswordSchema = z.object({

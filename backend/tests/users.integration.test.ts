@@ -3,7 +3,7 @@ import { prisma } from '../src/lib/prisma';
 import { verifyPassword } from '../src/lib/password';
 import { verifyToken } from '../src/lib/jwt';
 import { listUserContexts, resolveRequestUser } from '../src/lib/userContext';
-import { InvalidContextError, switchContext } from '../src/modules/auth/auth.service';
+import { InvalidContextError, InvalidCredentialsError, login, switchContext } from '../src/modules/auth/auth.service';
 import { NoMembershipError, getOrCreateResponse } from '../src/modules/responses/responses.service';
 import {
   AlreadyMemberError,
@@ -350,6 +350,45 @@ describe('memberships (real DB)', () => {
     });
     const scoped = await listUsers({ organizationId: orgBId });
     expect(scoped.find((u) => u.id === memberOfB)?.memberships.map((m) => m.organizationId)).toEqual([orgBId]);
+  });
+});
+
+// ONBOARDING_SECURITY_PLAN.md Phase 1: email addresses are case-insensitive.
+describe('email case (real DB)', () => {
+  it('stores addresses lowercased and treats another case as the same account', async () => {
+    const created = await createUser(
+      {
+        email: '  __Integration-Test-Users-Case__@Example.COM ',
+        password: 'case-password-123',
+        role: 'EXECUTIVE',
+        organizationId: orgPId,
+        projectId: project1Id,
+      },
+      adminId,
+    );
+    userIds.push(created.user.id);
+    expect(created.user.email).toBe('__integration-test-users-case__@example.com');
+
+    await expect(
+      createUser(
+        { email: '__INTEGRATION-TEST-USERS-CASE__@example.com', password: 'x-password-123', role: 'EXECUTIVE', organizationId: orgPId, projectId: project1Id },
+        adminId,
+      ),
+    ).rejects.toBeInstanceOf(AlreadyMemberError);
+
+    const token = await login('__INTEGRATION-test-users-CASE__@EXAMPLE.com ', 'case-password-123');
+    expect(verifyToken(token).sub).toBe(created.user.id);
+    await expect(login('__integration-test-users-case__@example.com', 'wrong-password')).rejects.toBeInstanceOf(
+      InvalidCredentialsError,
+    );
+  });
+
+  it('rejects a non-normalized address written straight to the database', async () => {
+    await expect(
+      prisma.user.create({
+        data: { email: '__Integration-Test-Users-Raw__@example.com', passwordHash: 'x', role: 'NORMAL_USER', organizationId: orgAId },
+      }),
+    ).rejects.toThrow(/User_email_normalized/);
   });
 });
 

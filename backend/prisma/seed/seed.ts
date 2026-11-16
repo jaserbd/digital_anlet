@@ -2,6 +2,7 @@ import type { ReferenceListCategory } from '@prisma/client';
 import { env } from '../../src/config/env';
 import { prisma } from '../../src/lib/prisma';
 import { hashPassword } from '../../src/lib/password';
+import { normalizeEmail } from '../../src/lib/email';
 import type { ParsedQuestionnaire } from './parsedQuestionnaire.types';
 import { parseRanFmXlsx } from './parseRanFmXlsx';
 import { parseCoreFaultManagementXlsx, parseCoreStabilityXlsx } from './parseCoreFmXlsx';
@@ -48,13 +49,14 @@ async function seedSuperAdmin() {
   });
 
   const passwordHash = await hashPassword(env.ADMIN_PASSWORD);
+  const email = normalizeEmail(env.ADMIN_EMAIL);
   await prisma.user.upsert({
-    where: { email: env.ADMIN_EMAIL },
+    where: { email },
     // The bootstrap admin is the super admin (ADMIN_MANAGEMENT_PLAN.md) — in production
     // ADMIN_EMAIL is jaserbin.rahman@detecon.com.
     update: { passwordHash, role: 'ADMIN', isSuperAdmin: true },
     create: {
-      email: env.ADMIN_EMAIL,
+      email,
       passwordHash,
       role: 'ADMIN',
       isSuperAdmin: true,
@@ -62,7 +64,7 @@ async function seedSuperAdmin() {
     },
   });
 
-  console.log(`Seeded super admin "${env.ADMIN_EMAIL}" (${CONSULTANCY_ORGANIZATION_NAME})`);
+  console.log(`Seeded super admin "${email}" (${CONSULTANCY_ORGANIZATION_NAME})`);
 }
 
 async function seedQuestionnaire(source: ParsedQuestionnaire) {

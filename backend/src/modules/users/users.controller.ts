@@ -43,7 +43,7 @@ function projectAdminScope(req: Request) {
 // (projects module), not here. `projectId` places the membership in one of the organization's
 // projects (PROJECTS_V2_PLAN.md).
 const createUserSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().email(),
   password: z.string().min(8),
   role: z.enum(['NORMAL_USER', 'EXECUTIVE', 'ADMIN']),
   organizationId: z.string().min(1),

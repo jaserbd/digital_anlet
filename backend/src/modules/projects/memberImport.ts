@@ -2,6 +2,7 @@ import type { ReferenceListCategory } from '@prisma/client';
 import type { ProjectImportMemberDto, ProjectImportResultRowDto } from '@anlet/shared';
 import { prisma } from '../../lib/prisma';
 import { generatePassword } from '../../lib/generatePassword';
+import { normalizeEmail } from '../../lib/email';
 import {
   AlreadyMemberError,
   EmailTakenError,
@@ -128,7 +129,7 @@ export async function importMembers(
   const designations = new GrowingCatalog('DESIGNATION');
 
   for (const [index, member] of members.entries()) {
-    const email = member.email.trim();
+    const email = normalizeEmail(member.email);
     const base = { sheet: 'Members' as const, row: index + 1, label: email, role: member.role };
     // Project Admin rows are handled by the caller (Application Admin import only).
     const organization = options.organizations.get(labelKey(member.organization));
