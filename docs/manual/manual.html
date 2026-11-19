@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Anlet Project Admin Manual</title>
+<style>
+  @page { size: A4; margin: 15mm 15mm 17mm; }
+  :root { --ink:#1d2433; --muted:#5d6678; --rule:#dfe2e8; --brand:#e20074; --brand-soft:#fde6f1; --navy:#1f3c88; --note:#eef4fb; --warn:#fff4e5; }
+  * { box-sizing: border-box; }
+  body { font: 10pt/1.5 "Helvetica Neue", Arial, sans-serif; color: var(--ink); margin: 0; background: #fff; }
+  h1 { font-size: 19pt; margin: 0 0 4mm; color: var(--ink); page-break-before: always; padding-top: 1mm; border-bottom: 2px solid var(--brand); padding-bottom: 2mm; }
+  h1 .n { color: var(--brand); margin-right: 3mm; }
+  h2 { font-size: 13pt; margin: 7mm 0 2mm; color: var(--navy); page-break-after: avoid; }
+  h3 { font-size: 11pt; margin: 5mm 0 1.5mm; page-break-after: avoid; }
+  p { margin: 0 0 2.6mm; }
+  ul, ol { margin: 0 0 3mm; padding-left: 6mm; }
+  li { margin-bottom: 1mm; }
+  b, strong { font-weight: 650; }
+  .ui { font-weight: 650; color: var(--navy); white-space: nowrap; }
+  code { font: 9pt Menlo, monospace; background: #f3f4f7; padding: 0 1mm; border-radius: 1mm; }
+  figure { margin: 3mm 0 4.5mm; page-break-inside: avoid; }
+  figure .frame { border: 1px solid var(--rule); border-radius: 2mm; overflow: hidden; box-shadow: 0 1px 3px rgba(20,30,50,.08); }
+  figure img { display: block; width: 100%; }
+  figure .frame.crop { height: var(--h); }
+  figure .frame.crop img { object-fit: cover; object-position: top; height: 100%; }
+  figure.narrow { width: 62%; margin-left: auto; margin-right: auto; }
+  figure.mid { width: 80%; margin-left: auto; margin-right: auto; }
+  figcaption { font-size: 8.6pt; color: var(--muted); margin-top: 1.4mm; }
+  figcaption b { color: var(--ink); }
+  .box { border-radius: 2mm; padding: 2.6mm 3.6mm; margin: 3mm 0 4mm; page-break-inside: avoid; }
+  .box.tip { background: var(--note); border-left: 3px solid var(--navy); }
+  .box.warn { background: var(--warn); border-left: 3px solid #e08a00; }
+  .box p:last-child, .box ul:last-child { margin-bottom: 0; }
+  .box .t { font-weight: 700; display: block; margin-bottom: .8mm; }
+  table { width: 100%; border-collapse: collapse; margin: 2mm 0 4mm; font-size: 9pt; page-break-inside: auto; }
+  th { text-align: left; background: var(--brand-soft); border-bottom: 2px solid var(--brand); padding: 1.6mm 2mm; }
+  td { border-bottom: 1px solid var(--rule); padding: 1.5mm 2mm; vertical-align: top; }
+  tr { page-break-inside: avoid; }
+  .yes { color: #1b7f3b; font-weight: 700; }
+  .no { color: #b4232c; font-weight: 700; }
+  .cover { height: 262mm; display: flex; flex-direction: column; justify-content: space-between; padding: 30mm 4mm 0; }
+  .cover .brand { color: var(--brand); font-weight: 800; font-size: 13pt; letter-spacing: .02em; }
+  .cover h1 { page-break-before: auto; border: 0; font-size: 34pt; line-height: 1.1; margin: 8mm 0 4mm; }
+  .cover .sub { font-size: 13pt; color: var(--muted); max-width: 140mm; }
+  .cover .bar { height: 3mm; width: 40mm; background: var(--brand); border-radius: 2mm; margin: 10mm 0; }
+  .cover .meta { font-size: 9.5pt; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 4mm; }
+  .toc { columns: 1; font-size: 10.5pt; }
+  .toc a { color: var(--ink); text-decoration: none; }
+  .toc li { margin-bottom: 1.6mm; }
+  .toc ol ol { margin-top: 1mm; font-size: 9.5pt; color: var(--muted); }
+  .steps { counter-reset: s; list-style: none; padding-left: 0; }
+  .steps > li { counter-increment: s; position: relative; padding-left: 9mm; margin-bottom: 2.4mm; }
+  .steps > li::before { content: counter(s); position: absolute; left: 0; top: .2mm; width: 6mm; height: 6mm; border-radius: 50%; background: var(--brand); color: #fff; font-weight: 700; font-size: 8.5pt; display: flex; align-items: center; justify-content: center; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; align-items: start; }
+  .two figure { margin-top: 0; }
+  .keep { page-break-inside: avoid; }
+</style></head><body>
+
+<section class="cover">
+  <div>
+    <div class="brand">Detecon · Anlet</div>
+    <h1>Project Admin Manual</h1>
+    <div class="sub">How to set up and run a TM Forum Autonomous Networks maturity assessment in Anlet — members, NatCos, questionnaires, opening and closing, the dashboard, and what your Executives and users see.</div>
+    <div class="bar"></div>
+  </div>
+  <div class="meta">
+    Version 1.0 · November 2026<br>
+    All screenshots use invented demo data (project "AN Maturity Assessment 2026", organization "Demo Telco Group"). Names, emails and scores are not real.
+  </div>
+</section>
+
+<h1 style="border-bottom:2px solid var(--brand)">Contents</h1>
+<ol class="toc">
+  <li><a href="#roles">Your role as Project Admin</a></li>
+  <li><a href="#start">Signing in and finding your way</a></li>
+  <li><a href="#checklist">Running an assessment: the checklist</a></li>
+  <li><a href="#manage">The Manage project page</a>
+    <ol><li>Questionnaires</li><li>NatCos (OpCos)</li><li>Import members from Excel</li><li>Create a single user</li><li>Existing users</li><li>Opening and closing an assessment</li></ol></li>
+  <li><a href="#dashboard">The dashboard (Organization Overview)</a></li>
+  <li><a href="#test">Answering yourself: test answers</a></li>
+  <li><a href="#user">What a Normal User sees</a></li>
+  <li><a href="#exec">What an Executive sees</a></li>
+  <li><a href="#faq">Questions and problems</a></li>
+  <li><a href="#rights">Appendix: who can do what</a></li>
+</ol>
+
+<!-- 1 -->
+<h1 id="roles"><span class="n">1</span>Your role as Project Admin</h1>
+<p>Anlet replaces the Excel questionnaires of the TM Forum Autonomous Networks (AN) maturity assessment. Each participant answers online; scores, benchmarks and comments are collected automatically.</p>
+<p>Work in Anlet is organized in <b>projects</b>. A project is one assessment round for a client, for example <i>AN Maturity Assessment 2026</i>. It contains one or more <b>organizations</b> (the client, e.g. a telco group). An organization has <b>NatCos</b> (national companies, also called OpCos), each with a country. Every participant belongs to one organization and picks their NatCo.</p>
+
+<table>
+  <tr><th style="width:24%">Role</th><th>What they do</th></tr>
+  <tr><td><b>Application Admin</b></td><td>Detecon. Creates projects and organizations, adds and removes Project Admins, manages email settings. Sees all projects.</td></tr>
+  <tr><td><b>Project Admin</b> (you)</td><td>Runs one project: chooses its questionnaires, sets up NatCos, adds members, sends login emails, opens and closes the assessment, follows progress on the dashboard and exports results. Can answer questionnaires for testing — those answers never count.</td></tr>
+  <tr><td><b>Executive</b></td><td>A client manager (e.g. CTO). Sees the dashboard of their own organization and project, <b>without names or emails</b> of participants. Can also answer questionnaires — their answers count.</td></tr>
+  <tr><td><b>Normal User</b></td><td>A client engineer or expert. Answers questionnaires and sees their own results.</td></tr>
+</table>
+
+<div class="box tip"><span class="t">What you cannot do as Project Admin</span>
+<ul>
+  <li>Create or delete projects or organizations, or add an organization to a project.</li>
+  <li>Make someone a Project Admin or Application Admin.</li>
+  <li>Delete user accounts or move a user to another organization.</li>
+  <li>Change the email (SMTP) settings.</li>
+</ul>
+Ask your Application Admin for these. The full overview is in the <a href="#rights">appendix</a>.</div>
+
+<!-- 2 -->
+<h1 id="start"><span class="n">2</span>Signing in and finding your way</h1>
+<h2>Sign in</h2>
+<p>Open the Anlet address you received and sign in with your email and password. Email addresses are not case-sensitive.</p>
+<figure class="mid"><div class="frame crop" style="--h:70mm"><img src="screenshots/login.png"></div><figcaption><b>Figure 1.</b> Sign-in page. "Forgot password?" sends a reset link to your email.</figcaption></figure>
+<ul>
+  <li><b>Forgot your password?</b> Use <span class="ui">Forgot password?</span> on the sign-in page. The link in the email is valid for one hour.</li>
+  <li><b>Temporary password:</b> if you signed in with a password someone gave you, Anlet asks you to choose your own first (at least 12 characters).</li>
+  <li><b>Locked:</b> after 10 wrong passwords in a row, sign-in pauses for 15 minutes.</li>
+</ul>
+
+<h2>Choose where to work</h2>
+<p>As a Project Admin you normally have more than one place to work: the project (as Project Admin) and your own organization (Detecon). After sign-in, Anlet asks which one. Choose the line that ends in <span class="ui">— Project Admin</span>.</p>
+<figure class="mid"><div class="frame crop" style="--h:52mm"><img src="screenshots/context.png"></div><figcaption><b>Figure 2.</b> Choose the project line. If you run several projects, each has its own line.</figcaption></figure>
+<p>You can switch at any time with <span class="ui">Working as</span> in the header. Everything you see and change applies to the project and organization shown there.</p>
+<div class="box tip"><span class="t">Projects with several organizations</span>
+You have one "Working as" line per organization of the project. Members, open/close and the dashboard are per organization — switch to the other organization to manage it. The Excel import (section 4.3) is the exception: it can add members to every organization of the project in one go.</div>
+
+<h2>The header</h2>
+<figure><div class="frame"><img src="screenshots/header.png"></div><figcaption><b>Figure 3.</b> The header as Project Admin.</figcaption></figure>
+<table>
+  <tr><th style="width:24%">Link</th><th>Opens</th></tr>
+  <tr><td><span class="ui">Working as</span></td><td>Switch project / organization / role.</td></tr>
+  <tr><td><span class="ui">Home</span></td><td>The dashboard (Organization Overview) — section 5.</td></tr>
+  <tr><td><span class="ui">Manage project</span></td><td>Members, NatCos, questionnaires, open/close — section 4.</td></tr>
+  <tr><td><span class="ui">Answer as user</span></td><td>The questionnaires, as a participant sees them — section 6.</td></tr>
+  <tr><td><span class="ui">Results</span></td><td>Results of your own (test) answers.</td></tr>
+  <tr><td>Round icon (initial)</td><td>Account menu: the email you are signed in with, and <span class="ui">Log out</span>.</td></tr>
+</table>
+
+<!-- 3 -->
+<h1 id="checklist"><span class="n">3</span>Running an assessment: the checklist</h1>
+<p>Your Application Admin creates the project and its organization(s) and adds you as Project Admin. From there, the usual order is:</p>
+<ol class="steps">
+  <li><b>Check the questionnaires.</b> Manage project → <span class="ui">Questionnaires</span>. Keep only the High-Value Scenarios (HVS) the client should answer (4.1).</li>
+  <li><b>Set up the NatCos.</b> Manage project → <span class="ui">OpCos</span>. One per national company, with its country (4.2). You can also let the Excel import create them.</li>
+  <li><b>Add the participants.</b> Usually with the Excel import (4.3); single people with Create user (4.4). Fill in NatCo, Working domain and Designation in the file so participants can start straight away.</li>
+  <li><b>Give them access.</b> Send welcome emails (they set their own password) or forward the temporary passwords from the import results (4.3, 4.5).</li>
+  <li><b>Test it yourself.</b> Answer a questionnaire with <span class="ui">Answer as user</span>. Your answers are not counted; reset them afterwards (6).</li>
+  <li><b>Follow progress.</b> On the dashboard: who has submitted, who is still in progress or has not started (5). Remind people by email outside Anlet, or send a password reset email if someone is stuck.</li>
+  <li><b>Close the assessment</b> when the deadline has passed (4.6). Answers are then locked.</li>
+  <li><b>Export.</b> <span class="ui">Download all (Excel)</span> and <span class="ui">Download PDF report</span> on the dashboard (5).</li>
+</ol>
+<div class="box warn"><span class="t">An assessment is open from the start</span>
+Every questionnaire of the project accepts answers as soon as people have access. Participants can change and re-submit their answers until you close it.</div>
+
+<!-- 4 -->
+<h1 id="manage"><span class="n">4</span>The Manage project page</h1>
+<p>Click <span class="ui">Manage project</span> in the header. The page has one section per task; click a section title to fold it away. Anlet remembers which sections you folded.</p>
+<figure><div class="frame crop" style="--h:84mm"><img src="screenshots/manage-top.png"></div><figcaption><b>Figure 4.</b> Top of the Manage project page. The title shows the project and organization you are working on.</figcaption></figure>
+
+<h2>4.1 Questionnaires</h2>
+<p>This section lists the questionnaires (HVS) that members of the project can answer — in every organization of the project. Click <span class="ui">Edit questionnaires</span>, tick the ones you need and click <span class="ui">Save</span>.</p>
+<figure><div class="frame"><img src="screenshots/questionnaires.png"></div><figcaption><b>Figure 5.</b> The project's questionnaires.</figcaption></figure>
+<figure><div class="frame crop" style="--h:80mm"><img src="screenshots/questionnaires-edit.png"></div><figcaption><b>Figure 6.</b> Edit questionnaires (top of the list).</figcaption></figure>
+<ul>
+  <li><b>(R)</b> marks questionnaires that are still <i>in review</i> at TM Forum. Their content may still change.</li>
+  <li><b>Core Network Fault Management &amp; Stability</b> is one item: the two Core questionnaires always go together, because they combine into one Core Domain score (50 % each).</li>
+  <li>At least one questionnaire must stay selected.</li>
+  <li>Removing a questionnaire stops <i>new</i> answers. Answers already given and their results stay available; selecting it again brings it back.</li>
+</ul>
+
+<h2>4.2 NatCos (OpCos)</h2>
+<p>Participants pick their NatCo in their profile, and the dashboard compares NatCos. Each NatCo has a name and a country.</p>
+<figure><div class="frame"><img src="screenshots/opcos.png"></div><figcaption><b>Figure 7.</b> OpCos section, list opened.</figcaption></figure>
+<ol class="steps">
+  <li>If the name is not in the drop-down yet, add it under <span class="ui">NatCo Names for this organization</span> → type it → <span class="ui">Add</span>.</li>
+  <li>Choose the <span class="ui">OpCo / NatCo name</span> and the <span class="ui">Country</span>.</li>
+  <li>Click <span class="ui">Create OpCo</span>. The list below (click <span class="ui">OpCos (n)</span>) shows all NatCos.</li>
+</ol>
+<div class="box tip"><span class="t">Small organizations</span>
+An organization without NatCos is shown as a single row under its own name. With exactly one NatCo, members without a NatCo are counted under it.</div>
+
+<h2>4.3 Import members from Excel</h2>
+<p>The fastest way to add participants — also for every other organization of the project.</p>
+<figure><div class="frame"><img src="screenshots/import.png"></div><figcaption><b>Figure 8.</b> Import members from Excel.</figcaption></figure>
+<ol class="steps">
+  <li>Click <span class="ui">Download Excel template</span>. The file has the sheets <i>Instructions</i>, <i>Members</i>, <i>NatCos</i> (the ones that already exist) and <i>Lists</i>.</li>
+  <li>On <i>Members</i>, fill in one row per person (see the table below). Cells with a list have a drop-down.</li>
+  <li>Back in Anlet, decide whether to tick <span class="ui">Send welcome email</span>, then click <span class="ui">Choose Excel file</span> and pick your file. Anlet checks every row before anything is created.</li>
+  <li>Read the results: each row is <i>created</i>, <i>existing</i>, <i>membership added</i> or an <i>error</i> with the reason. Download the results file — it holds the temporary passwords of new people who did not get a welcome email.</li>
+</ol>
+<table class="keep">
+  <tr><th style="width:24%">Column</th><th style="width:12%">Required</th><th>What to enter</th></tr>
+  <tr><td>Organization</td><td>yes</td><td>One of the project's organizations.</td></tr>
+  <tr><td>Email</td><td>yes</td><td>The person's business email (their login).</td></tr>
+  <tr><td>Role</td><td>yes</td><td><i>Executive</i> or <i>Normal User</i>.</td></tr>
+  <tr><td>First name, Last name</td><td>no</td><td>For your own overview.</td></tr>
+  <tr><td>NatCo</td><td>no*</td><td>An existing NatCo. A new name is created if you also give a valid Country.</td></tr>
+  <tr><td>Country</td><td>no</td><td>Needed only to create a new NatCo.</td></tr>
+  <tr><td>Working domain</td><td>no*</td><td>E.g. RAN, Core, NOC. New values are added to the list.</td></tr>
+  <tr><td>Designation</td><td>no*</td><td>E.g. Network Engineer, Team Lead. New values are added to the list.</td></tr>
+</table>
+<p>* Not required for the import, but a participant must have them before answering. If you leave them empty, the person fills them in at their first sign-in (section 7).</p>
+<div class="box tip"><span class="t">Good to know</span>
+<ul>
+  <li>Spelling of NatCo, Working domain and Designation is matched loosely (case, spaces, punctuation), so "demo telco germany" finds "Demo Telco Germany".</li>
+  <li>People who already have an account keep their password. For them, only <i>empty</i> profile fields are filled; existing values are kept (the result says so).</li>
+  <li>Importing the same file twice is safe — existing people and NatCos are reported as "existing".</li>
+  <li>A person belongs to exactly one organization. Someone who already belongs to another organization gets the error "Already belongs to …".</li>
+</ul></div>
+
+<h2>4.4 Create a single user</h2>
+<p>For one or two people. The person is added to the project and organization you are working on.</p>
+<figure><div class="frame"><img src="screenshots/create-user-done.png"></div><figcaption><b>Figure 9.</b> Create user, after creating an account with a generated password.</figcaption></figure>
+<ol class="steps">
+  <li>Enter the <span class="ui">Email</span>.</li>
+  <li>Either tick <span class="ui">Send welcome email</span> (the person gets a link to set their own password, valid 7 days), or click <span class="ui">Generate</span> for a one-time password that you forward yourself.</li>
+  <li>Choose the <span class="ui">Role</span>: Normal User or Executive.</li>
+  <li>Click <span class="ui">Create user</span>. A one-time password is shown once — copy it now. The person must change it at first sign-in.</li>
+</ol>
+<p>An email that already exists is simply added to this project (password unchanged).</p>
+
+<h2>4.5 Existing users</h2>
+<p>One table per organization (click the organization name to open it), one row per person and project. Use <span class="ui">Search by email</span> or the filters in the header row.</p>
+<figure><div class="frame crop" style="--h:118mm"><img src="screenshots/users.png"></div><figcaption><b>Figure 10.</b> Existing users (first rows). "n responses" shows how many questionnaires the person has started or submitted; "Email confirmed" turns to a date once they used an emailed link.</figcaption></figure>
+<table class="keep">
+  <tr><th style="width:28%">Action</th><th>How</th></tr>
+  <tr><td>Change role</td><td>Pick <i>Executive</i> or <i>Normal User</i> in the <span class="ui">Role</span> column. Takes effect immediately.</td></tr>
+  <tr><td>Remove from the project</td><td><span class="ui">Remove</span>. Only possible while the person has no answers or comments — it is greyed out otherwise, so results are never lost by accident.</td></tr>
+  <tr><td>Send welcome email</td><td><span class="ui">User ▾</span> → <span class="ui">Send welcome email</span>: a link to set their own password (valid 7 days).</td></tr>
+  <tr><td>Send password reset email</td><td><span class="ui">User ▾</span> → <span class="ui">Send password reset email</span> (valid 24 hours). Their current password keeps working until they set a new one.</td></tr>
+  <tr><td>Temporary password</td><td><span class="ui">User ▾</span> → <span class="ui">Temporary password</span>: a new one-time password, shown once. Use it when email does not arrive.</td></tr>
+  <tr><td>Deactivate / Reactivate</td><td><span class="ui">User ▾</span> → <span class="ui">Deactivate</span> blocks sign-in without deleting anything; <span class="ui">Reactivate</span> undoes it.</td></tr>
+</table>
+<figure class="mid"><div class="frame"><img src="screenshots/user-menu.png"></div><figcaption><b>Figure 11.</b> The <i>User</i> menu of a row.</figcaption></figure>
+<div class="box warn"><span class="t">If emails do not arrive</span>
+Email sending may be switched off in your installation, or the client's mail filter may hold the message. Anlet then tells you the email was not sent. Use <span class="ui">Temporary password</span> and forward it through a secure channel.</div>
+
+<h2>4.6 Opening and closing an assessment</h2>
+<p>In <span class="ui">Questionnaire settings</span>, choose the <span class="ui">Assessment</span>, check the status and click <span class="ui">Close (lock all responses here)</span> — or <span class="ui">Reopen</span>.</p>
+<figure><div class="frame"><img src="screenshots/settings.png"></div><figcaption><b>Figure 12.</b> Questionnaire settings — status "Accepting responses".</figcaption></figure>
+<ul>
+  <li><b>Open</b> (default): participants can answer, change their answers and re-submit at any time. Re-submitting recalculates their score.</li>
+  <li><b>Closed:</b> every response of this organization in this project is locked. Participants see their results but cannot change anything. Other projects and organizations are not affected.</li>
+  <li>Close each questionnaire separately, and — in a project with several organizations — for each organization (switch with <span class="ui">Working as</span>).</li>
+</ul>
+
+<!-- 5 -->
+<h1 id="dashboard"><span class="n">5</span>The dashboard (Organization Overview)</h1>
+<p><span class="ui">Home</span> opens the dashboard of the organization and project you are working on. Choose the questionnaire under <span class="ui">Assessment</span>; every block below is about that questionnaire. Averages only count <b>submitted</b> responses. As Project Admin you see participants' emails; Executives see the same dashboard without them (section 8).</p>
+<figure><div class="frame"><img src="screenshots/dash-top.png"></div><figcaption><b>Figure 13.</b> Assessment selector, downloads and the NatCo benchmark with its chart.</figcaption></figure>
+
+<h2>Downloads</h2>
+<ul>
+  <li><span class="ui">Download all (Excel)</span> — one workbook with every table of the page (benchmark, respondents, answer matrix per Cognitive Activity, comments).</li>
+  <li><span class="ui">Download PDF report</span> — a report with the tables, charts, the Cognitive Activity diagram and the comments per question. It uses the NatCo/Country filter of the diagram.</li>
+  <li>Each table also has its own <span class="ui">Export to Excel</span>.</li>
+</ul>
+
+<h2>NatCo benchmarking</h2>
+<p>One row per NatCo: number of respondents and submissions, the average final score (0–4), the average end-to-end (E2E) automation rate and the average score per sub-scenario (e.g. Equipment, Processing Error). Click a column header to sort; use the filters to narrow the rows. The chart follows the table. For Core, the table shows Fault Management, Stability and the combined Core Domain score side by side.</p>
+
+<h2>Cognitive Activity diagram</h2>
+<p>The average score per Cognitive Activity — Intent, Awareness, Analysis, Decision, Execution — with the overall average. Filter by <span class="ui">NatCo</span> or <span class="ui">Country</span> to compare.</p>
+<figure class="mid"><div class="frame"><img src="screenshots/radar.png"></div><figcaption><b>Figure 14.</b> Cognitive Activity diagram.</figcaption></figure>
+
+<h2>Respondents</h2>
+<p>Everyone who can answer, with NatCo, country, working domain, designation, status (<i>Not started</i>, <i>In progress</i>, <i>Submitted</i>) and final score. Filter <span class="ui">Status</span> to find who still has to submit.</p>
+<figure><div class="frame"><img src="screenshots/respondents.png"></div><figcaption><b>Figure 15.</b> Respondents with their scores.</figcaption></figure>
+
+<h2>Answer distribution</h2>
+<p>All questions, grouped by Cognitive Activity, numbered Q1, Q2 … as participants see them. Click a question to open it: the question and options with their scores, the number of answers A/B/C/D per sub-scenario with a chart, and the comments on that question.</p>
+<figure><div class="frame crop" style="--h:150mm"><img src="screenshots/distribution.png"></div><figcaption><b>Figure 16.</b> Answer distribution with question Q3 opened.</figcaption></figure>
+
+<h2>Comment Collection</h2>
+<p>All comments of this questionnaire in one table, with NatCo, country, designation, Cognitive Activity, question and sub-scenario. Filter and export it to collect the client's remarks.</p>
+<figure><div class="frame"><img src="screenshots/comments.png"></div><figcaption><b>Figure 17.</b> Comment Collection.</figcaption></figure>
+<div class="box tip"><span class="t">How the score works, in short</span>
+Each option has a score (shown next to it, e.g. A · 4). A question is answered once per sub-scenario. The sub-scenario score is the weighted average of its questions; the final score is the weighted average of the sub-scenarios, using the weights from the TM Forum questionnaire. Questions whose best option scores less than 4 are "compensated" as defined by TM Forum, so a top answer can still reach 4. Skipped questions are left out (not counted as 0). Key Effectiveness Indicators, where a questionnaire has them, get a separate score.</div>
+
+<!-- 6 -->
+<h1 id="test"><span class="n">6</span>Answering yourself: test answers</h1>
+<p>Use <span class="ui">Answer as user</span> to try a questionnaire exactly as participants see it — useful before a kick-off or to demonstrate it. The blue note confirms these are <b>test answers</b>: they never appear in respondents, averages, benchmarks or comments.</p>
+<figure><div class="frame crop" style="--h:72mm"><img src="screenshots/pa-questionnaire.png"></div><figcaption><b>Figure 18.</b> A questionnaire opened by a Project Admin, with <i>Reset my answers</i>.</figcaption></figure>
+<p>Click <span class="ui">Reset my answers</span> (on the questionnaire or its results page) to delete your test answers and start again. This only works while the assessment is open.</p>
+
+<!-- 7 -->
+<h1 id="user"><span class="n">7</span>What a Normal User sees</h1>
+<p>This chapter follows a participant from first sign-in to results, so you can explain it or answer their questions.</p>
+
+<h2>First sign-in</h2>
+<div class="two">
+  <figure><div class="frame crop" style="--h:56mm"><img src="screenshots/change-password.png"></div><figcaption><b>Figure 19.</b> With a temporary password, the participant first sets their own.</figcaption></figure>
+  <figure><div class="frame crop" style="--h:56mm"><img src="screenshots/profile.png"></div><figcaption><b>Figure 20.</b> Profile: NatCo, Working Domain and Designation — only asked if missing.</figcaption></figure>
+</div>
+<p>With a welcome email, the participant sets their password through the link instead. If you filled in NatCo, Working domain and Designation in the import, the profile step is skipped.</p>
+
+<h2>Choosing a questionnaire</h2>
+<p>The participant chooses the HVS (e.g. Fault Management), then the domain (e.g. RAN). Only the project's questionnaires appear.</p>
+<div class="two">
+  <figure><div class="frame crop" style="--h:40mm"><img src="screenshots/u-domains.png"></div><figcaption><b>Figure 21.</b> Choose an HVS.</figcaption></figure>
+  <figure><div class="frame crop" style="--h:56mm"><img src="screenshots/u-domain-choice.png"></div><figcaption><b>Figure 22.</b> Choose a domain.</figcaption></figure>
+</div>
+
+<h2>Answering</h2>
+<p>At the top: a note that Executives see answers without name or email, the questionnaire's <span class="ui">Guideline</span> (click to open), the progress bar, and one button per question, grouped by Cognitive Activity. Groups turn green when complete, amber while something is still open.</p>
+<figure><div class="frame crop" style="--h:92mm"><img src="screenshots/q-top.png"></div><figcaption><b>Figure 23.</b> Guideline, progress and question navigation.</figcaption></figure>
+<div class="two">
+  <figure><div class="frame"><img src="screenshots/q-card.png"></div><figcaption><b>Figure 24.</b> One question: options with their scores, one answer per sub-scenario, and a comment covering the unanswered "Security" row.</figcaption></figure>
+  <div>
+    <p>Each question shows its Cognitive Activity, weight, a note and — where TM Forum provides one — a <span class="ui">Guideline for this question</span>.</p>
+    <p>The participant chooses an option <b>for every sub-scenario</b> (each with its weight). Every click is saved immediately; they can stop and continue later.</p>
+    <p><b>Not applicable?</b> Leave the row on <i>No answer</i> and write a <b>comment</b>, ticking the sub-scenario it applies to. The unanswered rows are highlighted and pre-ticked. Such a question is <i>skipped</i>: left out of the score, not counted as 0.</p>
+    <p>A comment without tick on that sub-scenario does not cover it — "None of the sub-scenarios" is only for general remarks.</p>
+    <p>Comments are optional otherwise, but they are valuable: they appear in the Comment Collection.</p>
+  </div>
+</div>
+
+<h2>Review and submit</h2>
+<p>After the last question comes <span class="ui">Review before submitting</span>. It lists every unanswered sub-scenario without a covering comment. <span class="ui">Answer here</span> opens the question right on the review page; <span class="ui">Submit</span> unlocks when nothing is left.</p>
+<div class="two">
+  <figure><div class="frame crop" style="--h:118mm"><img src="screenshots/review.png"></div><figcaption><b>Figure 25.</b> Review: one gap left, Submit still greyed out.</figcaption></figure>
+  <figure><div class="frame"><img src="screenshots/review-inline.png"></div><figcaption><b>Figure 26.</b> Answering the gap in place — it shows "Covered ✓".</figcaption></figure>
+</div>
+
+<h2>Results</h2>
+<p>After submitting, the participant sees their score (0–4), a Cognitive Activity diagram, the score per question and sub-scenario, the E2E automation checklist and their comments. <span class="ui">Export to PDF</span> saves it. While the assessment is open, <span class="ui">Review / edit your answers</span> lets them change and re-submit.</p>
+<figure><div class="frame crop" style="--h:118mm"><img src="screenshots/results-top.png"></div><figcaption><b>Figure 27.</b> Results: score, diagram and score breakdown ("—" = skipped).</figcaption></figure>
+<figure><div class="frame"><img src="screenshots/results-e2e.png"></div><figcaption><b>Figure 28.</b> E2E automation checklist: S = done by the System (answer A), P = People. A sub-scenario is automated end to end only if every question except Intent is S.</figcaption></figure>
+<div class="box tip"><span class="t">Core Domain</span>
+For Core, participants answer Core Network Fault Management and Core Network Stability. Once both are submitted, their results show the combined Core Domain score (50 % each), with a link to whichever half is still missing.</div>
+
+<!-- 8 -->
+<h1 id="exec"><span class="n">8</span>What an Executive sees</h1>
+<p>An Executive lands on the same dashboard as you (section 5) for their organization and project, including the downloads — with one difference: <b>participants are anonymous</b>.</p>
+<ul>
+  <li><b>Participation</b> replaces the Respondents table: per NatCo the number of participants, submitted, in progress, not started and the average score. No individual names, statuses or scores.</li>
+  <li>In the answer distribution and the Comment Collection, people appear as <b>Participant 1, 2, …</b> with their NatCo, country and working domain. The same person keeps the same number within a questionnaire.</li>
+  <li>Participants are told this on every questionnaire.</li>
+</ul>
+<figure><div class="frame"><img src="screenshots/exec-participation.png"></div><figcaption><b>Figure 29.</b> Participation per NatCo, as an Executive sees it.</figcaption></figure>
+<figure><div class="frame"><img src="screenshots/exec-comments.png"></div><figcaption><b>Figure 30.</b> Comment Collection for an Executive — "Participant N" instead of the email.</figcaption></figure>
+<p>Executives can also answer questionnaires with <span class="ui">Answer as user</span>; their answers count like everyone else's. They need a Working domain and Designation in their profile (the NatCo is optional for them).</p>
+
+<!-- 9 -->
+<h1 id="faq"><span class="n">9</span>Questions and problems</h1>
+<table>
+  <tr><th style="width:38%">Situation</th><th>What to do</th></tr>
+  <tr><td>A participant did not get the welcome email.</td><td>Check the address in Existing users. Ask them to look in spam. Otherwise <span class="ui">User ▾ → Temporary password</span> and forward it.</td></tr>
+  <tr><td>A participant forgot their password.</td><td>They can use <span class="ui">Forgot password?</span> on the sign-in page, or you send <span class="ui">User ▾ → Send password reset email</span>.</td></tr>
+  <tr><td>"Too many attempts" / sign-in paused.</td><td>Wait 15 minutes, then sign in with the correct password or reset it.</td></tr>
+  <tr><td>A participant cannot submit.</td><td>The Review step lists the open points: every unanswered sub-scenario needs an answer or a comment ticked for that sub-scenario.</td></tr>
+  <tr><td>A participant picked the wrong NatCo.</td><td>The participant opens the profile page (the Anlet address followed by <code>/profile</code>), picks the right NatCo and clicks <span class="ui">Continue</span>. Their answers then count for the new NatCo.</td></tr>
+  <tr><td>Someone answered by mistake in the wrong role.</td><td>Change the role in Existing users; their answers stay.</td></tr>
+  <tr><td>I want to remove someone who already answered.</td><td>Not possible from your side (to protect results). Deactivate them, or ask your Application Admin.</td></tr>
+  <tr><td>A questionnaire is missing for participants.</td><td>Check Manage project → Questionnaires.</td></tr>
+  <tr><td>Someone needs to change answers after closing.</td><td>Reopen the questionnaire (4.6), let them re-submit, close again.</td></tr>
+  <tr><td>The dashboard shows "—" or no averages.</td><td>Nobody of that NatCo/questionnaire has submitted yet; only submitted responses count.</td></tr>
+</table>
+<p>Support: <b>jaserbin.rahman@detecon.com</b></p>
+
+<!-- appendix -->
+<h1 id="rights"><span class="n">A</span>Appendix: who can do what</h1>
+<table>
+  <tr><th style="width:46%">Action</th><th>Application Admin</th><th>Project Admin</th><th>Executive</th><th>Normal User</th></tr>
+  <tr><td>Create / delete projects and organizations</td><td class="yes">✓</td><td class="no">–</td><td class="no">–</td><td class="no">–</td></tr>
+  <tr><td>Add / remove Project Admins</td><td class="yes">✓</td><td class="no">–</td><td class="no">–</td><td class="no">–</td></tr>
+  <tr><td>Choose the project's questionnaires</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">–</td><td class="no">–</td></tr>
+  <tr><td>Create NatCos</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">–</td><td class="no">–</td></tr>
+  <tr><td>Import members from Excel</td><td class="yes">✓</td><td class="yes">✓ (whole project)</td><td class="no">–</td><td class="no">–</td></tr>
+  <tr><td>Create a single user, change Executive ↔ Normal User</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">–</td><td class="no">–</td></tr>
+  <tr><td>Send welcome / reset emails, temporary password, deactivate</td><td class="yes">✓</td><td class="yes">✓ (project members)</td><td class="no">–</td><td class="no">–</td></tr>
+  <tr><td>Remove a member without answers</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">–</td><td class="no">–</td></tr>
+  <tr><td>Move a user to another organization, delete accounts</td><td class="yes">✓</td><td class="no">–</td><td class="no">–</td><td class="no">–</td></tr>
+  <tr><td>Open / close a questionnaire</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">–</td><td class="no">–</td></tr>
+  <tr><td>Dashboard with names and emails</td><td class="yes">✓ (all projects)</td><td class="yes">✓</td><td class="no">–</td><td class="no">–</td></tr>
+  <tr><td>Dashboard, anonymous</td><td class="no">–</td><td class="no">–</td><td class="yes">✓</td><td class="no">–</td></tr>
+  <tr><td>Excel / PDF export of the dashboard</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">–</td></tr>
+  <tr><td>Answer questionnaires</td><td>test only</td><td>test only</td><td class="yes">✓ counted</td><td class="yes">✓ counted</td></tr>
+  <tr><td>See own results, edit while open</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+  <tr><td>Email settings</td><td>super admin</td><td class="no">–</td><td class="no">–</td><td class="no">–</td></tr>
+</table>
+</body></html>
